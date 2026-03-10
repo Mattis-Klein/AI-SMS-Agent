@@ -60,7 +60,7 @@ C:\AI-SMS-Agent\
         ├── ARCHITECTURE.md
         ├── SECURITY.md
         ├── TROUBLESHOOTING.md
-        └── ai-sms-integration.md
+        └── mashbak-integration.md
 ```
 
 ## What Each Top-Level Folder Does

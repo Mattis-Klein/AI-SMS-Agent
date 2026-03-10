@@ -181,7 +181,7 @@ C:\AI-SMS-Agent\
 │       ├── ARCHITECTURE.md
 │       ├── SECURITY.md
 │       ├── TROUBLESHOOTING.md
-│       └── ai-sms-integration.md
+│       └── mashbak-integration.md
 │
 ├── agent/                    # Python service
 ├── sms-bridge/               # Node.js service
