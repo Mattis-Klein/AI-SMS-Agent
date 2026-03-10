@@ -1,4 +1,4 @@
-"""Tkinter UI for local AI-SMS-Agent control and observability."""
+"""Tkinter UI for local Mashbak control and observability."""
 
 import json
 import threading
@@ -14,7 +14,7 @@ from widgets import action_bar, add_refresh_button, labeled_text_area, set_text
 class DesktopControlApp:
     def __init__(self, root: Tk, client, runtime_summary: dict):
         self.root = root
-        self.root.title("AI-SMS-Agent Desktop")
+        self.root.title("Mashbak Desktop")
         self.root.geometry("1320x820")
 
         self.client = client
@@ -33,7 +33,7 @@ class DesktopControlApp:
     def _build_ui(self) -> None:
         header = ttk.Frame(self.root, padding=(12, 10))
         header.pack(fill=X)
-        ttk.Label(header, text="AI-SMS-Agent Desktop", font=("Segoe UI", 14, "bold")).pack(side=LEFT)
+        ttk.Label(header, text="Mashbak Desktop", font=("Segoe UI", 14, "bold")).pack(side=LEFT)
         self.agent_badge = ttk.Label(header, text="Agent: checking...")
         self.agent_badge.pack(side=RIGHT, padx=(8, 0))
         self.bridge_badge = ttk.Label(header, text="Bridge: checking...")

@@ -1,8 +1,8 @@
 {
-  "name": "sms-bridge",
+  "name": "mashbak-sms-bridge",
   "private": true,
   "version": "1.0.0",
-  "description": "Twilio SMS bridge for the local AI agent",
+  "description": "Twilio SMS bridge for Mashbak shared backend",
   "type": "commonjs",
   "scripts": {
     "start": "node sms-server.js",

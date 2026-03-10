@@ -38,7 +38,7 @@ def run_smoke_test() -> int:
 
 def run_ui_smoke() -> int:
     root = Tk()
-    root.title("AI-SMS-Agent UI Smoke")
+    root.title("Mashbak UI Smoke")
     root.after(500, root.destroy)
     root.mainloop()
     print("ui-ok")
@@ -58,7 +58,7 @@ def run_service_smoke() -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="AI-SMS-Agent Desktop")
+    parser = argparse.ArgumentParser(description="Mashbak Desktop")
     parser.add_argument("--smoke-test", action="store_true", help="Run local dispatcher smoke test and exit")
     parser.add_argument("--ui-smoke", action="store_true", help="Launch Tk root briefly and exit")
     parser.add_argument("--service-smoke-test", action="store_true", help="Start embedded agent service and run local client test")

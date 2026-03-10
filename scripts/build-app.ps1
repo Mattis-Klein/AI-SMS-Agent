@@ -15,7 +15,7 @@ try {
     if ($Clean) {
         Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue
         Remove-Item -Recurse -Force "dist" -ErrorAction SilentlyContinue
-        Remove-Item -Force "AISMSDesktop.spec" -ErrorAction SilentlyContinue
+        Remove-Item -Force "Mashbak.spec" -ErrorAction SilentlyContinue
     }
 
     & $python -m pip install --upgrade pip | Out-Null
@@ -24,7 +24,7 @@ try {
     if (-not $NoBuild) {
         if (-not $OneDir) {
             & $python -m PyInstaller `
-                "--name" "AISMSDesktop" `
+                "--name" "Mashbak" `
                 "--windowed" `
                 "--noconfirm" `
                 "--clean" `
@@ -40,7 +40,7 @@ try {
         }
         else {
             & $python -m PyInstaller `
-                "--name" "AISMSDesktop" `
+                "--name" "Mashbak" `
                 "--windowed" `
                 "--noconfirm" `
                 "--clean" `
@@ -57,10 +57,10 @@ try {
 
     Write-Host "Build complete."
     if ($OneDir) {
-        Write-Host "Output: dist/AISMSDesktop/"
+        Write-Host "Output: dist/Mashbak/"
     }
     else {
-        Write-Host "Output: dist/AISMSDesktop.exe"
+        Write-Host "Output: dist/Mashbak.exe"
     }
 }
 finally {

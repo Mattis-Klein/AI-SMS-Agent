@@ -1,5 +1,5 @@
 """
-AI-SMS-Agent FastAPI application
+Mashbak FastAPI application
 
 Tool-based architecture for executing safe commands via SMS.
 All requests are routed through the tool dispatcher, which validates
@@ -21,7 +21,7 @@ except ImportError:
 # Initialization
 # ============================================================================
 
-app = FastAPI(title="AI-SMS-Agent", version="2.0.0")
+app = FastAPI(title="Mashbak", version="2.0.0")
 runtime = create_runtime()
 
 

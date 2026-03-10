@@ -1,8 +1,8 @@
-# AI-SMS-Agent
+# Mashbak
 
 **Desktop-first Windows AI assistant with optional remote SMS access through the same shared backend.**
 
-AI-SMS-Agent is a secure Windows desktop AI assistant with a full local interface as the primary experience. SMS is a secondary remote access channel that targets the same shared assistant core.
+Mashbak is a secure Windows desktop AI assistant with a full local interface as the primary experience. SMS is a secondary remote access channel that targets the same shared assistant core.
 
 Both desktop and SMS use one execution pipeline:
 
@@ -145,7 +145,7 @@ Use [local-memory-notes/](local-memory-notes) for personal markdown notes you wa
 
 ```bash
 git clone https://github.com/mattis-klein/AI-SMS-Agent.git
-cd AI-SMS-Agent
+cd Mashbak
 ```
 
 ### 2. Create Environment Files
@@ -222,9 +222,9 @@ The local desktop app:
 ```
 
 Build output:
-- `dist/AISMSDesktop.exe` (default one-file build)
+- `dist/Mashbak.exe` (default one-file build)
 
-Run by double-clicking `AISMSDesktop.exe`.
+Run by double-clicking `Mashbak.exe`.
 - No terminal is required for normal use.
 - The app starts the local agent automatically.
 
@@ -367,7 +367,7 @@ grep 'request_id=abc-123' agent/workspace/logs/agent.log
 ## 📁 Project Structure
 
 ```
-AI-SMS-Agent/
+Mashbak/
 ├── agent/                          # Python FastAPI agent + shared runtime
 │   ├── agent.py                    # FastAPI API layer
 │   ├── runtime.py                  # Shared runtime (used by API + desktop)
@@ -473,7 +473,7 @@ The repository is already initialized with git and ready to push:
 
 ```powershell
 # Add GitHub remote (replace with your repo URL)
-git remote add origin https://github.com/mattis-Klein/AI-SMS-Agent.git
+git remote add origin https://github.com/mattis-Klein/Mashbak.git
 
 # Push to GitHub
 git branch -M main
