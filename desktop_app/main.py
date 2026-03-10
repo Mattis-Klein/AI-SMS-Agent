@@ -11,12 +11,21 @@ from pathlib import Path
 from tkinter import Tk
 from tkinter import ttk
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    ROOT_DIR = Path(sys._MEIPASS)
+else:
+    ROOT_DIR = Path(__file__).resolve().parent.parent
 AGENT_DIR = ROOT_DIR / "agent"
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
 
-from agent.runtime import create_runtime  # noqa: E402
+for import_path in (ROOT_DIR, AGENT_DIR, ROOT_DIR / "desktop_app"):
+    import_path_text = str(import_path)
+    if import_path_text not in sys.path:
+        sys.path.insert(0, import_path_text)
+
+try:
+    from agent.runtime import create_runtime  # noqa: E402
+except ImportError:
+    from runtime import create_runtime  # noqa: E402
 from agent_client import AgentClient  # noqa: E402
 from agent_service import AgentService  # noqa: E402
 from ui import DesktopControlApp  # noqa: E402

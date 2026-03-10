@@ -33,8 +33,11 @@ try {
                 "--windowed" `
                 "--noconfirm" `
                 "--clean" `
-                "--paths" "agent" `
+                "--paths" "$repoRoot" `
                 "--paths" "desktop_app" `
+                "--hidden-import" "agent" `
+                "--hidden-import" "agent.agent" `
+                "--hidden-import" "agent.runtime" `
                 "--add-data" "agent/config.json;agent" `
                 "--add-data" "agent/.env.example;agent" `
                 "--add-data" "agent/workspace/inbox/.gitkeep;agent/workspace/inbox" `
@@ -49,8 +52,11 @@ try {
                 "--windowed" `
                 "--noconfirm" `
                 "--clean" `
-                "--paths" "agent" `
+                "--paths" "$repoRoot" `
                 "--paths" "desktop_app" `
+                "--hidden-import" "agent" `
+                "--hidden-import" "agent.agent" `
+                "--hidden-import" "agent.runtime" `
                 "--add-data" "agent/config.json;agent" `
                 "--add-data" "agent/.env.example;agent" `
                 "--add-data" "agent/workspace/inbox/.gitkeep;agent/workspace/inbox" `
