@@ -1,7 +1,7 @@
 {
-<<<<<<< HEAD
     "allowed_directories": [
         "C:\\Users\\Public\\Documents",
+        "C:\\Users\\owner\\Documents",
         "C:\\Projects",
         "C:\\Temp"
     ],
@@ -100,19 +100,6 @@
             ],
             "requires_args": false
         }
-=======
-  "allowed_directories": [
-    "C:\\Users\\Public\\Documents",
-    "C:\\Users\\owner\\Documents",
-    "C:\\Projects",
-    "C:\\Temp"
-  ],
-  "allowed_commands": {
-    "dir_inbox": {
-      "description": "List files in inbox directory",
-      "command": ["cmd", "/c", "dir", "{workspace}\\inbox"],
-      "requires_args": false
->>>>>>> d52ca08d4b0ac7bd2c10b8108a987e0dd5b3ed0e
     },
     "logging": {
         "max_log_size_bytes": 5000000,

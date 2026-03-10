@@ -76,6 +76,7 @@ Configured in `config.json`:
 {
   "allowed_directories": [
     "C:\\Users\\Public\\Documents",
+    "C:\\Users\\owner\\Documents",
     "C:\\Projects",
     "C:\\Temp"
   ]

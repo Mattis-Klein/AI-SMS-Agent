@@ -140,7 +140,9 @@ Example configuration:
    },
    "allowed_directories": [
       "C:\\Users\\Public\\Documents",
-      "C:\\Projects"
+      "C:\\Users\\owner\\Documents",
+      "C:\\Projects",
+      "C:\\Temp"
    ],
    "security": {
       "max_file_size_bytes": 10485760,
