@@ -118,6 +118,31 @@ class AgentRuntime:
                 },
             }
 
+        if context.allowed_tools and tool_name not in context.allowed_tools:
+            self.logger.log_error(
+                request_id=context.request_id,
+                error_type="unauthorized_tool",
+                error_message=f"Tool not allowed: {tool_name}",
+                sender=context.sender,
+            )
+            return {
+                "success": False,
+                "tool_name": tool_name,
+                "output": None,
+                "error": f"Tool '{tool_name}' is not allowed",
+                "request_id": context.request_id,
+                "trace": {
+                    "raw_request": context.raw_message,
+                    "interpreted_intent": tool_name,
+                    "interpreted_args": args,
+                    "confidence": 1.0,
+                    "selected_tool": tool_name,
+                    "validation_status": "failed",
+                    "validated_arguments": args,
+                    "execution_status": "failed",
+                },
+            }
+
         tool = self.registry.get(tool_name)
 
         is_valid, validation_error = tool.validate_args(args)
