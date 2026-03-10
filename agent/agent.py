@@ -123,7 +123,8 @@ async def execute_tool(
     if result["tool_name"] is None and "not found" in (result.get("error") or ""):
         raise HTTPException(status_code=404, detail=result["error"])
 
-    if not result["success"] and result.get("error") in {"Missing required argument: path", "path must be a string"}:
+    trace = result.get("trace") or {}
+    if not result["success"] and trace.get("validation_status") == "failed":
         raise HTTPException(status_code=400, detail=result["error"])
 
     return {

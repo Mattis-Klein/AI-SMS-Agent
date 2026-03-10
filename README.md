@@ -148,7 +148,7 @@ AGENT_WORKSPACE=agent/workspace
 **sms-bridge/.env**:
 
 ```
-AGENT_KEY=super-secret-key-12345
+AGENT_API_KEY=super-secret-key-12345
 AGENT_URL=http://127.0.0.1:8787
 BRIDGE_PORT=34567
 TWILIO_AUTH_TOKEN=your-twilio-auth-token
@@ -331,60 +331,29 @@ grep 'request_id=abc-123' agent/workspace/logs/agent.log
 3. Register in `agent/tools/builtin/__init__.py`
 4. Add interpretation patterns in `agent/interpreter.py`
 5. Document in TOOLS.md
-```
 
-This automatically:
-- Creates Python virtual environment if needed
-- Installs all dependencies (Python + Node.js)
-- Launches agent, bridge, and tunnel with labeled output
-- Monitors all processes and handles clean shutdown on Ctrl+C
+## 📋 API + Local Console Summary
 
-## 📋 Available Commands
-
-The agent supports these safe commands out of the box:
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `hello` | Test connection | `hello` |
-| `help` | Show command list | `help` |
-| `commands` | List all available commands | `commands` |
-| `run <name>` | Execute a whitelisted command | `run system_info` |
-| `list <path>` | List files in directory | `list C:\Projects` |
-| `read <path>` | Read a file | `read inbox/notes.txt` |
-| `write <path> :: <text>` | Write to file | `write inbox/todo.txt :: Buy milk` |
-
-### Built-in System Commands
-
-- `dir_inbox` - List files in inbox
-- `dir_outbox` - List files in outbox
-- `list_files` - List files in a directory (requires path argument)
-- `system_info` - Get OS and hardware info
-- `cpu_usage` - Check CPU usage percentage
-- `disk_space` - Check C: drive free space
-- `current_time` - Get system date and time
-- `network_status` - Check network connection
-- `list_processes` - Show top 10 running processes
-- `uptime` - Get system uptime in hours
-
-### Natural Language Mode
-
-Send plain English messages and the AI will translate them to safe commands:
-
-- "check my inbox" → Runs `dir_inbox`
-- "what is my CPU usage" → Runs `cpu_usage`
-- "list files in my projects folder" → Runs `list_files C:\Projects`
-
-*Requires OpenAI API key configured in `.env`*
+- `/execute` runs a specific tool with structured args.
+- `/execute-nl` runs natural-language requests through interpreter + dispatcher.
+- `desktop_app.py` calls the same runtime pipeline directly (no Twilio reply path).
+- Both API and local desktop include step-by-step `trace` output in responses.
 
 ## 📁 Project Structure
 
 ```
 AI-SMS-Agent/
 ├── agent/                          # Python FastAPI agent
-│   ├── agent.py                    # Main agent code
-│   ├── config.json                 # Command whitelist & security settings
+│   ├── agent.py                    # FastAPI API layer
+│   ├── runtime.py                  # Shared runtime (used by API + desktop)
+│   ├── desktop_app.py              # Local Tkinter control panel
+│   ├── config.json                 # Tool/config allowlists and security settings
 │   ├── requirements.txt            # Python dependencies
 │   ├── .env.example                # Environment template
+│   ├── dispatcher.py               # Shared request execution pipeline
+│   ├── interpreter.py              # Natural language intent mapping
+│   ├── logger.py                   # Structured JSON logging
+│   └── tools/                      # Tool registry and built-in tools
 │   └── workspace/                  # Workspace for file operations
 │       ├── inbox/                  # Incoming files
 │       ├── outbox/                 # Outgoing files
@@ -402,35 +371,13 @@ AI-SMS-Agent/
 └── docs/                           # Complete documentation
 ```
 
-### Command Whitelist (`agent/config.json`)
+### Tool and Security Configuration (`agent/config.json`)
 
-Commands are configured in `agent/config.json`. Each command defines:
-- **description**: What the command does
-- **command**: The actual system command to run
-- **requires_args**: Whether arguments are needed
-- **validate_path**: Whether to validate path arguments
+Tool and security policy are configured in `agent/config.json`.
 
-Example configuration:
-```json
-{
-   "allowed_commands": {
-      "list_files": {
-         "description": "List files in a specified directory",
-         "command": ["cmd", "/c", "dir", "{path}"],
-         "requires_args": true,
-         "validate_path": true
-      }
-   },
-   "allowed_directories": [
-      "C:\\Users\\owner\\Documents",
-      "C:\\Temp"
-   ],
-   "security": {
-      "max_file_size_bytes": 10485760,
-      "blocked_extensions": [".exe", ".bat", ".cmd", ".ps1"]
-   }
-}
-```
+- `allowed_directories`: explicit safe directories for path-based tools.
+- `allowed_tools`: optional tool allowlist (`null` means all registered tools).
+- `security`: file/extension constraints and sender validation settings.
 
 ### Environment Configuration
 
@@ -476,21 +423,6 @@ Example log entry:
 
 ## 🚀 Usage Examples
 
-**Basic Commands:**
-```
-SMS: hello
-Response: Hi. SMS link is working.
-
-SMS: run system_info
-Response: OS Name: Microsoft Windows 11...
-
-SMS: list C:\Projects
-Response: Volume in drive C...
-
-SMS: read inbox/notes.txt
-Response: [file contents]
-```
-
 **Natural Language:**
 ```
 SMS: check my CPU usage
@@ -500,34 +432,9 @@ SMS: what files are in my inbox
 Response: [directory listing]
 ```
 
-## ➕ Adding New Commands
+## ➕ Adding New Tools
 
-To safely add a new command:
-
-1. **Edit `agent/config.json`** and add to `allowed_commands`:
-```json
-"memory_usage": {
-   "description": "Check system memory usage",
-   "command": ["powershell", "-Command", "Get-WmiObject Win32_OperatingSystem | Select FreePhysicalMemory,TotalVisibleMemorySize"],
-   "requires_args": false
-}
-```
-
-2. **Restart the agent** (Ctrl+C the launcher and run `.\scripts\start-all.ps1` again)
-
-3. **Test via SMS**: `run memory_usage`
-
-Commands with arguments can use placeholders:
-- `{workspace}` - Replaced with agent workspace path
-- `{path}` - Replaced with validated user-provided path
-
-**Path validation**: Commands with `"validate_path": true` will only accept paths in:
-- Agent workspace (`agent/workspace/`)
-- Directories listed in `allowed_directories`
-
-**Path validation**: Commands with `"validate_path": true` will only accept paths in:
-- Agent workspace (`agent/workspace/`)
-- Directories listed in `allowed_directories`
+To extend behavior safely, add a new tool module under `agent/tools/builtin/`, register it in `agent/tools/builtin/__init__.py`, and add optional NL patterns in `agent/interpreter.py`.
 
 ## 🐙 Pushing to GitHub
 

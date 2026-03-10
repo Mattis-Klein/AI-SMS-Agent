@@ -2,9 +2,15 @@
 
 import uuid
 from typing import Optional, Dict, Any
-from .tools import ToolRegistry
-from .interpreter import NaturalLanguageInterpreter
-from .logger import StructuredLogger
+
+try:
+    from .tools import ToolRegistry
+    from .interpreter import NaturalLanguageInterpreter
+    from .logger import StructuredLogger
+except ImportError:
+    from tools import ToolRegistry
+    from interpreter import NaturalLanguageInterpreter
+    from logger import StructuredLogger
 
 
 class RequestContext:
@@ -141,10 +147,10 @@ class Dispatcher:
                 "trace": trace,
             }
 
-            trace["selected_tool"] = tool_name
-            trace["validation_status"] = "passed"
-            trace["validated_arguments"] = args
-            trace["execution_status"] = "running"
+        trace["selected_tool"] = tool_name
+        trace["validation_status"] = "passed"
+        trace["validated_arguments"] = args
+        trace["execution_status"] = "running"
         
         # Execute tool
         try:
