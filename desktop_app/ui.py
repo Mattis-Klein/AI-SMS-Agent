@@ -4,6 +4,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Text, Tk
 from tkinter import ttk
@@ -90,6 +91,8 @@ class DesktopControlApp:
         actions = action_bar(parent)
         add_refresh_button(actions, self.refresh_status, label="Refresh Status")
         add_refresh_button(actions, self.refresh_logs, label="Refresh Logs")
+        ttk.Button(actions, text="Clear Chat", command=self.clear_chat).pack(side=LEFT, padx=(6, 0))
+        ttk.Button(actions, text="Clear Activity", command=self.clear_activity).pack(side=LEFT, padx=(6, 0))
 
         self.details_text = labeled_text_area(parent, "Execution Details", height=12, wrap="word")
         self.activity_list = labeled_text_area(parent, "Recent Activity", height=8, wrap="none")
@@ -151,7 +154,7 @@ class DesktopControlApp:
         set_text(self.chat_text, "\n\n".join(self.chat_history))
 
         activity_line = (
-            f"{result.get('request_id')} | tool={result.get('tool_name')} | "
+            f"{datetime.now().strftime('%H:%M:%S')} | {result.get('request_id')} | tool={result.get('tool_name')} | "
             f"success={result.get('success')} | msg={message}"
         )
         self.activity.insert(0, activity_line)
@@ -167,6 +170,10 @@ class DesktopControlApp:
         self.chat_history = self.chat_history[-120:]
         set_text(self.chat_text, "\n\n".join(self.chat_history))
 
+        self.activity.insert(0, f"{datetime.now().strftime('%H:%M:%S')} | request failed | {error_text}")
+        self.activity = self.activity[:30]
+        set_text(self.activity_list, "\n".join(self.activity))
+
     def refresh_status(self) -> None:
         summary = self.runtime_summary
 
@@ -175,6 +182,8 @@ class DesktopControlApp:
 
         self.agent_badge.configure(text=f"Agent: {'running' if agent_status['running'] else 'down'}")
         self.bridge_badge.configure(text=f"Bridge: {'running' if bridge_status['running'] else 'down'}")
+        self.agent_badge.configure(foreground=("#0a7d2a" if agent_status["running"] else "#b42318"))
+        self.bridge_badge.configure(foreground=("#0a7d2a" if bridge_status["running"] else "#b42318"))
 
         status_lines = [
             f"FastAPI Agent Service: {'running' if agent_status['running'] else 'not detected'}",
@@ -230,3 +239,11 @@ class DesktopControlApp:
             return {"running": False, "detail": str(exc.reason)}
         except Exception as exc:
             return {"running": False, "detail": str(exc)}
+
+    def clear_chat(self) -> None:
+        self.chat_history.clear()
+        set_text(self.chat_text, "")
+
+    def clear_activity(self) -> None:
+        self.activity.clear()
+        set_text(self.activity_list, "")

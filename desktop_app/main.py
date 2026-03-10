@@ -12,7 +12,12 @@ from tkinter import Tk
 from tkinter import ttk
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-    ROOT_DIR = Path(sys._MEIPASS)
+    # Prefer repo root when running dist/Mashbak.exe in-place, otherwise use bundle temp dir.
+    exe_repo_root = Path(sys.executable).resolve().parent.parent
+    if (exe_repo_root / "agent").exists() and (exe_repo_root / "desktop_app").exists():
+        ROOT_DIR = exe_repo_root
+    else:
+        ROOT_DIR = Path(sys._MEIPASS)
 else:
     ROOT_DIR = Path(__file__).resolve().parent.parent
 AGENT_DIR = ROOT_DIR / "agent"

@@ -28,7 +28,13 @@ class AgentService:
 
     def start(self) -> None:
         if self._is_healthy():
-            return
+            if self._is_authorized(self.api_key):
+                return
+
+            # A different agent is already using this port with another key.
+            # Move this desktop session to a free local port and start its own service.
+            self.port = self._find_free_port(self.port + 1)
+            self.base_url = f"http://{self.host}:{self.port}"
 
         if getattr(sys, "frozen", False):
             self._start_in_process()
@@ -128,17 +134,43 @@ class AgentService:
         if env_key:
             return env_key
 
-        env_file = self.project_root / "agent" / ".env"
-        if env_file.exists():
-            for raw in env_file.read_text(encoding="utf-8").splitlines():
-                line = raw.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                if key.strip() == "AGENT_API_KEY" and value.strip():
-                    return value.strip()
+        for env_file in self._candidate_env_files():
+            if env_file.exists():
+                for raw in env_file.read_text(encoding="utf-8").splitlines():
+                    line = raw.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    if key.strip() == "AGENT_API_KEY" and value.strip():
+                        return value.strip()
 
         return "desktop-local-default-key"
+
+    def _candidate_env_files(self) -> list[Path]:
+        files = [self.project_root / "agent" / ".env"]
+
+        if getattr(sys, "frozen", False):
+            exe_repo_root = Path(sys.executable).resolve().parent.parent
+            files.append(exe_repo_root / "agent" / ".env")
+
+        return files
+
+    def _is_authorized(self, api_key: str) -> bool:
+        headers = {"x-api-key": api_key}
+        request = urllib.request.Request(f"{self.base_url}/tools", headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(request, timeout=1.2) as response:
+                return response.status == 200
+        except Exception:
+            return False
+
+    def _find_free_port(self, start_port: int) -> int:
+        for port in range(start_port, start_port + 50):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(0.2)
+                if sock.connect_ex((self.host, port)) != 0:
+                    return port
+        raise RuntimeError("Could not find a free local port for embedded agent service")
 
     def _is_healthy(self) -> bool:
         try:
