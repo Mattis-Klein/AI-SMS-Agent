@@ -28,12 +28,10 @@ from interpreter import NaturalLanguageInterpreter
 app = FastAPI(title="AI-SMS-Agent", version="2.0.0")
 
 BASE_DIR = Path(__file__).resolve().parent
-WORKSPACE = Path(os.getenv("AGENT_WORKSPACE", str(BASE_DIR / "workspace"))).resolve()
-API_KEY = os.getenv("AGENT_API_KEY", "")
 
 
 def load_env_file(env_path: Path) -> None:
-    """Load environment variables from .env file"""
+    """Load environment variables from .env file before reading AGENT_* values."""
     if not env_path.exists():
         return
 
@@ -46,8 +44,13 @@ def load_env_file(env_path: Path) -> None:
         os.environ.setdefault(key.strip(), value.strip())
 
 
-# Load environment variables and configuration
+# Initialization order is intentional:
+# 1) determine project root, 2) load .env, 3) read AGENT_* env vars,
+# 4) initialize workspace paths/configuration.
 load_env_file(BASE_DIR / ".env")
+
+WORKSPACE = Path(os.getenv("AGENT_WORKSPACE", str(BASE_DIR / "workspace"))).resolve()
+API_KEY = os.getenv("AGENT_API_KEY", "")
 
 if not API_KEY:
     raise RuntimeError("AGENT_API_KEY is required. Set it in agent/.env or the environment.")
@@ -206,6 +209,7 @@ async def execute_tool(
             "allowed_directories": config.get_allowed_directories(),
             "request_id": context.request_id,
             "sender": context.sender,
+            "logger": logger,
         }
         
         result = await tool.execute(req.args, exec_context)
