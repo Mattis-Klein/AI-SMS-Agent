@@ -43,8 +43,20 @@ class Dispatcher:
                 "output": Optional[str],
                 "error": Optional[str],
                 "request_id": str,
+                "trace": dict,
             }
         """
+        trace = {
+            "raw_request": context.raw_message,
+            "interpreted_intent": None,
+            "interpreted_args": {},
+            "confidence": 0.0,
+            "selected_tool": None,
+            "validation_status": "pending",
+            "validated_arguments": None,
+            "execution_status": "pending",
+        }
+
         # Log incoming request
         self.logger.log_request(
             request_id=context.request_id,
@@ -58,6 +70,9 @@ class Dispatcher:
         context.interpreted_tool = tool_name
         context.interpreted_args = args
         context.confidence = confidence
+        trace["interpreted_intent"] = tool_name
+        trace["interpreted_args"] = args
+        trace["confidence"] = confidence
         
         # Log interpretation
         if tool_name:
@@ -82,10 +97,13 @@ class Dispatcher:
                 "output": None,
                 "error": "I didn't understand that. Try: list inbox, check cpu, show files in documents, etc.",
                 "request_id": context.request_id,
+                "trace": trace,
             }
         
         # Check if tool is allowed
         if context.allowed_tools and tool_name not in context.allowed_tools:
+            trace["selected_tool"] = tool_name
+            trace["validation_status"] = "failed"
             self.logger.log_error(
                 request_id=context.request_id,
                 error_type="unauthorized_tool",
@@ -97,6 +115,7 @@ class Dispatcher:
                 "output": None,
                 "error": f"Tool '{tool_name}' is not allowed",
                 "request_id": context.request_id,
+                "trace": trace,
             }
         
         # Get tool
@@ -105,6 +124,9 @@ class Dispatcher:
         # Validate arguments
         is_valid, validation_error = tool.validate_args(args)
         if not is_valid:
+            trace["selected_tool"] = tool_name
+            trace["validation_status"] = "failed"
+            trace["validated_arguments"] = args
             self.logger.log_error(
                 request_id=context.request_id,
                 error_type="invalid_arguments",
@@ -116,7 +138,13 @@ class Dispatcher:
                 "output": None,
                 "error": f"Invalid input: {validation_error}",
                 "request_id": context.request_id,
+                "trace": trace,
             }
+
+            trace["selected_tool"] = tool_name
+            trace["validation_status"] = "passed"
+            trace["validated_arguments"] = args
+            trace["execution_status"] = "running"
         
         # Execute tool
         try:
@@ -162,6 +190,10 @@ class Dispatcher:
                 "output": result.output,
                 "error": result.error,
                 "request_id": context.request_id,
+                "trace": {
+                    **trace,
+                    "execution_status": "success" if result.success else "failed",
+                },
             }
         
         except Exception as e:
@@ -176,4 +208,8 @@ class Dispatcher:
                 "output": None,
                 "error": f"Tool execution failed: {str(e)}",
                 "request_id": context.request_id,
+                "trace": {
+                    **trace,
+                    "execution_status": "failed",
+                },
             }

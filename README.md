@@ -4,6 +4,8 @@
 
 AI-SMS-Agent is a secure, local AI system that interprets SMS messages, maps them to allowed tools, executes them safely, and returns results via text. It features a clean tool registry architecture, natural language interpretation, and structured logging for full observability and audit trails.
 
+The project also includes a local desktop control app for development/testing. The desktop app uses the same dispatcher/interpreter/tool-selection pipeline as SMS, but local messages stay local and do not send SMS replies through Twilio.
+
 ## ✨ What's New in v2.0
 
 - **Tool-Based Architecture**: Clean, modular system where each capability is a defined tool
@@ -12,6 +14,7 @@ AI-SMS-Agent is a secure, local AI system that interprets SMS messages, maps the
 - **Structured Logging**: Full request lifecycle tracking with JSON logs
 - **Improved Dispatcher**: Smart routing through tool system with input validation
 - **Cleaner API**: Separate `/execute` and `/execute-nl` endpoints
+- **Local Desktop Console**: Minimal Tkinter app for local requests, trace details, status, and logs
 
 ## 🎯 Core Concept: Tools
 
@@ -185,7 +188,22 @@ cd sms-bridge
 node sms-server.js
 ```
 
-### 5. Test via API
+### 5. Run Local Desktop Console (Optional, Recommended for Testing)
+
+**Terminal 3 - Local App**:
+
+```bash
+cd agent
+python desktop_app.py
+```
+
+The local desktop app:
+- sends requests through the same internal dispatcher/interpreter/tool pipeline as SMS
+- shows execution trace details (intent, selected tool, validated args, status, result)
+- shows recent logs and service status in one place
+- does not send SMS replies through Twilio
+
+### 6. Test via API
 
 ```bash
 # Via direct tool execution
@@ -207,13 +225,21 @@ curl http://localhost:8787/tools \
   -H "x-api-key: super-secret-key-12345"
 ```
 
-### 6. Configure Twilio Webhook
+### 7. Configure Twilio Webhook
 
 Set your Twilio webhook URL to: `https://your-public-url.com:34567/sms`
 
 Then text commands to your Twilio number from an approved phone!
 
 ## 📖 Usage Examples
+
+### Via Local Desktop App
+
+1. Start `python desktop_app.py`
+2. Type a request such as `check my inbox` or `show cpu usage`
+3. Review trace details and logs in the app tabs
+
+Local app requests execute locally through shared runtime logic and are never routed to Twilio replies.
 
 ### Via SMS
 
@@ -251,9 +277,7 @@ curl -X POST http://localhost:8787/execute \
 ```json
 {
   "allowed_directories": [
-    "C:\\Users\\Public\\Documents",
     "C:\\Users\\owner\\Documents",
-    "C:\\Projects",
     "C:\\Temp"
   ],
   "allowed_tools": null,
@@ -398,9 +422,7 @@ Example configuration:
       }
    },
    "allowed_directories": [
-      "C:\\Users\\Public\\Documents",
       "C:\\Users\\owner\\Documents",
-      "C:\\Projects",
       "C:\\Temp"
    ],
    "security": {
