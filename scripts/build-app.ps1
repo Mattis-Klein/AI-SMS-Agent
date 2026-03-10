@@ -21,7 +21,7 @@ try {
     & $python -m pip install --upgrade pip | Out-Null
     & $python -m pip install pyinstaller fastapi uvicorn pydantic psutil python-dotenv | Out-Null
 
-    $args = @(
+    $pyinstallerArgs = @(
         "--name", "AISMSDesktop",
         "--windowed",
         "--noconfirm",
@@ -36,13 +36,13 @@ try {
     )
 
     if (-not $OneDir) {
-        $args += "--onefile"
+        $pyinstallerArgs += "--onefile"
     }
 
-    $args += $entry
+    $pyinstallerArgs += $entry
 
     if (-not $NoBuild) {
-        & $python -m PyInstaller @args
+        & $python -m PyInstaller @pyinstallerArgs
     }
 
     Write-Host "Build complete."

@@ -2,6 +2,8 @@
 
 import json
 import threading
+import urllib.error
+import urllib.request
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Text, Tk
 from tkinter import ttk
@@ -92,6 +94,7 @@ class DesktopControlApp:
         self.details_text = labeled_text_area(parent, "Execution Details", height=12, wrap="word")
         self.activity_list = labeled_text_area(parent, "Recent Activity", height=8, wrap="none")
         self.status_text = labeled_text_area(parent, "Service Status", height=8, wrap="word")
+        self.config_text = labeled_text_area(parent, "Runtime Config", height=8, wrap="word")
         self.agent_logs_text = labeled_text_area(parent, "Recent Agent Logs", height=7, wrap="none")
         self.bridge_logs_text = labeled_text_area(parent, "Recent Bridge Logs", height=7, wrap="none")
 

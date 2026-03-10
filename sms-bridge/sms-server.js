@@ -252,14 +252,14 @@ async function executeAiTool(toolName, args, requestId, sender = null) {
 async function buildAiReply(message, from, requestId) {
     // Simply forward to agent's natural language interpreter
     const result = await callAgentExecuteNaturalLanguage(message, requestId, from);
-    
+
     if (!result.ok) {
         return formatAgentError(result);
     }
-    
+
     const output = result.data.output || "";
     const error = result.data.error || "";
-    
+
     if (result.data.success) {
         return output || "Command executed successfully.";
     } else {
@@ -288,7 +288,7 @@ function formatHelp() {
         "list <path> - List files",
         "  Example: list C:\\Users\\Documents",
         "",
-        "Or send natural language requests - agent will interpret:"
+        "Or send natural language requests - agent will interpret:",
         "  'check my inbox', 'show cpu', 'what time is it'"
     ].join("\n");
 }
@@ -366,14 +366,14 @@ async function buildReply(message, requestId, from) {
 
     // Forward any other message to natural language interpreter
     const result = await callAgentExecuteNaturalLanguage(normalized, requestId, from);
-    
+
     if (!result.ok) {
         return formatAgentError(result);
     }
-    
+
     const output = result.data.output || "";
     const error = result.data.error || "";
-    
+
     if (result.data.success) {
         return output || "Command executed successfully.";
     } else {

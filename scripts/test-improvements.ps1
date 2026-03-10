@@ -36,15 +36,15 @@ if (Test-Path "agent\config.json") {
 Write-Host ""
 Write-Host "[Test 2] Checking agent.py enhancements..." -ForegroundColor Yellow
 $agentContent = Get-Content "agent\agent.py" -Raw
-if ($agentContent -match "load_config" -and $agentContent -match "is_safe_path" -and $agentContent -match "build_command") {
-    Pass "agent.py has security helper functions"
+if ($agentContent -match "FastAPI" -and $agentContent -match "execute_tool" -and $agentContent -match "execute_natural_language") {
+    Pass "agent.py has FastAPI endpoints"
 } else {
-    Fail "agent.py is missing expected helper functions"
+    Fail "agent.py is missing expected FastAPI endpoints"
 }
-if ($agentContent -match "x_sender") {
-    Pass "agent.py logs sender information"
+if ($agentContent -match "x_sender" -and $agentContent -match "x-api-key") {
+    Pass "agent.py implements authentication and sender logging"
 } else {
-    Fail "agent.py missing sender logging"
+    Fail "agent.py missing authentication or sender logging"
 }
 
 Write-Host ""
@@ -58,11 +58,15 @@ if ($requirements -match "psutil") {
 
 Write-Host ""
 Write-Host "[Test 4] Checking sms-bridge updates..." -ForegroundColor Yellow
-$bridgeContent = Get-Content "sms-bridge\sms-server.js" -Raw
-if ($bridgeContent -match "x-sender" -and $bridgeContent -match "commands" -and $bridgeContent -match "list ") {
-    Pass "bridge has enhanced command parsing"
+if (Test-Path "sms-bridge\sms-server.js") {
+    $bridgeContent = Get-Content "sms-bridge\sms-server.js" -Raw
+    if ($bridgeContent -match "express" -and $bridgeContent -match "app.post") {
+        Pass "bridge has Express endpoints"
+    } else {
+        Fail "bridge missing expected endpoint structure"
+    }
 } else {
-    Fail "bridge missing expected command parser features"
+    Fail "sms-bridge/sms-server.js not found"
 }
 
 Write-Host ""

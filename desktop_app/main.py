@@ -13,10 +13,10 @@ from tkinter import ttk
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 AGENT_DIR = ROOT_DIR / "agent"
-if str(AGENT_DIR) not in sys.path:
-    sys.path.insert(0, str(AGENT_DIR))
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
-from runtime import create_runtime  # noqa: E402
+from agent.runtime import create_runtime  # noqa: E402
 from agent_client import AgentClient  # noqa: E402
 from agent_service import AgentService  # noqa: E402
 from ui import DesktopControlApp  # noqa: E402
