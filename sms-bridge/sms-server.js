@@ -51,12 +51,12 @@ const LOG_MAX_BYTES = Number(process.env.BRIDGE_LOG_MAX_BYTES || 1_000_000);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const AI_MAX_TOOL_ROUNDS = Number(process.env.AI_MAX_TOOL_ROUNDS || 6);
-const ALLOWED_SMS_FROM = new Set(
-    (process.env.ALLOWED_SMS_FROM || "")
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-);
+
+const OWNER_NUMBER = "8483291230";
+const SPECIAL_RESPONSES = new Map([
+    ["8457017405", "placeholder1"],
+    ["9178486202", "placeholder2"],
+]);
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
@@ -72,10 +72,6 @@ if (!PUBLIC_BASE_URL) {
 
 if (!TWILIO_AUTH_TOKEN) {
     console.warn("[bridge] TWILIO_AUTH_TOKEN is not set. Twilio signature validation is disabled.");
-}
-
-if (ALLOWED_SMS_FROM.size === 0) {
-    console.warn("[bridge] ALLOWED_SMS_FROM is not set. Sender allowlisting is disabled.");
 }
 
 if (!OPENAI_API_KEY) {
@@ -127,15 +123,40 @@ function truncateText(value, maxLength = 500) {
 }
 
 function normalizePhoneNumber(value) {
-    return String(value || "").replace(/[\s()-]/g, "");
+    const digits = String(value || "").replace(/\D/g, "");
+    if (digits.length > 10) {
+        return digits.slice(-10);
+    }
+    return digits;
 }
 
-function isAllowedSender(from) {
-    if (ALLOWED_SMS_FROM.size === 0) {
-        return true;
+function resolveSenderAction(from) {
+    const normalizedFrom = normalizePhoneNumber(from);
+
+    if (normalizedFrom === OWNER_NUMBER) {
+        return {
+            action: "forwarded",
+            normalizedFrom,
+            shouldForward: true,
+            reply: null,
+        };
     }
 
-    return ALLOWED_SMS_FROM.has(normalizePhoneNumber(from));
+    if (SPECIAL_RESPONSES.has(normalizedFrom)) {
+        return {
+            action: "special_response",
+            normalizedFrom,
+            shouldForward: false,
+            reply: SPECIAL_RESPONSES.get(normalizedFrom),
+        };
+    }
+
+    return {
+        action: "denied",
+        normalizedFrom,
+        shouldForward: false,
+        reply: "This number is not allowed.",
+    };
 }
 
 function getRequestUrlCandidates(req) {
@@ -323,7 +344,7 @@ app.get("/health", (req, res) => {
         port: PORT,
         logFile: LOG_FILE,
         twilioValidationEnabled: Boolean(TWILIO_AUTH_TOKEN),
-        senderAllowlistEnabled: ALLOWED_SMS_FROM.size > 0
+        senderAccessControlEnabled: true
     });
 });
 
@@ -335,12 +356,14 @@ app.post("/sms", async (req, res) => {
     const requestId = createRequestId();
     const message = (req.body.Body || "").trim();
     const from = req.body.From || "";
+    const senderDecision = resolveSenderAction(from);
 
     console.log(`[sms] requestId=${requestId} from=${from} body=${message}`);
     logBridgeEvent({
         requestId,
         stage: "incoming_sms",
         from,
+        normalizedFrom: senderDecision.normalizedFrom,
         message,
         url: getRequestUrlCandidates(req)[0] || req.originalUrl
     });
@@ -358,22 +381,40 @@ app.post("/sms", async (req, res) => {
         return;
     }
 
-    if (!isAllowedSender(from)) {
-        console.warn(`[sms] requestId=${requestId} rejected sender not on allowlist from=${from}`);
+    if (!senderDecision.shouldForward) {
+        console.log(
+            `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
+        );
         logBridgeEvent({
             requestId,
-            stage: "rejected",
-            reason: "sender_not_allowed",
+            stage: "sender_access_control",
             from,
-            message
+            normalizedFrom: senderDecision.normalizedFrom,
+            action: senderDecision.action,
+            message,
+            forwarded: false
         });
-        res.status(403).send("Forbidden");
-        return;
     }
 
     let reply;
     try {
-        reply = await buildReply(message, requestId, from);
+        if (senderDecision.shouldForward) {
+            console.log(
+                `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
+            );
+            logBridgeEvent({
+                requestId,
+                stage: "sender_access_control",
+                from,
+                normalizedFrom: senderDecision.normalizedFrom,
+                action: senderDecision.action,
+                message,
+                forwarded: true
+            });
+            reply = await buildReply(message, requestId, from);
+        } else {
+            reply = senderDecision.reply;
+        }
     } catch (error) {
         logBridgeEvent({
             requestId,
@@ -411,7 +452,9 @@ app.listen(PORT, () => {
         port: PORT,
         publicBaseUrl: PUBLIC_BASE_URL,
         twilioValidationEnabled: Boolean(TWILIO_AUTH_TOKEN),
-        senderAllowlistEnabled: ALLOWED_SMS_FROM.size > 0
+        senderAccessControlEnabled: true,
+        ownerNumber: OWNER_NUMBER,
+        specialNumbers: Array.from(SPECIAL_RESPONSES.keys())
     });
     console.log(`SMS server running on port ${PORT}`);
 });
