@@ -13,14 +13,26 @@ C:\AI-SMS-Agent\
 ├── PROJECT-ORGANIZATION.md
 ├── scripts/
 │   ├── dev-start.ps1         ← Unified launcher (starts everything)
+│   ├── build-app.ps1         ← Desktop app packaging script (PyInstaller)
 │   ├── start-agent.ps1
 │   ├── start-bridge.ps1
 │   └── start-cloudflare.ps1
 ├── agent/
 │   ├── .env.example
 │   ├── agent.py
+│   ├── runtime.py
+│   ├── dispatcher.py
+│   ├── interpreter.py
+│   ├── logger.py
+│   ├── tools/
 │   ├── requirements.txt
 │   └── workspace/
+├── desktop_app/
+│   ├── main.py
+│   ├── agent_service.py
+│   ├── agent_client.py
+│   ├── ui.py
+│   └── widgets.py
 ├── sms-bridge/
 │   ├── .env.example
 │   ├── package.json
@@ -56,9 +68,14 @@ C:\AI-SMS-Agent\
 - `sms-bridge/`: Node.js Twilio bridge
 - `scripts/`: PowerShell launcher scripts
   - `dev-start.ps1` — Unified launcher (recommended) - starts all three services
+  - `build-app.ps1` — Builds `AISMSDesktop.exe` for normal desktop usage
   - `start-agent.ps1` — Launch only the Python agent
   - `start-bridge.ps1` — Launch only the SMS bridge
   - `start-cloudflare.ps1` — Launch only the Cloudflare tunnel
+- `desktop_app/`: Local desktop application (header/sidebar/chat/activity-status layout)
+  - Starts local agent automatically
+  - Uses same dispatcher/tool pipeline as SMS
+  - Never sends SMS replies
 - `docs/`: project documentation
 - `.vscode/`: workspace display settings (hides runtime clutter)
 
@@ -92,3 +109,4 @@ These are expected during execution but not part of the clean source tree:
 ---
 
 **Last Updated:** March 9, 2026
+

@@ -74,6 +74,24 @@ Try:
 - `list` — See available commands
 - `echo hello` — Test the connection
 
+## Desktop App (No Terminal)
+
+If you want a normal desktop app experience:
+
+```powershell
+.\scripts\build-app.ps1 -Clean
+```
+
+Then launch:
+
+`dist\AISMSDesktop.exe`
+
+Behavior:
+- opens as a normal Windows app (no terminal window)
+- starts the local agent automatically
+- sends local chat requests through the same dispatcher/tool pipeline
+- does not send SMS replies
+
 ## Alternative: Manual Startup
 
 If you prefer to launch components separately (for debugging), see the original steps below.

@@ -4,7 +4,7 @@
 
 AI-SMS-Agent is a secure, local AI system that interprets SMS messages, maps them to allowed tools, executes them safely, and returns results via text. It features a clean tool registry architecture, natural language interpretation, and structured logging for full observability and audit trails.
 
-The project also includes a local desktop control app for development/testing. The desktop app uses the same dispatcher/interpreter/tool-selection pipeline as SMS, but local messages stay local and do not send SMS replies through Twilio.
+The project also includes a local desktop control app for development/testing. The desktop app uses the same dispatcher/interpreter/tool-selection pipeline as SMS, starts the local agent automatically, and keeps local messages local (no Twilio SMS replies).
 
 ## ✨ What's New in v2.0
 
@@ -14,7 +14,7 @@ The project also includes a local desktop control app for development/testing. T
 - **Structured Logging**: Full request lifecycle tracking with JSON logs
 - **Improved Dispatcher**: Smart routing through tool system with input validation
 - **Cleaner API**: Separate `/execute` and `/execute-nl` endpoints
-- **Local Desktop Console**: Minimal Tkinter app for local requests, trace details, status, and logs
+- **Desktop Application Mode**: Packaged Windows `.exe` support with automatic local agent startup and no terminal required
 
 ## 🎯 Core Concept: Tools
 
@@ -198,11 +198,25 @@ python desktop_app/main.py
 
 The local desktop app:
 - sends requests through the same internal dispatcher/interpreter/tool pipeline as SMS
+- auto-starts the local FastAPI agent service in the background
 - shows execution trace details (intent, selected tool, validated args, status, result)
-- shows recent logs and service status in one place
+- shows recent logs, activity, and service status in one place
 - does not send SMS replies through Twilio
 
-### 6. Test via API
+### 6. Build Windows Desktop Executable (.exe)
+
+```powershell
+.\scripts\build-app.ps1 -Clean
+```
+
+Build output:
+- `dist/AISMSDesktop.exe` (default one-file build)
+
+Run by double-clicking `AISMSDesktop.exe`.
+- No terminal is required for normal use.
+- The app starts the local agent automatically.
+
+### 7. Test via API
 
 ```bash
 # Via direct tool execution
@@ -224,7 +238,7 @@ curl http://localhost:8787/tools \
   -H "x-api-key: super-secret-key-12345"
 ```
 
-### 7. Configure Twilio Webhook
+### 8. Configure Twilio Webhook
 
 Set your Twilio webhook URL to: `https://your-public-url.com:34567/sms`
 
@@ -236,7 +250,7 @@ Then text commands to your Twilio number from an approved phone!
 
 1. Start `python desktop_app/main.py`
 2. Type a request such as `check my inbox` or `show cpu usage`
-3. Review trace details and logs in the app tabs
+3. Review trace details, activity, logs, and service status from the right panel
 
 Local app requests execute locally through shared runtime logic and are never routed to Twilio replies.
 
@@ -335,7 +349,7 @@ grep 'request_id=abc-123' agent/workspace/logs/agent.log
 
 - `/execute` runs a specific tool with structured args.
 - `/execute-nl` runs natural-language requests through interpreter + dispatcher.
-- `desktop_app/main.py` calls the same runtime pipeline directly (no Twilio reply path).
+- `desktop_app/main.py` starts local agent service automatically and sends local chat requests to it.
 - Both API and local desktop include step-by-step `trace` output in responses.
 
 ## 📁 Project Structure
@@ -358,6 +372,8 @@ AI-SMS-Agent/
 │       └── logs/                   # Agent logs (JSON format)
 ├── desktop_app/                    # Local desktop transport (no SMS replies)
 │   ├── main.py                     # Desktop app entry point
+│   ├── agent_service.py            # Embedded FastAPI agent process manager
+│   ├── agent_client.py             # Local API client for desktop chat
 │   ├── ui.py                       # Desktop UI controller
 │   └── widgets.py                  # Reusable Tkinter UI helpers
 ├── sms-bridge/                     # Node.js SMS bridge
@@ -367,6 +383,7 @@ AI-SMS-Agent/
 │   └── logs/                       # Bridge logs (JSON format)
 ├── scripts/                        # PowerShell launchers
 │   ├── dev-start.ps1               # Launch everything (recommended)
+│   ├── build-app.ps1               # Build Windows desktop .exe via PyInstaller
 │   ├── start-agent.ps1             # Launch agent only
 │   ├── start-bridge.ps1            # Launch bridge only
 │   └── start-cloudflare.ps1        # Launch tunnel only

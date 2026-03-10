@@ -1,54 +1,82 @@
 """Tkinter UI for local AI-SMS-Agent control and observability."""
 
-import asyncio
 import json
 import threading
-import urllib.error
-import urllib.request
 from pathlib import Path
-from tkinter import BOTH, END, LEFT, RIGHT, X, Text, Tk
+from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Text, Tk
 from tkinter import ttk
 
 from widgets import action_bar, add_refresh_button, labeled_text_area, set_text
 
 
 class DesktopControlApp:
-    def __init__(self, root: Tk, runtime):
+    def __init__(self, root: Tk, client, runtime_summary: dict):
         self.root = root
-        self.root.title("AI-SMS-Agent Local Console")
-        self.root.geometry("1180x760")
+        self.root.title("AI-SMS-Agent Desktop")
+        self.root.geometry("1320x820")
 
-        self.runtime = runtime
+        self.client = client
+        self.runtime_summary = runtime_summary
         self.activity = []
+        self.chat_history: list[str] = []
 
-        self.agent_log_file = self.runtime.workspace / "logs" / "agent.log"
-        self.bridge_log_file = self.runtime.base_dir.parent / "sms-bridge" / "logs" / "bridge.log"
+        workspace = Path(runtime_summary["workspace"])
+        self.agent_log_file = workspace / "logs" / "agent.log"
+        self.bridge_log_file = workspace.parent.parent / "sms-bridge" / "logs" / "bridge.log"
 
         self._build_ui()
         self.refresh_status()
         self.refresh_logs()
 
     def _build_ui(self) -> None:
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill=BOTH, expand=True)
+        header = ttk.Frame(self.root, padding=(12, 10))
+        header.pack(fill=X)
+        ttk.Label(header, text="AI-SMS-Agent Desktop", font=("Segoe UI", 14, "bold")).pack(side=LEFT)
+        self.agent_badge = ttk.Label(header, text="Agent: checking...")
+        self.agent_badge.pack(side=RIGHT, padx=(8, 0))
+        self.bridge_badge = ttk.Label(header, text="Bridge: checking...")
+        self.bridge_badge.pack(side=RIGHT)
 
-        console_tab = ttk.Frame(notebook)
-        status_tab = ttk.Frame(notebook)
-        logs_tab = ttk.Frame(notebook)
+        body = ttk.Frame(self.root)
+        body.pack(fill=BOTH, expand=True, padx=10, pady=(0, 10))
 
-        notebook.add(console_tab, text="Console")
-        notebook.add(status_tab, text="Status")
-        notebook.add(logs_tab, text="Logs")
+        sidebar = ttk.Frame(body, width=230)
+        sidebar.pack(side=LEFT, fill=Y)
+        sidebar.pack_propagate(False)
+        self._build_sidebar(sidebar)
 
-        self._build_console_tab(console_tab)
-        self._build_status_tab(status_tab)
-        self._build_logs_tab(logs_tab)
+        main_chat = ttk.Frame(body)
+        main_chat.pack(side=LEFT, fill=BOTH, expand=True, padx=(10, 10))
+        self._build_chat_panel(main_chat)
 
-    def _build_console_tab(self, parent: ttk.Frame) -> None:
+        right_panel = ttk.Frame(body, width=400)
+        right_panel.pack(side=RIGHT, fill=BOTH)
+        right_panel.pack_propagate(False)
+        self._build_activity_status_panel(right_panel)
+
+    def _build_sidebar(self, parent: ttk.Frame) -> None:
+        ttk.Label(parent, text="Quick Commands", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 8))
+        for label, message in [
+            ("Check Inbox", "check my inbox"),
+            ("System Info", "system info"),
+            ("CPU Usage", "cpu usage"),
+            ("List Processes", "show running processes"),
+            ("Current Time", "what time is it"),
+        ]:
+            ttk.Button(parent, text=label, command=lambda m=message: self._send_quick_command(m)).pack(fill=X, pady=2)
+
+        ttk.Separator(parent, orient="horizontal").pack(fill=X, pady=10)
+        ttk.Label(parent, text="Tools", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 6))
+        self.tools_text = Text(parent, height=18, wrap="word")
+        self.tools_text.pack(fill=BOTH, expand=True)
+
+    def _build_chat_panel(self, parent: ttk.Frame) -> None:
+        self.chat_text = labeled_text_area(parent, "Chat", height=25, wrap="word")
+
         input_frame = ttk.Frame(parent)
         input_frame.pack(fill=X, padx=10, pady=10)
 
-        ttk.Label(input_frame, text="Message").pack(anchor="w")
+        ttk.Label(input_frame, text="Type a message").pack(anchor="w")
         self.message_entry = ttk.Entry(input_frame)
         self.message_entry.pack(side=LEFT, fill=X, expand=True, padx=(0, 8))
         self.message_entry.bind("<Return>", lambda _event: self.on_send())
@@ -56,24 +84,21 @@ class DesktopControlApp:
         self.send_button = ttk.Button(input_frame, text="Send", command=self.on_send)
         self.send_button.pack(side=RIGHT)
 
-        self.details_text = labeled_text_area(parent, "Execution Details", height=20, wrap="word")
-        self.result_text = labeled_text_area(parent, "Final Result", height=8, wrap="word")
-        self.activity_list = labeled_text_area(parent, "Recent Activity", height=8, wrap="none")
-
-    def _build_status_tab(self, parent: ttk.Frame) -> None:
+    def _build_activity_status_panel(self, parent: ttk.Frame) -> None:
         actions = action_bar(parent)
         add_refresh_button(actions, self.refresh_status, label="Refresh Status")
-
-        self.status_text = labeled_text_area(parent, "Service Status", height=10, wrap="word")
-        self.tools_text = labeled_text_area(parent, "Registered Tools", height=12, wrap="word")
-        self.config_text = labeled_text_area(parent, "Configuration Summary", height=12, wrap="word")
-
-    def _build_logs_tab(self, parent: ttk.Frame) -> None:
-        actions = action_bar(parent)
         add_refresh_button(actions, self.refresh_logs, label="Refresh Logs")
 
-        self.agent_logs_text = labeled_text_area(parent, "Recent Agent Logs", height=12, wrap="none")
-        self.bridge_logs_text = labeled_text_area(parent, "Recent Bridge Logs", height=12, wrap="none")
+        self.details_text = labeled_text_area(parent, "Execution Details", height=12, wrap="word")
+        self.activity_list = labeled_text_area(parent, "Recent Activity", height=8, wrap="none")
+        self.status_text = labeled_text_area(parent, "Service Status", height=8, wrap="word")
+        self.agent_logs_text = labeled_text_area(parent, "Recent Agent Logs", height=7, wrap="none")
+        self.bridge_logs_text = labeled_text_area(parent, "Recent Bridge Logs", height=7, wrap="none")
+
+    def _send_quick_command(self, message: str) -> None:
+        self.message_entry.delete(0, END)
+        self.message_entry.insert(0, message)
+        self.on_send()
 
     def on_send(self) -> None:
         message = self.message_entry.get().strip()
@@ -82,14 +107,13 @@ class DesktopControlApp:
 
         self.send_button.configure(state="disabled")
         set_text(self.details_text, "Running...\n")
-        set_text(self.result_text, "")
 
         thread = threading.Thread(target=self._run_message, args=(message,), daemon=True)
         thread.start()
 
     def _run_message(self, message: str) -> None:
         try:
-            result = asyncio.run(self.runtime.execute_nl(message=message, sender="local-desktop"))
+            result = self.client.execute_nl(message=message, sender="local-desktop")
             self.root.after(0, lambda: self._display_result(message, result))
         except Exception as exc:
             self.root.after(0, lambda: self._display_error(str(exc)))
@@ -101,6 +125,7 @@ class DesktopControlApp:
         trace = result.get("trace", {})
         detail_lines = [
             f"Raw Request: {trace.get('raw_request', message)}",
+            f"Intent Class: {trace.get('intent_classification')}",
             f"Interpreted Intent: {trace.get('interpreted_intent')}",
             f"Selected Tool: {trace.get('selected_tool')}",
             f"Interpreted Args: {json.dumps(trace.get('interpreted_args', {}), ensure_ascii=True)}",
@@ -116,7 +141,11 @@ class DesktopControlApp:
             final_text = result.get("output") or "Command executed successfully."
         else:
             final_text = result.get("error") or "Request failed."
-        set_text(self.result_text, final_text)
+
+        chat_block = [f"You: {message}", f"Agent: {final_text}"]
+        self.chat_history.extend(chat_block)
+        self.chat_history = self.chat_history[-120:]
+        set_text(self.chat_text, "\n\n".join(self.chat_history))
 
         activity_line = (
             f"{result.get('request_id')} | tool={result.get('tool_name')} | "
@@ -131,13 +160,18 @@ class DesktopControlApp:
     def _display_error(self, error_text: str) -> None:
         self.send_button.configure(state="normal")
         set_text(self.details_text, "Execution Error")
-        set_text(self.result_text, error_text)
+        self.chat_history.extend(["You: [message failed]", f"Agent: {error_text}"])
+        self.chat_history = self.chat_history[-120:]
+        set_text(self.chat_text, "\n\n".join(self.chat_history))
 
     def refresh_status(self) -> None:
-        summary = self.runtime.summary()
+        summary = self.runtime_summary
 
-        agent_status = self._check_http_health("http://127.0.0.1:8787/health")
+        agent_status = self._check_agent_health()
         bridge_status = self._check_http_health("http://127.0.0.1:34567/health")
+
+        self.agent_badge.configure(text=f"Agent: {'running' if agent_status['running'] else 'down'}")
+        self.bridge_badge.configure(text=f"Bridge: {'running' if bridge_status['running'] else 'down'}")
 
         status_lines = [
             f"FastAPI Agent Service: {'running' if agent_status['running'] else 'not detected'}",
@@ -147,7 +181,9 @@ class DesktopControlApp:
         ]
         set_text(self.status_text, "\n".join(status_lines))
 
-        tool_lines = [f"- {name}" for name in summary["registered_tools"]]
+        tools_response = self.client.list_tools()
+        tools = tools_response.get("tools") or []
+        tool_lines = [f"- {item.get('name')}: {item.get('description')}" for item in tools] if tools else ["- unavailable"]
         set_text(self.tools_text, "\n".join(tool_lines))
 
         config_lines = [
@@ -165,6 +201,12 @@ class DesktopControlApp:
 
         set_text(self.agent_logs_text, "\n".join(agent_lines) if agent_lines else "No agent logs yet.")
         set_text(self.bridge_logs_text, "\n".join(bridge_lines) if bridge_lines else "No bridge logs yet.")
+
+    def _check_agent_health(self) -> dict:
+        health = self.client.health()
+        if health.get("status") == "ok":
+            return {"running": True, "detail": json.dumps(health, ensure_ascii=True)[:180]}
+        return {"running": False, "detail": health.get("error", "unavailable")}
 
     def _tail_file(self, path: Path, max_lines: int = 30) -> list[str]:
         if not path.exists():

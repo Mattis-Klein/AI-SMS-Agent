@@ -11,6 +11,16 @@ The entire system can now be started with a single command:
 
 This replaces the previous three-terminal workflow. See [Runbook](RUNBOOK.md) or [Quick Start](QUICK-START.md) for details.
 
+## 🖥️ Desktop App Tip
+
+The project also ships a local desktop interface in `desktop_app/` that can be packaged as a Windows executable:
+
+```powershell
+.\scripts\build-app.ps1 -Clean
+```
+
+This creates `dist/AISMSDesktop.exe`, which launches with no terminal window and starts the local agent automatically.
+
 ## 📂 Documentation Organization
 
 **All current documentation** is in the `docs/` folder.  
@@ -109,12 +119,13 @@ This replaces the previous three-terminal workflow. See [Runbook](RUNBOOK.md) or
 
 1. **Local Agent** (`agent/`) - FastAPI service on your PC, manages files and commands
 2. **SMS Bridge** (`sms-bridge/`) - Node.js service, receives SMS from Twilio
-3. **Public Tunnel** - Cloudflare Tunnel makes bridge internet-accessible
+3. **Desktop App** (`desktop_app/`) - Local chat/status UI that calls the same agent pipeline without sending SMS replies
 
-### SMS Commands vs AI Mode
+### Tool Pipeline vs SMS Transport
 
-- **Fixed Commands**: `read`, `write`, `run`, etc. - always work
-- **AI Mode**: Enable with `OPENAI_API_KEY` - natural language SMS becomes AI-powered
+- **Tool Pipeline**: All requests flow through interpreter/dispatcher/tool registry/sandboxed tools
+- **SMS Transport**: Twilio bridge delivers external messages into the same agent pipeline
+- **Desktop Transport**: Local UI sends local requests to the local agent service only (no Twilio replies)
 
 ### Security Layers
 
