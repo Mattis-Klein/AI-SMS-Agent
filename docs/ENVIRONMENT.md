@@ -209,29 +209,52 @@ TWILIO_AUTH_TOKEN=abc123def456ghi789jkl
 
 ---
 
-#### `ALLOWED_SMS_FROM`
+#### `TWILIO_ACCOUNT_SID`
 
-**Type:** Phone number(s)  
-**Required:** Yes (for production)
+**Type:** String (secret)  
+**Required:** Yes (for owner notification SMS)
 
-Comma-separated list of phone numbers allowed to send SMS.
+Twilio Account SID used by the bridge when sending owner notification SMS
+after an access-request number texts `@mashbak`.
 
 **Example:**
 ```
-ALLOWED_SMS_FROM=+18005551234
-ALLOWED_SMS_FROM=+18005551234,+18005555678
-ALLOWED_SMS_FROM=
+TWILIO_ACCOUNT_SID=AC1234567890abcdef1234567890abcd
+```
+
+---
+
+#### `TWILIO_FROM_NUMBER`
+
+**Type:** Phone number (E.164)  
+**Required:** Recommended
+
+Outbound Twilio number used when bridge sends owner notifications.
+
+**Example:**
+```
+TWILIO_FROM_NUMBER=+18005551234
 ```
 
 **Rules:**
-- Format: `+1` followed by area code and number
-- Multiple numbers: comma-separated, no spaces
-- Empty = no filtering (accept all senders)
-- Recommended: Set to only your phone
+- Must be a Twilio SMS-capable number on your account
+- If empty, bridge falls back to webhook `To` value when available
 
-**Get your number:**
-- Use caller ID on your phone
-- Must include country code (+1 for US)
+---
+
+### Sender Access Control (Bridge Code)
+
+Sender access is now enforced in `sms-bridge/sms-server.js` using
+normalized phone-number matching (last 10 digits).
+
+Current behavior:
+- Owner `8483291230` -> forwarded to agent backend
+- Special `8457017405` -> fixed special response
+- Access-request numbers (`9297546860`, `9176355825`) -> fixed access-request response
+- All others -> `This number is not allowed.`
+
+If an access-request number sends exactly `@mashbak`, bridge sends an owner
+notification SMS without forwarding the request to the agent.
 
 ---
 

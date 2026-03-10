@@ -25,11 +25,12 @@ The system has 3 main components:
 
 1. **Receive Twilio webhooks** at `/sms` endpoint
 2. **Validate request signature** using `TWILIO_AUTH_TOKEN`
-3. **Check sender allowlist** using `ALLOWED_SMS_FROM`
+3. **Apply sender access control** (owner forward, special responses, denied senders)
 4. **Route request** to fixed command handler or AI
 5. **Call agent API** to execute operations
 6. **Format TwiML response** back to Twilio
-7. **Log all events** to `logs/bridge.log`
+7. **Notify owner on access requests** when approved request numbers send `@mashbak`
+8. **Log all events** to `logs/bridge.log`
 
 ### Key Flows
 

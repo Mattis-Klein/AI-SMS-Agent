@@ -43,7 +43,9 @@ const AGENT_URL = process.env.AGENT_URL || "http://127.0.0.1:8787";
 const AGENT_API_KEY = process.env.AGENT_API_KEY || "";
 const PORT = Number(process.env.BRIDGE_PORT || 34567);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || "";
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || "";
+const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || "";
 const LOG_DIR = path.join(BASE_DIR, "logs");
 const LOG_FILE = path.join(LOG_DIR, "bridge.log");
 const LOG_ARCHIVE_FILE = path.join(LOG_DIR, "bridge.log.1");
@@ -53,14 +55,21 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const AI_MAX_TOOL_ROUNDS = Number(process.env.AI_MAX_TOOL_ROUNDS || 6);
 
 const OWNER_NUMBER = "8483291230";
+const ACCESS_REQUEST_RESPONSE = "This number is not authorized to use this program. To request access, send @mashbak to this number and we will review your request.";
+const ACCESS_REQUEST_NUMBERS = new Set([
+    "9297546860",
+    "9176355825",
+]);
 const SPECIAL_RESPONSES = new Map([
-    ["8457017405", "placeholder1"],
-    ["9178486202", "placeholder2"],
+    ["8457017405", "האלט דיך רואיג הערשי, ס'איז נאכנישט גרייט"],
 ]);
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
 const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+const twilioRestClient = (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN)
+    ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    : null;
 
 if (!AGENT_API_KEY) {
     throw new Error("AGENT_API_KEY is required. Set it in sms-bridge/.env or the environment.");
@@ -72,6 +81,14 @@ if (!PUBLIC_BASE_URL) {
 
 if (!TWILIO_AUTH_TOKEN) {
     console.warn("[bridge] TWILIO_AUTH_TOKEN is not set. Twilio signature validation is disabled.");
+}
+
+if (!TWILIO_ACCOUNT_SID) {
+    console.warn("[bridge] TWILIO_ACCOUNT_SID is not set. Owner access-request notifications are disabled.");
+}
+
+if (!TWILIO_FROM_NUMBER) {
+    console.warn("[bridge] TWILIO_FROM_NUMBER is not set. Inbound To number will be used for owner notifications when available.");
 }
 
 if (!OPENAI_API_KEY) {
@@ -130,6 +147,21 @@ function normalizePhoneNumber(value) {
     return digits;
 }
 
+function toE164Us(value) {
+    const digits = normalizePhoneNumber(value);
+    if (digits.length === 10) {
+        return `+1${digits}`;
+    }
+    if (digits.length === 11 && digits.startsWith("1")) {
+        return `+${digits}`;
+    }
+    return String(value || "").trim();
+}
+
+function isAccessRequestCommand(message) {
+    return String(message || "").trim().toLowerCase() === "@mashbak";
+}
+
 function resolveSenderAction(from) {
     const normalizedFrom = normalizePhoneNumber(from);
 
@@ -151,12 +183,72 @@ function resolveSenderAction(from) {
         };
     }
 
+    if (ACCESS_REQUEST_NUMBERS.has(normalizedFrom)) {
+        return {
+            action: "access_request_response",
+            normalizedFrom,
+            shouldForward: false,
+            reply: ACCESS_REQUEST_RESPONSE,
+        };
+    }
+
     return {
         action: "denied",
         normalizedFrom,
         shouldForward: false,
         reply: "This number is not allowed.",
     };
+}
+
+async function notifyOwnerAccessRequest({ requestId, normalizedFrom, inboundTo }) {
+    const ownerTo = toE164Us(OWNER_NUMBER);
+    const fromNumber = toE164Us(TWILIO_FROM_NUMBER || inboundTo || "");
+
+    if (!twilioRestClient) {
+        logBridgeEvent({
+            requestId,
+            stage: "access_request_notify_skipped",
+            reason: "missing_twilio_rest_credentials",
+            normalizedFrom,
+        });
+        return;
+    }
+
+    if (!fromNumber) {
+        logBridgeEvent({
+            requestId,
+            stage: "access_request_notify_skipped",
+            reason: "missing_from_number",
+            normalizedFrom,
+        });
+        return;
+    }
+
+    const body = `Mashbak access request: ${normalizedFrom} sent @mashbak and requested access.`;
+
+    try {
+        const message = await twilioRestClient.messages.create({
+            to: ownerTo,
+            from: fromNumber,
+            body,
+        });
+
+        logBridgeEvent({
+            requestId,
+            stage: "access_request_notify_sent",
+            normalizedFrom,
+            ownerTo,
+            messageSid: message.sid || null,
+        });
+    } catch (error) {
+        logBridgeEvent({
+            requestId,
+            stage: "access_request_notify_failed",
+            normalizedFrom,
+            ownerTo,
+            error: error.message,
+        });
+    }
 }
 
 function getRequestUrlCandidates(req) {
@@ -356,6 +448,7 @@ app.post("/sms", async (req, res) => {
     const requestId = createRequestId();
     const message = (req.body.Body || "").trim();
     const from = req.body.From || "";
+    const to = req.body.To || "";
     const senderDecision = resolveSenderAction(from);
 
     console.log(`[sms] requestId=${requestId} from=${from} body=${message}`);
@@ -414,6 +507,13 @@ app.post("/sms", async (req, res) => {
             reply = await buildReply(message, requestId, from);
         } else {
             reply = senderDecision.reply;
+            if (senderDecision.action === "access_request_response" && isAccessRequestCommand(message)) {
+                await notifyOwnerAccessRequest({
+                    requestId,
+                    normalizedFrom: senderDecision.normalizedFrom,
+                    inboundTo: to,
+                });
+            }
         }
     } catch (error) {
         logBridgeEvent({
@@ -454,7 +554,8 @@ app.listen(PORT, () => {
         twilioValidationEnabled: Boolean(TWILIO_AUTH_TOKEN),
         senderAccessControlEnabled: true,
         ownerNumber: OWNER_NUMBER,
-        specialNumbers: Array.from(SPECIAL_RESPONSES.keys())
+        specialNumbers: Array.from(SPECIAL_RESPONSES.keys()),
+        accessRequestNumbers: Array.from(ACCESS_REQUEST_NUMBERS),
     });
     console.log(`SMS server running on port ${PORT}`);
 });

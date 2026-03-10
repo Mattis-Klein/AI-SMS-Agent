@@ -178,9 +178,15 @@ All events logged as JSON lines for easy parsing:
 
 Node.js Express server that stays transport-only:
 - Receives Twilio webhook requests
-- Validates Twilio signature (optional) and sender allowlist (optional)
+- Validates Twilio signature (optional) and applies sender access control in bridge
 - Forwards non-empty messages to the shared core endpoint: `POST /execute-nl`
 - Sends TwiML SMS responses
+
+Sender access control (bridge):
+- Owner number is forwarded to the agent
+- Special numbers get fixed responses without agent forwarding
+- Access-request numbers get a fixed response; if they text `@mashbak`, bridge sends owner notification SMS
+- All other senders are denied in bridge
 
 Bridge endpoints:
 
