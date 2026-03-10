@@ -15,7 +15,7 @@ Full step-by-step setup from scratch.
 After completing the setup steps below, you can launch the entire system with a single command:
 
 ```powershell
-.\scripts\start-all.ps1
+.\scripts\dev-start.ps1
 ```
 
 This unified launcher handles virtual environment creation, dependency installation, and launches all three services (agent, bridge, tunnel) automatically. The manual steps below are useful for understanding what happens under the hood and for troubleshooting.

@@ -7,7 +7,7 @@ Daily operations and standard commands for running the system.
 The entire system can be started with a single command:
 
 ```powershell
-.\scripts\start-all.ps1
+.\scripts\dev-start.ps1
 ```
 
 This launcher:

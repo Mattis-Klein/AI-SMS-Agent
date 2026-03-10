@@ -12,7 +12,7 @@ C:\AI-SMS-Agent\
 ├── README.md
 ├── PROJECT-ORGANIZATION.md
 ├── scripts/
-│   ├── start-all.ps1
+│   ├── dev-start.ps1
 │   ├── start-agent.ps1
 │   ├── start-bridge.ps1
 │   └── start-cloudflare.ps1
@@ -82,7 +82,7 @@ Flip phone SMS
 ## Start Points
 
 - Main overview: `README.md`
-- Unified launcher: `.\scripts\start-all.ps1` (recommended - starts all services)
+- Unified launcher: `.\scripts\dev-start.ps1` (recommended - starts all services)
 - Documentation index: `docs/INDEX.md`
 - Operations: `docs/RUNBOOK.md`
 - Structure reference: `docs/PROJECT-STRUCTURE.md`

@@ -193,8 +193,7 @@ node sms-server.js
 **Terminal 3 - Local App**:
 
 ```bash
-cd agent
-python desktop_app.py
+python desktop_app/main.py
 ```
 
 The local desktop app:
@@ -235,7 +234,7 @@ Then text commands to your Twilio number from an approved phone!
 
 ### Via Local Desktop App
 
-1. Start `python desktop_app.py`
+1. Start `python desktop_app/main.py`
 2. Type a request such as `check my inbox` or `show cpu usage`
 3. Review trace details and logs in the app tabs
 
@@ -336,17 +335,16 @@ grep 'request_id=abc-123' agent/workspace/logs/agent.log
 
 - `/execute` runs a specific tool with structured args.
 - `/execute-nl` runs natural-language requests through interpreter + dispatcher.
-- `desktop_app.py` calls the same runtime pipeline directly (no Twilio reply path).
+- `desktop_app/main.py` calls the same runtime pipeline directly (no Twilio reply path).
 - Both API and local desktop include step-by-step `trace` output in responses.
 
 ## 📁 Project Structure
 
 ```
 AI-SMS-Agent/
-├── agent/                          # Python FastAPI agent
+├── agent/                          # Python FastAPI agent + shared runtime
 │   ├── agent.py                    # FastAPI API layer
 │   ├── runtime.py                  # Shared runtime (used by API + desktop)
-│   ├── desktop_app.py              # Local Tkinter control panel
 │   ├── config.json                 # Tool/config allowlists and security settings
 │   ├── requirements.txt            # Python dependencies
 │   ├── .env.example                # Environment template
@@ -354,17 +352,21 @@ AI-SMS-Agent/
 │   ├── interpreter.py              # Natural language intent mapping
 │   ├── logger.py                   # Structured JSON logging
 │   └── tools/                      # Tool registry and built-in tools
-│   └── workspace/                  # Workspace for file operations
+│   └── workspace/                  # Agent workspace for file operations
 │       ├── inbox/                  # Incoming files
 │       ├── outbox/                 # Outgoing files
 │       └── logs/                   # Agent logs (JSON format)
+├── desktop_app/                    # Local desktop transport (no SMS replies)
+│   ├── main.py                     # Desktop app entry point
+│   ├── ui.py                       # Desktop UI controller
+│   └── widgets.py                  # Reusable Tkinter UI helpers
 ├── sms-bridge/                     # Node.js SMS bridge
 │   ├── sms-server.js               # Bridge server
 │   ├── package.json                # Node dependencies
 │   ├── .env.example                # Environment template
 │   └── logs/                       # Bridge logs (JSON format)
 ├── scripts/                        # PowerShell launchers
-│   ├── start-all.ps1               # Launch everything (recommended)
+│   ├── dev-start.ps1               # Launch everything (recommended)
 │   ├── start-agent.ps1             # Launch agent only
 │   ├── start-bridge.ps1            # Launch bridge only
 │   └── start-cloudflare.ps1        # Launch tunnel only
@@ -377,7 +379,7 @@ Tool and security policy are configured in `agent/config.json`.
 
 - `allowed_directories`: explicit safe directories for path-based tools.
 - `allowed_tools`: optional tool allowlist (`null` means all registered tools).
-- `security`: file/extension constraints and sender validation settings.
+- `security`: file/extension constraints, sender validation, and `tool_timeout_seconds`.
 
 ### Environment Configuration
 

@@ -17,6 +17,7 @@ venv/
 # Python Cache
 __pycache__/
 *.py[cod]
+*.pyc
 *$py.class
 *.so
 .Python
@@ -39,10 +40,17 @@ share/python-wheels/
 *.egg
 
 # Node.js
+node_modules/
 sms-bridge/node_modules/
 sms-bridge/npm-debug.log*
 sms-bridge/yarn-debug.log*
 sms-bridge/yarn-error.log*
+
+# Generic logs
+*.log
+logs/*
+workspace/logs/*
+!workspace/logs/.gitkeep
 
 # Application Data (Runtime Generated)
 agent/workspace/inbox/*

@@ -35,7 +35,7 @@ AGENT_WORKSPACE=agent/workspace
 From the repository root, run:
 
 ```powershell
-.\scripts\start-all.ps1
+.\scripts\dev-start.ps1
 ```
 
 This single command will:
@@ -55,7 +55,7 @@ Watch for the tunnel URL in the `[tunnel]` log output. It will look like:
 1. Stop the launcher (Ctrl+C)
 2. Copy the tunnel URL from the logs
 3. Update `PUBLIC_BASE_URL` in `sms-bridge/.env` with that URL
-4. Restart: `.\scripts\start-all.ps1`
+4. Restart: `.\scripts\dev-start.ps1`
 
 ## Step 4: Update Twilio Webhook (1 min)
 

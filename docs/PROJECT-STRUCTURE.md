@@ -12,7 +12,7 @@ C:\AI-SMS-Agent\
 ├── README.md
 ├── PROJECT-ORGANIZATION.md
 ├── scripts/
-│   ├── start-all.ps1         ← Unified launcher (starts everything)
+│   ├── dev-start.ps1         ← Unified launcher (starts everything)
 │   ├── start-agent.ps1
 │   ├── start-bridge.ps1
 │   └── start-cloudflare.ps1
@@ -55,7 +55,7 @@ C:\AI-SMS-Agent\
 - `agent/`: Python FastAPI agent for controlled local actions
 - `sms-bridge/`: Node.js Twilio bridge
 - `scripts/`: PowerShell launcher scripts
-  - `start-all.ps1` — Unified launcher (recommended) - starts all three services
+  - `dev-start.ps1` — Unified launcher (recommended) - starts all three services
   - `start-agent.ps1` — Launch only the Python agent
   - `start-bridge.ps1` — Launch only the SMS bridge
   - `start-cloudflare.ps1` — Launch only the Cloudflare tunnel

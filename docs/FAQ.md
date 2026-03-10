@@ -72,7 +72,7 @@ Common questions and quick answers.
 
 **Recommended:** Use the unified launcher which runs all three in a single terminal:
 ```powershell
-.\scripts\start-all.ps1
+.\scripts\dev-start.ps1
 ```
 
 The launcher handles everything automatically and provides labeled log output. Alternatively, you can run each component in a separate terminal manually (see [Runbook](RUNBOOK.md)).

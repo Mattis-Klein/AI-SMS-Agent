@@ -106,7 +106,7 @@ Test entire system with real SMS.
 
 ```
 1. Start all services:
-   Recommended: .\scripts\start-all.ps1
+  Recommended: .\scripts\dev-start.ps1
    Or manually in three terminals if debugging
 
 2. Send SMS from your phone: "hello"

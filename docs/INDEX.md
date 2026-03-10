@@ -6,7 +6,7 @@ Welcome to the AI SMS Agent project. This is your master navigation guide to all
 
 The entire system can now be started with a single command:
 ```powershell
-.\scripts\start-all.ps1
+.\scripts\dev-start.ps1
 ```
 
 This replaces the previous three-terminal workflow. See [Runbook](RUNBOOK.md) or [Quick Start](QUICK-START.md) for details.

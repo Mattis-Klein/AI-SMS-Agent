@@ -12,7 +12,7 @@ Operational and development best practices.
 
 ```powershell
 # Single command starts all three services
-.\scripts\start-all.ps1
+.\scripts\dev-start.ps1
 
 # Wait for labeled output showing all services running:
 # [agent] Uvicorn running on...
@@ -93,7 +93,7 @@ Tunnel: $tunnel
 
 **If using unified launcher:**
 ```powershell
-# Simple shutdown: Press Ctrl+C in the terminal running start-all.ps1
+# Simple shutdown: Press Ctrl+C in the terminal running dev-start.ps1
 # The script automatically stops all services cleanly
 ```
 
