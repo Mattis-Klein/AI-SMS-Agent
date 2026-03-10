@@ -11,6 +11,7 @@ C:\AI-SMS-Agent\
 │   └── settings.json
 ├── README.md
 ├── PROJECT-ORGANIZATION.md
+├── local-memory-notes/      ← Local markdown memory folder (gitignored)
 ├── scripts/
 │   ├── dev-start.ps1         ← Unified launcher (starts everything)
 │   ├── build-app.ps1         ← Desktop app packaging script (PyInstaller)
@@ -97,6 +98,7 @@ These are expected during execution but not part of the clean source tree:
 - `agent/__pycache__/`
 - `sms-bridge/node_modules/`
 - `sms-bridge/logs/`
+- `local-memory-notes/`
 
 ## Quick Lookup
 
@@ -108,5 +110,5 @@ These are expected during execution but not part of the clean source tree:
 
 ---
 
-**Last Updated:** March 9, 2026
+**Last Updated:** March 10, 2026
 

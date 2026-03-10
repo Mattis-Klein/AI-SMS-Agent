@@ -375,7 +375,7 @@ PUBLIC_BASE_URL=https://your-domain.com
 TWILIO_AUTH_TOKEN=your-twilio-token
 ALLOWED_SMS_FROM=+15551234567,+15559876543
 OPENAI_API_KEY=sk-... (optional, for future AI features)
-OPENAI_MODEL=gpt-4-mini (optional)
+OPENAI_MODEL=gpt-4.1-mini (optional)
 ```
 
 ## Error Handling

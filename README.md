@@ -127,6 +127,14 @@ SMS Request
 
 **Full tool documentation**: See [TOOLS.md](docs/TOOLS.md)
 
+## 📝 Local Memory Notes
+
+Use [local-memory-notes/](local-memory-notes) for personal markdown notes you want to keep between sessions.
+
+- Files in this folder are ignored by git.
+- Recommended use: troubleshooting notes, webhook URLs, deployment reminders, and test checklists.
+- Keep sensitive values out of committed documentation and store local-only details here instead.
+
 ## 🚀 Quick Start
 
 ### 1. Clone and Setup

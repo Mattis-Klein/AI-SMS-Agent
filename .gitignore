@@ -73,3 +73,6 @@ sms-bridge/logs/*
 # OS
 Thumbs.db
 .env.bak
+
+# Local memory notes (user-specific markdown notes)
+local-memory-notes/

@@ -79,6 +79,14 @@ C:\AI-SMS-Agent\
 └── docs/                     # Documentation (this folder)
 ```
 
+### Local Session Notes
+
+Use [local-memory-notes/](../local-memory-notes) for personal markdown notes and temporary operational context.
+
+- This folder is intentionally gitignored.
+- Keep local troubleshooting history there instead of committed docs.
+- Do not store secrets in committed markdown files.
+
 ---
 
 ## Code Style Guidelines

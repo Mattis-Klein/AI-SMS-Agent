@@ -21,28 +21,38 @@ try {
     & $python -m pip install --upgrade pip | Out-Null
     & $python -m pip install pyinstaller fastapi uvicorn pydantic psutil python-dotenv | Out-Null
 
-    $pyinstallerArgs = @(
-        "--name", "AISMSDesktop",
-        "--windowed",
-        "--noconfirm",
-        "--clean",
-        "--paths", "agent",
-        "--paths", "desktop_app",
-        "--add-data", "agent/config.json;agent",
-        "--add-data", "agent/.env.example;agent",
-        "--add-data", "agent/workspace/inbox/.gitkeep;agent/workspace/inbox",
-        "--add-data", "agent/workspace/outbox/.gitkeep;agent/workspace/outbox",
-        "--add-data", "agent/workspace/logs/.gitkeep;agent/workspace/logs"
-    )
-
-    if (-not $OneDir) {
-        $pyinstallerArgs += "--onefile"
-    }
-
-    $pyinstallerArgs += $entry
-
     if (-not $NoBuild) {
-        & $python -m PyInstaller @pyinstallerArgs
+        if (-not $OneDir) {
+            & $python -m PyInstaller `
+                "--name" "AISMSDesktop" `
+                "--windowed" `
+                "--noconfirm" `
+                "--clean" `
+                "--paths" "agent" `
+                "--paths" "desktop_app" `
+                "--add-data" "agent/config.json;agent" `
+                "--add-data" "agent/.env.example;agent" `
+                "--add-data" "agent/workspace/inbox/.gitkeep;agent/workspace/inbox" `
+                "--add-data" "agent/workspace/outbox/.gitkeep;agent/workspace/outbox" `
+                "--add-data" "agent/workspace/logs/.gitkeep;agent/workspace/logs" `
+                "--onefile" `
+                $entry
+        }
+        else {
+            & $python -m PyInstaller `
+                "--name" "AISMSDesktop" `
+                "--windowed" `
+                "--noconfirm" `
+                "--clean" `
+                "--paths" "agent" `
+                "--paths" "desktop_app" `
+                "--add-data" "agent/config.json;agent" `
+                "--add-data" "agent/.env.example;agent" `
+                "--add-data" "agent/workspace/inbox/.gitkeep;agent/workspace/inbox" `
+                "--add-data" "agent/workspace/outbox/.gitkeep;agent/workspace/outbox" `
+                "--add-data" "agent/workspace/logs/.gitkeep;agent/workspace/logs" `
+                $entry
+        }
     }
 
     Write-Host "Build complete."
