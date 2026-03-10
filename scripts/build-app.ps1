@@ -12,9 +12,14 @@ $entry = Join-Path $repoRoot "desktop_app\main.py"
 
 Push-Location $repoRoot
 try {
+    Remove-Item -Recurse -Force "build\AISMSDesktop" -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force "dist\AISMSDesktop" -ErrorAction SilentlyContinue
+    Remove-Item -Force "dist\AISMSDesktop.exe" -ErrorAction SilentlyContinue
+
     if ($Clean) {
         Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue
         Remove-Item -Recurse -Force "dist" -ErrorAction SilentlyContinue
+        Remove-Item -Force "AISMSDesktop.spec" -ErrorAction SilentlyContinue
         Remove-Item -Force "Mashbak.spec" -ErrorAction SilentlyContinue
     }
 
