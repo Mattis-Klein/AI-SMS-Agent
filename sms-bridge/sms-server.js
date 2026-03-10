@@ -222,6 +222,7 @@ async function postJson(endpoint, payload, requestId, sender = null) {
 
     if (sender) {
         headers["x-sender"] = sender;
+        headers["x-source"] = "sms";
     }
 
     const response = await fetch(`${AGENT_URL}${endpoint}`, {
@@ -256,27 +257,8 @@ async function postJson(endpoint, payload, requestId, sender = null) {
     }
 }
 
-async function callAgentExecuteTool(toolName, args, requestId, sender = null) {
-    return postJson("/execute", { tool_name: toolName, args }, requestId, sender);
-}
-
 async function callAgentExecuteNaturalLanguage(message, requestId, sender = null) {
     return postJson("/execute-nl", { message }, requestId, sender);
-}
-
-// Legacy compatibility functions (forward to new endpoints)
-async function callAgentRun(name, requestId, sender = null, args = {}) {
-    return callAgentExecuteTool(name, args, requestId, sender);
-}
-
-async function executeAiTool(toolName, args, requestId, sender = null) {
-    // Deprecated: This function is kept for backward compatibility only.
-    // The agent now handles tool execution directly.
-    return {
-        ok: false,
-        status: 400,
-        data: { detail: "Direct AI tool execution is no longer supported. Use /execute-nl for natural language." }
-    };
 }
 
 async function buildAiReply(message, from, requestId) {
@@ -307,94 +289,14 @@ function formatAgentError(result) {
     return `Agent error (${result.status}): ${JSON.stringify(result.data)}`;
 }
 
-function formatHelp() {
-    return [
-        "Commands:",
-        "hello - Test connection",
-        "help - Show this help",
-        "tools - List available tools",
-        "run <name> - Run a tool",
-        "  Examples: run system_info, run cpu_usage, run dir_inbox",
-        "list <path> - List files",
-        "  Example: list C:\\Users\\Documents",
-        "",
-        "Or send natural language requests - agent will interpret:",
-        "  'check my inbox', 'show cpu', 'what time is it'"
-    ].join("\n");
-}
-
 async function buildReply(message, requestId, from) {
     const normalized = message.trim();
-    const lower = normalized.toLowerCase();
 
     if (!normalized) {
         return "Empty message.";
     }
 
-    // Handle special commands
-    if (lower === "hello") {
-        return "Hi. SMS link is working.";
-    }
-
-    if (lower === "help") {
-        return formatHelp();
-    }
-
-    // List available tools
-    if (lower === "tools") {
-        try {
-            const response = await fetch(`${AGENT_URL}/tools`, {
-                method: "GET",
-                headers: {
-                    "x-api-key": AGENT_API_KEY,
-                    "x-request-id": requestId,
-                    "x-sender": from
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                const toolList = Object.entries(data.tools)
-                    .map(([name, info]) => `${name}: ${info.description}`)
-                    .join("\n");
-                return `Available tools:\n${toolList}`;
-            } else {
-                return "Could not fetch tool list.";
-            }
-        } catch (error) {
-            return `Error fetching tools: ${error.message}`;
-        }
-    }
-
-    // Handle "run <name>" command
-    if (lower.startsWith("run ")) {
-        const toolName = normalized.slice(4).trim();
-        if (!toolName) {
-            return "Please specify a tool name. Example: run system_info";
-        }
-        const result = await callAgentExecuteTool(toolName, {}, requestId, from);
-        if (!result.ok) {
-            return formatAgentError(result);
-        }
-        const output = result.data.output || "";
-        return output || `${toolName} executed successfully.`;
-    }
-
-    // Handle "list <path>" command
-    if (lower.startsWith("list ")) {
-        const path = normalized.slice(5).trim();
-        if (!path) {
-            return "Please specify a path. Example: list C:\\Projects";
-        }
-        const result = await callAgentExecuteTool("list_files", { path }, requestId, from);
-        if (!result.ok) {
-            return formatAgentError(result);
-        }
-        const output = result.data.output || "";
-        return output || `Listed files in ${path}.`;
-    }
-
-    // Forward any other message to natural language interpreter
+    // SMS bridge is transport-only: always use the shared natural-language core.
     const result = await callAgentExecuteNaturalLanguage(normalized, requestId, from);
 
     if (!result.ok) {
@@ -405,9 +307,9 @@ async function buildReply(message, requestId, from) {
     const error = result.data.error || "";
 
     if (result.data.success) {
-        return output || "Command executed successfully.";
+        return output || "Done.";
     } else {
-        return error || "Could not process your request. Text HELP for available commands.";
+        return error || "Could not process your request.";
     }
 }
 
