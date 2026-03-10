@@ -33,6 +33,7 @@ class ListFilesTool(Tool):
             # Validate path
             is_safe, resolved_path = self._validate_path(user_path, workspace, allowed_dirs)
             if not is_safe:
+                self._log_path_rejection(context, user_path, resolved_path)
                 return ToolResult(success=False, output="", error=resolved_path, tool_name=self.name)
             
             result = subprocess.run(
@@ -50,9 +51,27 @@ class ListFilesTool(Tool):
             return ToolResult(success=False, output="", error="Command timeout", tool_name=self.name)
         except Exception as e:
             return ToolResult(success=False, output="", error=str(e), tool_name=self.name)
+
+    def _log_path_rejection(self, context: Optional[Dict[str, Any]], user_path: str, reason: str) -> None:
+        """Log rejected file paths for security auditing."""
+        if not context:
+            return
+
+        logger = context.get("logger")
+        if not logger:
+            return
+
+        logger.log_error(
+            request_id=context.get("request_id", "unknown"),
+            error_type="path_validation_failed",
+            error_message=reason,
+            tool_name=self.name,
+            attempted_path=user_path,
+            sender=context.get("sender", "unknown"),
+        )
     
     def _validate_path(self, user_path: str, workspace: Path, allowed_dirs: list) -> tuple[bool, str]:
-        """Validate path is within safe directories"""
+        """Validate path is within workspace or explicitly configured safe directories only."""
         try:
             # Check workspace-relative path first
             resolved = (workspace / user_path).resolve()

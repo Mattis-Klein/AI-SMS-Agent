@@ -43,7 +43,7 @@ class Config:
         return value if value is not None else default
     
     def get_allowed_directories(self) -> list:
-        """Get list of allowed directories"""
+        """Get explicit safe directory allowlist for path-based tools."""
         dirs = self.get("allowed_directories", [])
         return [Path(d) if isinstance(d, str) else d for d in dirs]
     

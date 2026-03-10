@@ -125,6 +125,7 @@ class Dispatcher:
                 "allowed_directories": context.allowed_directories,
                 "request_id": context.request_id,
                 "sender": context.sender,
+                "logger": self.logger,
             }
             
             result = await tool.execute(args, exec_context)
