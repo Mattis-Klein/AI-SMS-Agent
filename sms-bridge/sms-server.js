@@ -249,7 +249,7 @@ async function postJson(endpoint, payload, requestId, sender = null) {
         "x-api-key": AGENT_API_KEY,
         "x-request-id": requestId
     };
-    
+
     if (sender) {
         headers["x-sender"] = sender;
     }
@@ -471,7 +471,7 @@ async function buildReply(message, requestId, from) {
                     "x-sender": from
                 }
             });
-            
+
             if (response.ok) {
                 const data = await response.json();
                 const cmdList = Object.entries(data.commands)
