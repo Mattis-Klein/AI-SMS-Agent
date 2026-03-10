@@ -1,0 +1,67 @@
+# Environment Variables (SECRETS - NEVER COMMIT)
+.env
+.env.local
+.env.*.local
+
+# Local configuration overrides
+config.local.json
+agent/config.local.json
+sms-bridge/config.local.json
+
+# Python Virtual Environments
+agent/.venv/
+agent/venv/
+.venv/
+venv/
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node.js
+sms-bridge/node_modules/
+sms-bridge/npm-debug.log*
+sms-bridge/yarn-debug.log*
+sms-bridge/yarn-error.log*
+
+# Application Data (Runtime Generated)
+agent/workspace/inbox/*
+agent/workspace/outbox/*
+agent/workspace/logs/*
+!agent/workspace/inbox/.gitkeep
+!agent/workspace/outbox/.gitkeep
+!agent/workspace/logs/.gitkeep
+sms-bridge/logs/*
+!sms-bridge/logs/.gitkeep
+
+# IDE & Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.env.bak

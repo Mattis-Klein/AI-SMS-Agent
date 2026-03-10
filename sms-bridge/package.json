@@ -1,0 +1,17 @@
+{
+  "name": "sms-bridge",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Twilio SMS bridge for the local AI agent",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node sms-server.js",
+    "check": "node --check sms-server.js"
+  },
+  "dependencies": {
+    "body-parser": "^2.2.2",
+    "express": "^5.2.1",
+    "openai": "^4.86.2",
+    "twilio": "^5.4.4"
+  }
+}
