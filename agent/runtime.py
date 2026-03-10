@@ -1,6 +1,8 @@
 """Shared agent runtime used by FastAPI endpoints and local desktop tooling."""
 
+import asyncio
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -70,6 +72,7 @@ class AgentRuntime:
             workspace=self.workspace,
             allowed_directories=self.config.get_allowed_directories(),
             allowed_tools=self.config.get_allowed_tools(),
+            tool_timeout_seconds=self.config.get_tool_timeout_seconds(),
         )
         if request_id:
             context.request_id = request_id
@@ -86,6 +89,7 @@ class AgentRuntime:
             workspace=self.workspace,
             allowed_directories=self.config.get_allowed_directories(),
             allowed_tools=self.config.get_allowed_tools(),
+            tool_timeout_seconds=self.config.get_tool_timeout_seconds(),
         )
         if request_id:
             context.request_id = request_id
@@ -149,13 +153,52 @@ class AgentRuntime:
             "logger": self.logger,
         }
 
-        result = await tool.execute(args, exec_context)
+        started = time.perf_counter()
+        try:
+            result = await asyncio.wait_for(
+                tool.execute(args, exec_context),
+                timeout=context.tool_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            elapsed_ms = int(context.tool_timeout_seconds * 1000)
+            self.logger.log_tool_execution(
+                request_id=context.request_id,
+                tool_name=tool_name,
+                arguments=args,
+                success=False,
+                execution_time_ms=elapsed_ms,
+                tool_runtime_ms=elapsed_ms,
+                error=f"Tool timeout after {context.tool_timeout_seconds:.0f}s",
+                sender=context.sender,
+            )
+            return {
+                "success": False,
+                "tool_name": tool_name,
+                "output": None,
+                "error": f"Tool timeout after {context.tool_timeout_seconds:.0f}s",
+                "request_id": context.request_id,
+                "trace": {
+                    "raw_request": context.raw_message,
+                    "interpreted_intent": tool_name,
+                    "interpreted_args": args,
+                    "confidence": 1.0,
+                    "selected_tool": tool_name,
+                    "validation_status": "passed",
+                    "validated_arguments": args,
+                    "execution_status": "failed",
+                    "execution_time_ms": elapsed_ms,
+                },
+            }
+
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
 
         self.logger.log_tool_execution(
             request_id=context.request_id,
             tool_name=tool_name,
             arguments=args,
             success=result.success,
+            execution_time_ms=elapsed_ms,
+            tool_runtime_ms=elapsed_ms,
             output=result.output,
             error=result.error,
             sender=context.sender,
@@ -176,6 +219,7 @@ class AgentRuntime:
                 "validation_status": "passed",
                 "validated_arguments": args,
                 "execution_status": "success" if result.success else "failed",
+                "execution_time_ms": elapsed_ms,
             },
         }
 
@@ -185,6 +229,7 @@ class AgentRuntime:
             "workspace": str(self.workspace),
             "allowed_directories": [str(p) for p in self.config.get_allowed_directories()],
             "allowed_tools": self.config.get_allowed_tools(),
+            "tool_timeout_seconds": self.config.get_tool_timeout_seconds(),
             "registered_tools": self.registry.list_all(),
             "version": "2.0.0",
         }

@@ -13,6 +13,7 @@ class StructuredLogger:
     def __init__(self, log_file: Path, hostname: str = None):
         self.log_file = log_file
         self.hostname = hostname or platform.node()
+        self.tool_failures: Dict[str, int] = {}
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
     
     def log(self, **kwargs) -> None:
@@ -47,12 +48,23 @@ class StructuredLogger:
                           arguments: Dict[str, Any], success: bool,
                           output: str = None, error: str = None, **kwargs) -> None:
         """Log tool execution"""
+        if not success:
+            self.tool_failures[tool_name] = self.tool_failures.get(tool_name, 0) + 1
+
+        execution_time_ms = kwargs.pop("execution_time_ms", None)
+        tool_runtime_ms = kwargs.pop("tool_runtime_ms", execution_time_ms)
+
         self.log(
             request_id=request_id,
             event_type="tool_execution",
             tool_name=tool_name,
             arguments=arguments,
             success=success,
+            execution_time_ms=execution_time_ms,
+            tool_runtime_ms=tool_runtime_ms,
+            execution_time=execution_time_ms,
+            tool_runtime=tool_runtime_ms,
+            tool_failures=self.tool_failures.get(tool_name, 0),
             output=output[:200] if output else None,  # Truncate long outputs
             error=error,
             **kwargs,

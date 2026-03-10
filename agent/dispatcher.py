@@ -1,5 +1,7 @@
 """Dispatcher for routing SMS requests to appropriate tools"""
 
+import asyncio
+import time
 import uuid
 from typing import Optional, Dict, Any
 
@@ -16,14 +18,22 @@ except ImportError:
 class RequestContext:
     """Context object for a single request"""
     
-    def __init__(self, sender: str, raw_message: str, workspace: Any, 
-                 allowed_directories: list, allowed_tools: Optional[list] = None):
+    def __init__(
+        self,
+        sender: str,
+        raw_message: str,
+        workspace: Any,
+        allowed_directories: list,
+        allowed_tools: Optional[list] = None,
+        tool_timeout_seconds: float = 10.0,
+    ):
         self.request_id = str(uuid.uuid4())[:8]
         self.sender = sender
         self.raw_message = raw_message
         self.workspace = workspace
         self.allowed_directories = allowed_directories
         self.allowed_tools = allowed_tools
+        self.tool_timeout_seconds = float(tool_timeout_seconds)
         self.interpreted_tool = None
         self.interpreted_args = None
         self.confidence = 0.0
@@ -54,6 +64,7 @@ class Dispatcher:
         """
         trace = {
             "raw_request": context.raw_message,
+            "intent_classification": None,
             "interpreted_intent": None,
             "interpreted_args": {},
             "confidence": 0.0,
@@ -71,11 +82,15 @@ class Dispatcher:
         )
         
         # Try to interpret message
-        tool_name, args, confidence = self.interpreter.interpret(context.raw_message)
+        parsed = self.interpreter.parse_to_dict(context.raw_message)
+        tool_name = parsed.get("tool")
+        args = parsed.get("args", {})
+        confidence = parsed.get("confidence", 0.0)
         
         context.interpreted_tool = tool_name
         context.interpreted_args = args
         context.confidence = confidence
+        trace["intent_classification"] = parsed.get("intent")
         trace["interpreted_intent"] = tool_name
         trace["interpreted_args"] = args
         trace["confidence"] = confidence
@@ -162,7 +177,12 @@ class Dispatcher:
                 "logger": self.logger,
             }
             
-            result = await tool.execute(args, exec_context)
+            started = time.perf_counter()
+            result = await asyncio.wait_for(
+                tool.execute(args, exec_context),
+                timeout=context.tool_timeout_seconds,
+            )
+            elapsed_ms = int((time.perf_counter() - started) * 1000)
             
             # Log execution
             self.logger.log_tool_execution(
@@ -170,6 +190,8 @@ class Dispatcher:
                 tool_name=tool_name,
                 arguments=args,
                 success=result.success,
+                execution_time_ms=elapsed_ms,
+                tool_runtime_ms=elapsed_ms,
                 output=result.output,
                 error=result.error,
             )
@@ -199,6 +221,36 @@ class Dispatcher:
                 "trace": {
                     **trace,
                     "execution_status": "success" if result.success else "failed",
+                    "execution_time_ms": elapsed_ms,
+                },
+            }
+
+        except asyncio.TimeoutError:
+            elapsed_ms = int(context.tool_timeout_seconds * 1000)
+            self.logger.log_tool_execution(
+                request_id=context.request_id,
+                tool_name=tool_name,
+                arguments=args,
+                success=False,
+                execution_time_ms=elapsed_ms,
+                tool_runtime_ms=elapsed_ms,
+                error=f"Tool timeout after {context.tool_timeout_seconds:.0f}s",
+            )
+            self.logger.log_error(
+                request_id=context.request_id,
+                error_type="execution_timeout",
+                error_message=f"Tool '{tool_name}' timed out after {context.tool_timeout_seconds:.0f}s",
+            )
+            return {
+                "success": False,
+                "tool_name": tool_name,
+                "output": None,
+                "error": f"Tool timeout after {context.tool_timeout_seconds:.0f}s",
+                "request_id": context.request_id,
+                "trace": {
+                    **trace,
+                    "execution_status": "failed",
+                    "execution_time_ms": elapsed_ms,
                 },
             }
         

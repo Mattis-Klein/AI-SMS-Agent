@@ -61,3 +61,12 @@ class Config:
     def get_security_config(self) -> Dict[str, Any]:
         """Get security configuration"""
         return self.get("security", {})
+
+    def get_tool_timeout_seconds(self) -> float:
+        """Get tool execution timeout in seconds."""
+        timeout = self.get("security.tool_timeout_seconds", 10)
+        try:
+            timeout_val = float(timeout)
+        except (TypeError, ValueError):
+            return 10.0
+        return max(1.0, timeout_val)

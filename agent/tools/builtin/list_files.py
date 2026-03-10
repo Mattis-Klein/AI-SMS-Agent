@@ -73,17 +73,22 @@ class ListFilesTool(Tool):
     def _validate_path(self, user_path: str, workspace: Path, allowed_dirs: list) -> tuple[bool, str]:
         """Validate path is within workspace or explicitly configured safe directories only."""
         try:
-            # Check workspace-relative path first
-            resolved = (workspace / user_path).resolve()
-            if workspace in resolved.parents or resolved == workspace:
-                return True, str(resolved)
-            
-            # Check allowed directories
+            resolved_workspace = workspace.resolve()
+
+            # Check workspace-relative path first.
+            resolved_relative = (resolved_workspace / user_path).resolve()
+            if resolved_relative.is_relative_to(resolved_workspace):
+                return True, str(resolved_relative)
+
+            # Check explicit allowed directories.
             resolved = Path(user_path).resolve()
-            for allowed_dir in allowed_dirs:
-                allowed = Path(allowed_dir).resolve() if isinstance(allowed_dir, str) else allowed_dir
-                if allowed in resolved.parents or resolved == allowed:
-                    return True, str(resolved)
+            normalized_allowed = [
+                Path(allowed_dir).resolve() if isinstance(allowed_dir, str) else allowed_dir.resolve()
+                for allowed_dir in allowed_dirs
+            ]
+
+            if any(resolved.is_relative_to(allowed) for allowed in normalized_allowed):
+                return True, str(resolved)
             
             return False, "Path is not in allowed directories"
         except Exception as e:
