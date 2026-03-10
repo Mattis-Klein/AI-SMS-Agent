@@ -1,53 +1,312 @@
-# AI SMS Agent
+# AI-SMS-Agent
 
-**Control your computer safely from a flip phone using SMS messages.**
+**Control your computer from SMS using a tool-based AI agent.**
 
-AI SMS Agent is a secure, local SMS-controlled system that lets you execute pre-approved commands on your Windows PC via text messages. The system uses a command whitelist, path validation, and structured logging to ensure safe operation.
+AI-SMS-Agent is a secure, local AI system that interprets SMS messages, maps them to allowed tools, executes them safely, and returns results via text. It features a clean tool registry architecture, natural language interpretation, and structured logging for full observability and audit trails.
 
-## 🏗️ Architecture Overview
+## ✨ What's New in v2.0
 
-The system connects your flip phone to your computer through a secure chain:
+- **Tool-Based Architecture**: Clean, modular system where each capability is a defined tool
+- **Natural Language Support**: SMS messages like "check my inbox" or "show CPU" are automatically mapped to tools
+- **Tool Registry**: Extensible system for adding new tools
+- **Structured Logging**: Full request lifecycle tracking with JSON logs
+- **Improved Dispatcher**: Smart routing through tool system with input validation
+- **Cleaner API**: Separate `/execute` and `/execute-nl` endpoints
+
+## 🎯 Core Concept: Tools
+
+Everything the agent does is expressed as a **tool**:
 
 ```
-📱 Flip Phone (SMS)
-   ↓
-☁️ Twilio (SMS Gateway)
-   ↓
-🌐 Cloudflare Tunnel (Secure Public Access)
-   ↓
-🌉 SMS Bridge (Node.js Express)
-   ↓
+Tool = { name, description, input schema, validation, execution }
+
+Examples:
+  - dir_inbox: List files in inbox folder
+  - cpu_usage: Check current CPU usage
+  - list_files: List files in a directory (requires path argument)
+  - system_info: Get OS name, version, memory info
+  - current_time: Get current date/time
+```
+
+When you send an SMS:
+
+```
+"Check my inbox"
+  ↓
+[Natural Language Interpreter]
+  ↓
+Tool: dir_inbox
+  ↓
+[Validate & Execute]
+  ↓
+"Directory listing: file1.txt, file2.txt"
+```
+
+## 🏗️ Architecture
+
+```
+SMS Request
+    ↓
+📱 SMS Bridge (Node.js)
+  - Validates Twilio signature
+  - Checks sender allowlist
+    ↓
 🤖 FastAPI Agent (Python)
-   ↓
-💻 Local Computer (Controlled Commands)
-   ↓
-📨 Response flows back through the chain
+  - POST /execute-nl (natural language)
+  - POST /execute (direct tool)
+    ↓
+📋 Dispatcher
+  - Logs request
+  - Routes to interpreter or tool
+    ↓
+🔍 Interpreter (for natural language)
+  - Pattern matches message
+  - Extracts arguments
+  - Maps to tool name
+    ↓
+🛠️ Tool Registry
+  - Holds all available tools
+  - Validates inputs
+  - Executes selected tool
+    ↓
+📝 Structured Logger
+  - Records all events as JSON
+  - Tracks full request lifecycle
+  - Enables audit trail
+    ↓
+📞 Response sent via SMS
 ```
 
-**How it works:**
-1. You send an SMS from your flip phone to your Twilio number
-2. Twilio forwards the webhook through a Cloudflare Tunnel
-3. The Node.js SMS bridge receives and validates the request
-4. The bridge forwards the command to the FastAPI agent
-5. The agent validates the command against the whitelist and executes it safely
-6. Results flow back through the bridge and Twilio to your phone
+**Full flow documentation**: See [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-## 🔐 Security Features
+## 🔐 Security Model
 
-- **Command Whitelist**: Only pre-approved commands can execute
-- **Path Validation**: File access restricted to allowed directories
-- **Sender Validation**: Only authorized phone numbers can send commands
-- **Twilio Signature Verification**: Prevents unauthorized webhook access
-- **File Extension Blocking**: Dangerous file types (.exe, .bat, etc.) are blocked
-- **Structured Logging**: Every action is logged with timestamp, sender, and result
-- **No Arbitrary Code**: System cannot execute arbitrary commands
+### Three Layers of Validation
 
-## ⚡ Quick Start
+1. **Bridge Level**
+   - Twilio signature validation (prevents spoofing)
+   - Sender allowlist (only known numbers)
 
-Launch the entire system with one command:
+2. **Agent Level**
+   - API key authentication
+   - Tool allowlist (optional: restrict to subset of tools)
+   - Input schema validation
 
-```powershell
-.\scripts\start-all.ps1
+3. **Tool Level**
+   - Path validation (files only in allowed directories)
+   - Timeout enforcement (max 30 seconds per execution)
+   - Error encapsulation (failures are safe and logged)
+
+### What's NOT Allowed
+
+- ❌ Arbitrary command execution (no shell access)
+- ❌ Access to system files outside allowed directories
+- ❌ Execution of .exe, .bat, .cmd, .ps1, .vbs, .js files
+- ❌ File operations exceeding 10MB size limit
+- ❌ Requests from non-approved phone numbers
+
+## 📚 Available Tools
+
+10 built-in tools for system monitoring:
+
+| Tool | Args | Purpose |
+|------|------|---------|
+| `dir_inbox` | none | List files in inbox folder |
+| `dir_outbox` | none | List files in outbox folder |
+| `list_files` | path | List files in directory |
+| `system_info` | none | OS name, version, memory |
+| `cpu_usage` | none | Current CPU percentage |
+| `disk_space` | none | C: drive free/total space |
+| `current_time` | none | System date and time |
+| `network_status` | none | Network IP configuration |
+| `list_processes` | none | Top 10 running processes |
+| `uptime` | none | System uptime in hours |
+
+**Full tool documentation**: See [TOOLS.md](docs/TOOLS.md)
+
+## 🚀 Quick Start
+
+### 1. Clone and Setup
+
+```bash
+git clone https://github.com/mattis-klein/AI-SMS-Agent.git
+cd AI-SMS-Agent
+```
+
+### 2. Create Environment Files
+
+**agent/.env**:
+
+```
+AGENT_API_KEY=super-secret-key-12345
+AGENT_WORKSPACE=agent/workspace
+```
+
+**sms-bridge/.env**:
+
+```
+AGENT_KEY=super-secret-key-12345
+AGENT_URL=http://127.0.0.1:8787
+BRIDGE_PORT=34567
+TWILIO_AUTH_TOKEN=your-twilio-auth-token
+PUBLIC_BASE_URL=https://your-public-url.com
+ALLOWED_SMS_FROM=+15551234567
+```
+
+### 3. Install Dependencies
+
+**Agent** (Python 3.10+):
+
+```bash
+cd agent
+pip install fastapi uvicorn pydantic psutil python-dotenv
+```
+
+**Bridge** (Node.js 18+):
+
+```bash
+cd sms-bridge
+npm install
+```
+
+### 4. Run Both Services
+
+**Terminal 1 - Agent**:
+
+```bash
+cd agent
+python -m uvicorn agent:app --host 127.0.0.1 --port 8787
+```
+
+**Terminal 2 - SMS Bridge**:
+
+```bash
+cd sms-bridge
+node sms-server.js
+```
+
+### 5. Test via API
+
+```bash
+# Via direct tool execution
+curl -X POST http://localhost:8787/execute \
+  -H "x-api-key: super-secret-key-12345" \
+  -H "x-sender: +15551234567" \
+  -H "Content-Type: application/json" \
+  -d '{"tool_name": "system_info", "args": {}}'
+
+# Via natural language
+curl -X POST http://localhost:8787/execute-nl \
+  -H "x-api-key: super-secret-key-12345" \
+  -H "x-sender: +15551234567" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "what time is it"}'
+
+# List available tools
+curl http://localhost:8787/tools \
+  -H "x-api-key: super-secret-key-12345"
+```
+
+### 6. Configure Twilio Webhook
+
+Set your Twilio webhook URL to: `https://your-public-url.com:34567/sms`
+
+Then text commands to your Twilio number from an approved phone!
+
+## 📖 Usage Examples
+
+### Via SMS
+
+```
+📱 You:    "check my inbox"
+📲 Agent:  "Directory listing: meeting.txt budget.doc notes.txt"
+
+📱 You:    "system info"
+📲 Agent:  "OS Name: Windows 11, Memory: 16 GB, Type: PC"
+
+📱 You:    "cpu usage"
+📲 Agent:  "CPU Usage: 23.5%"
+
+📱 You:    "list documents"
+📲 Agent:  "files: resume.pdf report.docx plans.xlsx"
+```
+
+### Via Direct API
+
+```bash
+# List files in a specific path
+curl -X POST http://localhost:8787/execute \
+  -H "x-api-key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool_name": "list_files",
+    "args": {"path": "C:\\Users\\Documents"}
+  }'
+```
+
+## 🔧 Configuration
+
+### agent/config.json
+
+```json
+{
+  "allowed_directories": [
+    "C:\\Users\\Public\\Documents",
+    "C:\\Users\\owner\\Documents",
+    "C:\\Projects",
+    "C:\\Temp"
+  ],
+  "allowed_tools": null,
+  "logging": {
+    "max_log_size_bytes": 5000000,
+    "log_retention_days": 30,
+    "log_level": "info"
+  },
+  "security": {
+    "max_file_size_bytes": 10485760,
+    "blocked_extensions": [".exe", ".bat", ".cmd", ".ps1", ".vbs", ".js"],
+    "require_sender_validation": true
+  }
+}
+```
+
+**Fields:**
+
+- `allowed_directories`: Paths that tools can access (file path tools)
+- `allowed_tools`: If set, only these tools are available (null = all allowed)
+- `logging.log_level`: "debug", "info", or "error"
+- `security.blocked_extensions`: File extensions that cannot be accessed
+
+## 📊 Logging & Monitoring
+
+All events logged as JSON lines:
+
+```json
+{"time": "2026-03-09T14:30:15", "request_id": "abc-123", "event_type": "request", "sender": "+15551234567", "raw_message": "check inbox"}
+{"time": "2026-03-09T14:30:15", "request_id": "abc-123", "event_type": "tool_execution", "tool_name": "dir_inbox", "success": true}
+{"time": "2026-03-09T14:30:16", "request_id": "abc-123", "event_type": "response", "status": "success"}
+```
+
+**Log Query Examples:**
+
+```bash
+# All requests from a sender
+grep '+15551234567' agent/workspace/logs/agent.log
+
+# Tool execution errors
+grep 'event_type.*error' agent/workspace/logs/agent.log
+
+# Specific request trace (all events with same ID)
+grep 'request_id=abc-123' agent/workspace/logs/agent.log
+```
+
+## 🛠️ Adding New Tools
+
+1. Create tool file in `agent/tools/builtin/your_tool.py`
+2. Implement Tool interface (validate_args, execute)
+3. Register in `agent/tools/builtin/__init__.py`
+4. Add interpretation patterns in `agent/interpreter.py`
+5. Document in TOOLS.md
 ```
 
 This automatically:

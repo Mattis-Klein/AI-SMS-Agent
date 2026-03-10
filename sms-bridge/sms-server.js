@@ -171,76 +171,16 @@ function buildTwimlMessage(message) {
 const AI_SYSTEM_PROMPT = [
     "You are an SMS-based assistant for a Windows PC.",
     "Keep replies concise because they are sent over SMS.",
-    "Use tools only when needed.",
-    "The available tools are read_file, write_file, and run_command.",
-    "Paths are relative to the local agent workspace.",
-    "The run_command tool only supports allowlisted command names exposed by the local agent.",
-    "If something cannot be done with the available tools, say so briefly."
+    "The local agent handles all tool execution and natural language interpretation.",
 ].join(" ");
 
-const AI_TOOLS = [
-    {
-        type: "function",
-        function: {
-            name: "read_file",
-            description: "Read a text file from the local agent workspace.",
-            parameters: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                    path: { type: "string", description: "Relative file path, for example inbox/todo.txt" }
-                },
-                required: ["path"]
-            }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "write_file",
-            description: "Create or overwrite a text file in the local agent workspace.",
-            parameters: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                    path: { type: "string", description: "Relative file path inside the workspace." },
-                    content: { type: "string", description: "Full text content to write." },
-                    overwrite: { type: "boolean", description: "Whether an existing file may be replaced." }
-                },
-                required: ["path", "content", "overwrite"]
-            }
-        }
-    },
-    {
-        type: "function",
-        function: {
-            name: "run_command",
-            description: "Run a named allowlisted command. Available commands: dir_inbox, dir_outbox, list_files, system_info, cpu_usage, disk_space, current_time, network_status, list_processes, uptime. Some commands like list_files require a 'path' argument.",
-            parameters: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                    name: { type: "string", description: "Allowlisted command name." },
-                    args: {
-                        type: "object",
-                        description: "Optional arguments for the command. For list_files, include 'path'.",
-                        properties: {
-                            path: { type: "string", description: "Path argument for commands that require it (e.g., list_files)" }
-                        }
-                    }
-                },
-                required: ["name"]
-            }
-        }
-    }
-];
 
 async function postJson(endpoint, payload, requestId, sender = null) {
     logBridgeEvent({
         requestId,
         stage: "agent_request",
         endpoint,
-        payload,
+        payload: truncateText(JSON.stringify(payload), 1000),
         sender
     });
 
@@ -269,7 +209,7 @@ async function postJson(endpoint, payload, requestId, sender = null) {
             endpoint,
             ok: response.ok,
             status: response.status,
-            data: parsed
+            data: truncateText(JSON.stringify(parsed), 1500)
         });
         return { ok: response.ok, status: response.status, data: parsed };
     } catch {
@@ -286,43 +226,54 @@ async function postJson(endpoint, payload, requestId, sender = null) {
     }
 }
 
+async function callAgentExecuteTool(toolName, args, requestId, sender = null) {
+    return postJson("/execute", { tool_name: toolName, args }, requestId, sender);
+}
+
+async function callAgentExecuteNaturalLanguage(message, requestId, sender = null) {
+    return postJson("/execute-nl", { message }, requestId, sender);
+}
+
+// Legacy compatibility functions (forward to new endpoints)
 async function callAgentRun(name, requestId, sender = null, args = {}) {
-    return postJson("/run", { name, args }, requestId, sender);
-}
-
-async function callAgentRead(filePath, requestId, sender = null) {
-    return postJson("/read", { path: filePath }, requestId, sender);
-}
-
-async function callAgentWrite(filePath, content, overwrite, requestId, sender = null) {
-    return postJson("/write", { path: filePath, content, overwrite }, requestId, sender);
+    return callAgentExecuteTool(name, args, requestId, sender);
 }
 
 async function executeAiTool(toolName, args, requestId, sender = null) {
-    if (toolName === "read_file") {
-        return callAgentRead(args.path, requestId, sender);
-    }
-
-    if (toolName === "write_file") {
-        return callAgentWrite(args.path, args.content, Boolean(args.overwrite), requestId, sender);
-    }
-
-    if (toolName === "run_command") {
-        return callAgentRun(args.name, requestId, sender, args.args || {});
-    }
-
+    // Deprecated: This function is kept for backward compatibility only.
+    // The agent now handles tool execution directly.
     return {
         ok: false,
         status: 400,
-        data: { detail: `Unknown AI tool: ${toolName}` }
+        data: { detail: "Direct AI tool execution is no longer supported. Use /execute-nl for natural language." }
     };
+}
+
+async function buildAiReply(message, from, requestId) {
+    // Simply forward to agent's natural language interpreter
+    const result = await callAgentExecuteNaturalLanguage(message, requestId, from);
+    
+    if (!result.ok) {
+        return formatAgentError(result);
+    }
+    
+    const output = result.data.output || "";
+    const error = result.data.error || "";
+    
+    if (result.data.success) {
+        return output || "Command executed successfully.";
+    } else {
+        return error || "Command failed.";
+    }
 }
 
 function formatAgentError(result) {
     if (result.data && result.data.detail) {
         return `Agent error (${result.status}): ${result.data.detail}`;
     }
-
+    if (result.data && result.data.error) {
+        return `Error: ${result.data.error}`;
+    }
     return `Agent error (${result.status}): ${JSON.stringify(result.data)}`;
 }
 
@@ -331,117 +282,15 @@ function formatHelp() {
         "Commands:",
         "hello - Test connection",
         "help - Show this help",
-        "commands - List all available commands",
-        "run <name> - Run a whitelisted command",
+        "tools - List available tools",
+        "run <name> - Run a tool",
         "  Examples: run system_info, run cpu_usage, run dir_inbox",
-        "list <path> - List files in directory",
-        "  Example: list C:\\Projects",
-        "read <path> - Read a file",
-        "  Example: read inbox/notes.txt",
-        "write <path> :: <text> - Write to file",
-        "overwrite <path> :: <text> - Overwrite file",
+        "list <path> - List files",
+        "  Example: list C:\\Users\\Documents",
         "",
-        "Or just send plain English - AI will help when OpenAI is configured."
+        "Or send natural language requests - agent will interpret:"
+        "  'check my inbox', 'show cpu', 'what time is it'"
     ].join("\n");
-}
-
-function shouldUseAi(lowerMessage) {
-    if (!openai) {
-        return false;
-    }
-
-    return !(
-        lowerMessage === "hello" ||
-        lowerMessage === "help" ||
-        lowerMessage === "commands" ||
-        lowerMessage.startsWith("run ") ||
-        lowerMessage.startsWith("list ") ||
-        lowerMessage.startsWith("read ") ||
-        lowerMessage.startsWith("write ") ||
-        lowerMessage.startsWith("overwrite ")
-    );
-}
-
-async function buildAiReply(message, from, requestId) {
-    const messages = [
-        { role: "system", content: AI_SYSTEM_PROMPT },
-        { role: "user", content: `Sender: ${from}\nMessage: ${message}` }
-    ];
-
-    for (let round = 0; round < AI_MAX_TOOL_ROUNDS; round += 1) {
-        logBridgeEvent({
-            requestId,
-            stage: "ai_request",
-            model: OPENAI_MODEL,
-            round: round + 1,
-            messages: messages.map((entry) => ({
-                role: entry.role,
-                content: truncateText(typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content), 1500),
-                tool_call_id: entry.tool_call_id,
-                name: entry.name
-            }))
-        });
-
-        const response = await openai.chat.completions.create({
-            model: OPENAI_MODEL,
-            messages,
-            tools: AI_TOOLS,
-            tool_choice: "auto"
-        });
-
-        const choice = response.choices[0];
-        const assistantMessage = choice.message;
-
-        logBridgeEvent({
-            requestId,
-            stage: "ai_response",
-            model: OPENAI_MODEL,
-            round: round + 1,
-            finishReason: choice.finish_reason,
-            content: truncateText(assistantMessage.content || "", 1500),
-            toolCalls: (assistantMessage.tool_calls || []).map((toolCall) => ({
-                id: toolCall.id,
-                name: toolCall.function.name,
-                arguments: truncateText(toolCall.function.arguments || "", 1500)
-            }))
-        });
-
-        messages.push(assistantMessage);
-
-        if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
-            return assistantMessage.content || "I could not produce a reply.";
-        }
-
-        for (const toolCall of assistantMessage.tool_calls) {
-            let toolArgs;
-            try {
-                toolArgs = JSON.parse(toolCall.function.arguments || "{}");
-            } catch (error) {
-                const toolError = `Invalid tool arguments for ${toolCall.function.name}: ${error.message}`;
-                logBridgeEvent({
-                    requestId,
-                    stage: "ai_tool_error",
-                    tool: toolCall.function.name,
-                    error: toolError
-                });
-                messages.push({
-                    role: "tool",
-                    tool_call_id: toolCall.id,
-                    content: JSON.stringify({ ok: false, error: toolError })
-                });
-                continue;
-            }
-
-            const toolResult = await executeAiTool(toolCall.function.name, toolArgs, requestId, from);
-            messages.push({
-                role: "tool",
-                tool_call_id: toolCall.id,
-                content: JSON.stringify(toolResult)
-            });
-        }
-    }
-
-    return "I hit the tool-call limit before finishing the request.";
 }
 
 async function buildReply(message, requestId, from) {
@@ -452,6 +301,7 @@ async function buildReply(message, requestId, from) {
         return "Empty message.";
     }
 
+    // Handle special commands
     if (lower === "hello") {
         return "Hi. SMS link is working.";
     }
@@ -460,10 +310,10 @@ async function buildReply(message, requestId, from) {
         return formatHelp();
     }
 
-    // New commands command - list available commands
-    if (lower === "commands") {
+    // List available tools
+    if (lower === "tools") {
         try {
-            const response = await fetch(`${AGENT_URL}/commands`, {
+            const response = await fetch(`${AGENT_URL}/tools`, {
                 method: "GET",
                 headers: {
                     "x-api-key": AGENT_API_KEY,
@@ -474,90 +324,61 @@ async function buildReply(message, requestId, from) {
 
             if (response.ok) {
                 const data = await response.json();
-                const cmdList = Object.entries(data.commands)
+                const toolList = Object.entries(data.tools)
                     .map(([name, info]) => `${name}: ${info.description}`)
                     .join("\n");
-                return `Available commands:\n${cmdList}`;
+                return `Available tools:\n${toolList}`;
             } else {
-                return "Could not fetch command list.";
+                return "Could not fetch tool list.";
             }
         } catch (error) {
-            return `Error fetching commands: ${error.message}`;
+            return `Error fetching tools: ${error.message}`;
         }
     }
 
-    if (shouldUseAi(lower)) {
-        return buildAiReply(normalized, from, requestId);
+    // Handle "run <name>" command
+    if (lower.startsWith("run ")) {
+        const toolName = normalized.slice(4).trim();
+        if (!toolName) {
+            return "Please specify a tool name. Example: run system_info";
+        }
+        const result = await callAgentExecuteTool(toolName, {}, requestId, from);
+        if (!result.ok) {
+            return formatAgentError(result);
+        }
+        const output = result.data.output || "";
+        return output || `${toolName} executed successfully.`;
     }
 
-    // Handle "list <path>" as shorthand for "run list_files" with path argument
+    // Handle "list <path>" command
     if (lower.startsWith("list ")) {
         const path = normalized.slice(5).trim();
         if (!path) {
             return "Please specify a path. Example: list C:\\Projects";
         }
-        const result = await callAgentRun("list_files", requestId, from, { path });
+        const result = await callAgentExecuteTool("list_files", { path }, requestId, from);
         if (!result.ok) {
             return formatAgentError(result);
         }
-        const stdout = (result.data.stdout || "").trim();
-        const stderr = (result.data.stderr || "").trim();
-        return stdout || stderr || `Listed ${path}`;
+        const output = result.data.output || "";
+        return output || `Listed files in ${path}.`;
     }
 
-    if (lower.startsWith("run ")) {
-        const commandName = normalized.slice(4).trim();
-        const result = await callAgentRun(commandName, requestId, from, {});
-        if (!result.ok) {
-            return formatAgentError(result);
-        }
-
-        const stdout = (result.data.stdout || "").trim();
-        const stderr = (result.data.stderr || "").trim();
-        return stdout || stderr || `${commandName} ran successfully.`;
+    // Forward any other message to natural language interpreter
+    const result = await callAgentExecuteNaturalLanguage(normalized, requestId, from);
+    
+    if (!result.ok) {
+        return formatAgentError(result);
     }
-
-    if (lower.startsWith("read ")) {
-        const filePath = normalized.slice(5).trim();
-        const result = await callAgentRead(filePath, requestId, from);
-        if (!result.ok) {
-            return formatAgentError(result);
-        }
-
-        const content = (result.data.content || "").trim();
-        return content || `${filePath} is empty.`;
+    
+    const output = result.data.output || "";
+    const error = result.data.error || "";
+    
+    if (result.data.success) {
+        return output || "Command executed successfully.";
+    } else {
+        return error || "Could not process your request. Text HELP for available commands.";
     }
-
-    if (lower.startsWith("write ") || lower.startsWith("overwrite ")) {
-        const overwrite = lower.startsWith("overwrite ");
-        const prefixLength = overwrite ? "overwrite ".length : "write ".length;
-        const body = normalized.slice(prefixLength);
-        const separator = body.indexOf("::");
-
-        if (separator === -1) {
-            return "Use write path :: text or overwrite path :: text";
-        }
-
-        const filePath = body.slice(0, separator).trim();
-        const content = body.slice(separator + 2).trim();
-
-        if (!filePath) {
-            return "A file path is required.";
-        }
-
-        const result = await callAgentWrite(filePath, content, overwrite, requestId, from);
-        if (!result.ok) {
-            return formatAgentError(result);
-        }
-
-        return `Saved ${filePath}`;
-    }
-
-    if (!openai) {
-        return "AI is not configured yet. Text HELP for fixed commands or set OPENAI_API_KEY in sms-bridge/.env.";
-    }
-
-    return "Command not recognized. Text HELP for the current command list.";
 }
 
 app.get("/", (req, res) => {
