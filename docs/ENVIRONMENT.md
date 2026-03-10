@@ -74,10 +74,53 @@ agent/workspace/
 
 ### Optional Variables
 
-Currently, only required variables are listed. Future versions may add:
-- Rate limiting settings
-- Log level controls
-- Debug mode
+#### `LOCAL_APP_PIN`
+
+**Type:** String  
+**Required:** Yes (desktop app)
+
+PIN required to unlock Mashbak Desktop on startup.
+
+**Example:**
+```
+LOCAL_APP_PIN=5421
+```
+
+**Rules:**
+- Desktop starts locked until this PIN is entered
+- Do not commit real PIN values to git
+
+---
+
+#### `OPENAI_API_KEY`
+
+**Type:** String (secret)  
+**Required:** Yes (desktop freeform chat)
+
+API key used by desktop app for freeform AI chat after unlock.
+
+**Example:**
+```
+OPENAI_API_KEY=sk-proj-abc123...
+```
+
+**Rules:**
+- Stored in `agent/.env` or process environment
+- Required by desktop startup for freeform chat mode
+
+---
+
+#### `OPENAI_MODEL`
+
+**Type:** String  
+**Required:** No (default: `gpt-4.1-mini`)
+
+Model used by desktop freeform AI chat.
+
+**Example:**
+```
+OPENAI_MODEL=gpt-4.1-mini
+```
 
 ---
 

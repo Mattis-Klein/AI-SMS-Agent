@@ -4,6 +4,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Text, Tk
@@ -13,21 +14,28 @@ from widgets import action_bar, add_refresh_button, labeled_text_area, set_text
 
 
 class DesktopControlApp:
-    def __init__(self, root: Tk, client, runtime_summary: dict):
+    def __init__(self, root: Tk, client, runtime_summary: dict, local_app_pin: str, openai_api_key: str, openai_model: str):
         self.root = root
         self.root.title("Mashbak Desktop")
         self.root.geometry("1320x820")
 
         self.client = client
         self.runtime_summary = runtime_summary
+        self.local_app_pin = local_app_pin
+        self.openai_api_key = openai_api_key
+        self.openai_model = openai_model
         self.activity = []
         self.chat_history: list[str] = []
+        self.quick_buttons: list[ttk.Button] = []
+        self.is_unlocked = False
 
         workspace = Path(runtime_summary["workspace"])
         self.agent_log_file = workspace / "logs" / "agent.log"
         self.bridge_log_file = workspace.parent.parent / "sms-bridge" / "logs" / "bridge.log"
 
         self._build_ui()
+        self._set_interaction_enabled(False)
+        set_text(self.details_text, "Desktop is locked. Enter PIN to unlock.")
         self.refresh_status()
         self.refresh_logs()
 
@@ -35,6 +43,17 @@ class DesktopControlApp:
         header = ttk.Frame(self.root, padding=(12, 10))
         header.pack(fill=X)
         ttk.Label(header, text="Mashbak Desktop", font=("Segoe UI", 14, "bold")).pack(side=LEFT)
+
+        lock_bar = ttk.Frame(header)
+        lock_bar.pack(side=RIGHT, padx=(16, 0))
+        self.lock_status = ttk.Label(lock_bar, text="Locked")
+        self.lock_status.pack(side=LEFT, padx=(0, 6))
+        self.pin_entry = ttk.Entry(lock_bar, width=10, show="*")
+        self.pin_entry.pack(side=LEFT, padx=(0, 6))
+        self.pin_entry.bind("<Return>", lambda _event: self.unlock_app())
+        self.unlock_button = ttk.Button(lock_bar, text="Unlock", command=self.unlock_app)
+        self.unlock_button.pack(side=LEFT)
+
         self.agent_badge = ttk.Label(header, text="Agent: checking...")
         self.agent_badge.pack(side=RIGHT, padx=(8, 0))
         self.bridge_badge = ttk.Label(header, text="Bridge: checking...")
@@ -66,7 +85,9 @@ class DesktopControlApp:
             ("List Processes", "show running processes"),
             ("Current Time", "what time is it"),
         ]:
-            ttk.Button(parent, text=label, command=lambda m=message: self._send_quick_command(m)).pack(fill=X, pady=2)
+            button = ttk.Button(parent, text=label, command=lambda m=message: self._send_quick_command(m))
+            button.pack(fill=X, pady=2)
+            self.quick_buttons.append(button)
 
         ttk.Separator(parent, orient="horizontal").pack(fill=X, pady=10)
         ttk.Label(parent, text="Tools", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 6))
@@ -102,11 +123,41 @@ class DesktopControlApp:
         self.bridge_logs_text = labeled_text_area(parent, "Recent Bridge Logs", height=7, wrap="none")
 
     def _send_quick_command(self, message: str) -> None:
+        if not self.is_unlocked:
+            set_text(self.details_text, "Desktop is locked. Enter PIN to unlock.")
+            return
         self.message_entry.delete(0, END)
         self.message_entry.insert(0, message)
         self.on_send()
 
+    def unlock_app(self) -> None:
+        candidate = self.pin_entry.get().strip()
+        self.pin_entry.delete(0, END)
+
+        if candidate != self.local_app_pin:
+            self.is_unlocked = False
+            self.lock_status.configure(text="Locked - wrong PIN", foreground="#b42318")
+            set_text(self.details_text, "Wrong PIN. Desktop remains locked.")
+            self._set_interaction_enabled(False)
+            return
+
+        self.is_unlocked = True
+        self.lock_status.configure(text="Unlocked", foreground="#0a7d2a")
+        set_text(self.details_text, "Unlocked. Chat is enabled.")
+        self._set_interaction_enabled(True)
+
+    def _set_interaction_enabled(self, enabled: bool) -> None:
+        state = "normal" if enabled else "disabled"
+        self.message_entry.configure(state=state)
+        self.send_button.configure(state=state)
+        for button in self.quick_buttons:
+            button.configure(state=state)
+
     def on_send(self) -> None:
+        if not self.is_unlocked:
+            set_text(self.details_text, "Desktop is locked. Enter PIN to unlock.")
+            return
+
         message = self.message_entry.get().strip()
         if not message:
             return
@@ -120,9 +171,82 @@ class DesktopControlApp:
     def _run_message(self, message: str) -> None:
         try:
             result = self.client.execute_nl(message=message, sender="local-desktop")
+            if not result.get("success"):
+                ai_text = self._run_openai_chat(message)
+                if ai_text:
+                    ai_result = {
+                        "success": True,
+                        "tool_name": "ai_chat",
+                        "output": ai_text,
+                        "request_id": result.get("request_id"),
+                        "trace": {
+                            "raw_request": message,
+                            "intent_classification": "chat",
+                            "interpreted_intent": "ai_chat",
+                            "selected_tool": "ai_chat",
+                            "interpreted_args": {},
+                            "validation_status": "passed",
+                            "validated_arguments": {},
+                            "execution_status": "success",
+                            "execution_time_ms": None,
+                        },
+                    }
+                    self.root.after(0, lambda: self._display_result(message, ai_result))
+                    return
             self.root.after(0, lambda: self._display_result(message, result))
         except Exception as exc:
             self.root.after(0, lambda: self._display_error(str(exc)))
+
+    def _run_openai_chat(self, message: str) -> str | None:
+        if not self.openai_api_key:
+            return None
+
+        payload = {
+            "model": self.openai_model,
+            "input": [
+                {
+                    "role": "system",
+                    "content": [
+                        {"type": "input_text", "text": "You are Mashbak Desktop assistant. Reply clearly and concisely."}
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": message}],
+                },
+            ],
+            "max_output_tokens": 400,
+        }
+
+        data = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            "https://api.openai.com/v1/responses",
+            data=data,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.openai_api_key}",
+            },
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=25) as response:
+                parsed = json.loads(response.read().decode("utf-8", errors="replace"))
+        except Exception:
+            return None
+
+        output_text = parsed.get("output_text")
+        if output_text:
+            return output_text.strip()
+
+        for item in parsed.get("output", []):
+            if item.get("type") == "message":
+                for content in item.get("content", []):
+                    text = content.get("text")
+                    if text:
+                        return str(text).strip()
+
+        return None
 
     def _display_result(self, message: str, result: dict) -> None:
         self.send_button.configure(state="normal")
@@ -194,8 +318,25 @@ class DesktopControlApp:
         set_text(self.status_text, "\n".join(status_lines))
 
         tools_response = self.client.list_tools()
-        tools = tools_response.get("tools") or []
-        tool_lines = [f"- {item.get('name')}: {item.get('description')}" for item in tools] if tools else ["- unavailable"]
+        tools_payload = tools_response.get("tools")
+        tools = []
+        if isinstance(tools_payload, dict):
+            tools = list(tools_payload.values())
+        elif isinstance(tools_payload, list):
+            tools = tools_payload
+
+        tool_lines = []
+        for item in tools:
+            if isinstance(item, dict):
+                tool_name = item.get("name") or "unknown"
+                description = item.get("description") or ""
+                tool_lines.append(f"- {tool_name}: {description}")
+            else:
+                tool_lines.append(f"- {item}")
+
+        if not tool_lines:
+            tool_lines = ["- unavailable"]
+
         set_text(self.tools_text, "\n".join(tool_lines))
 
         config_lines = [

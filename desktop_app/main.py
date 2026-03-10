@@ -36,6 +36,28 @@ from agent_service import AgentService  # noqa: E402
 from ui import DesktopControlApp  # noqa: E402
 
 
+def _load_env_value(env_file: Path, key: str) -> str | None:
+    if not env_file.exists():
+        return None
+
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        env_key, env_value = line.split("=", 1)
+        if env_key.strip() == key:
+            value = env_value.strip()
+            return value or None
+    return None
+
+
+def _resolve_required_setting(key: str) -> str:
+    value = os.getenv(key) or _load_env_value(AGENT_DIR / ".env", key)
+    if not value:
+        raise RuntimeError(f"{key} is required. Set it in agent/.env or the environment.")
+    return value
+
+
 def schedule_refresh(app: DesktopControlApp) -> None:
     app.refresh_status()
     app.refresh_logs()
@@ -89,6 +111,10 @@ def main() -> None:
     service.start()
 
     os.environ.setdefault("AGENT_API_KEY", service.api_key)
+    local_app_pin = _resolve_required_setting("LOCAL_APP_PIN")
+    openai_api_key = _resolve_required_setting("OPENAI_API_KEY")
+    openai_model = os.getenv("OPENAI_MODEL") or _load_env_value(AGENT_DIR / ".env", "OPENAI_MODEL") or "gpt-4.1-mini"
+
     runtime = create_runtime(AGENT_DIR)
     client = AgentClient(base_url=service.base_url, api_key=service.api_key)
 
@@ -97,7 +123,14 @@ def main() -> None:
     if "vista" in style.theme_names():
         style.theme_use("vista")
 
-    app = DesktopControlApp(root, client, runtime.summary())
+    app = DesktopControlApp(
+        root,
+        client,
+        runtime.summary(),
+        local_app_pin=local_app_pin,
+        openai_api_key=openai_api_key,
+        openai_model=openai_model,
+    )
     root.after(15000, schedule_refresh, app)
     try:
         root.mainloop()
