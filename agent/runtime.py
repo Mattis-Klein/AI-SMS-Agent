@@ -6,12 +6,20 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from config import Config
-from logger import StructuredLogger
-from tools import ToolRegistry
-from tools.builtin import ALL_BUILTIN_TOOLS
-from dispatcher import Dispatcher, RequestContext
-from interpreter import NaturalLanguageInterpreter
+try:
+    from .config import Config
+    from .logger import StructuredLogger
+    from .tools import ToolRegistry
+    from .tools.builtin import ALL_BUILTIN_TOOLS
+    from .dispatcher import Dispatcher, RequestContext
+    from .interpreter import NaturalLanguageInterpreter
+except ImportError:
+    from config import Config
+    from logger import StructuredLogger
+    from tools import ToolRegistry
+    from tools.builtin import ALL_BUILTIN_TOOLS
+    from dispatcher import Dispatcher, RequestContext
+    from interpreter import NaturalLanguageInterpreter
 
 
 def load_env_file(env_path: Path) -> None:

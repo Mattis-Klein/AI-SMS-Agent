@@ -26,7 +26,7 @@ class DirOutboxTool(Tool):
             
             outbox_path = str(workspace / "outbox")
             result = subprocess.run(
-                ["cmd", "/c", f"dir \"{outbox_path}\""],
+                ["cmd", "/c", "dir", outbox_path],
                 capture_output=True,
                 text=True,
                 timeout=10,

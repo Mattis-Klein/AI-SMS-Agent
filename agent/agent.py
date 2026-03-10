@@ -11,7 +11,10 @@ from typing import Optional
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-from runtime import create_runtime
+try:
+    from .runtime import create_runtime
+except ImportError:
+    from runtime import create_runtime
 
 
 # ============================================================================

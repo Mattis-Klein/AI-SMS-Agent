@@ -26,7 +26,7 @@ class DirInboxTool(Tool):
             
             inbox_path = str(workspace / "inbox")
             result = subprocess.run(
-                ["cmd", "/c", f"dir \"{inbox_path}\""],
+                ["cmd", "/c", "dir", inbox_path],
                 capture_output=True,
                 text=True,
                 timeout=10,

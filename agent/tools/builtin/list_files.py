@@ -37,7 +37,7 @@ class ListFilesTool(Tool):
                 return ToolResult(success=False, output="", error=resolved_path, tool_name=self.name)
             
             result = subprocess.run(
-                ["cmd", "/c", f"dir \"{resolved_path}\""],
+                ["cmd", "/c", "dir", resolved_path],
                 capture_output=True,
                 text=True,
                 timeout=10,
