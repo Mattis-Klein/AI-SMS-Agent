@@ -138,15 +138,38 @@ function isAllowedSender(from) {
     return ALLOWED_SMS_FROM.has(normalizePhoneNumber(from));
 }
 
-function getRequestUrl(req) {
+function getRequestUrlCandidates(req) {
+    const candidates = [];
+
     if (PUBLIC_BASE_URL) {
-        return `${PUBLIC_BASE_URL}${req.originalUrl}`;
+        candidates.push(`${PUBLIC_BASE_URL}${req.originalUrl}`);
     }
 
-    const forwardedProtocol = (req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-    const protocol = forwardedProtocol || req.protocol || "https";
-    const host = req.headers["x-forwarded-host"] || req.get("host");
-    return `${protocol}://${host}${req.originalUrl}`;
+    const forwardedProto = (req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const forwardedHost = (req.headers["x-forwarded-host"] || "").split(",")[0].trim();
+    const originalHost = (req.headers["x-original-host"] || "").split(",")[0].trim();
+    const host = req.get("host");
+
+    const protocolOptions = [
+        forwardedProto,
+        req.protocol,
+        "https",
+        "http",
+    ].filter(Boolean);
+
+    const hostOptions = [
+        forwardedHost,
+        originalHost,
+        host,
+    ].filter(Boolean);
+
+    for (const protocol of protocolOptions) {
+        for (const candidateHost of hostOptions) {
+            candidates.push(`${protocol}://${candidateHost}${req.originalUrl}`);
+        }
+    }
+
+    return Array.from(new Set(candidates));
 }
 
 function isValidTwilioRequest(req) {
@@ -159,7 +182,14 @@ function isValidTwilioRequest(req) {
         return false;
     }
 
-    return twilio.validateRequest(TWILIO_AUTH_TOKEN, signature, getRequestUrl(req), req.body || {});
+    const urls = getRequestUrlCandidates(req);
+    for (const url of urls) {
+        if (twilio.validateRequest(TWILIO_AUTH_TOKEN, signature, url, req.body || {})) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function buildTwimlMessage(message) {
@@ -410,7 +440,7 @@ app.post("/sms", async (req, res) => {
         stage: "incoming_sms",
         from,
         message,
-        url: getRequestUrl(req)
+        url: getRequestUrlCandidates(req)[0] || req.originalUrl
     });
 
     if (!isValidTwilioRequest(req)) {
