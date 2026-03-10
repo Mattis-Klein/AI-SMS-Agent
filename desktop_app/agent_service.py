@@ -83,7 +83,7 @@ class AgentService:
         env.setdefault("AGENT_API_KEY", self.api_key)
         os.environ.setdefault("AGENT_API_KEY", env["AGENT_API_KEY"])
 
-        for import_path in (self.project_root, self.project_root / "agent"):
+        for import_path in (self.project_root,):
             import_path_text = str(import_path)
             if import_path_text not in sys.path:
                 sys.path.insert(0, import_path_text)

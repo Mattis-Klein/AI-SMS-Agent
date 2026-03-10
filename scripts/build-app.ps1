@@ -35,7 +35,6 @@ try {
                 "--clean" `
                 "--paths" "$repoRoot" `
                 "--paths" "desktop_app" `
-                "--hidden-import" "agent" `
                 "--hidden-import" "agent.agent" `
                 "--hidden-import" "agent.runtime" `
                 "--add-data" "agent/config.json;agent" `
@@ -54,7 +53,6 @@ try {
                 "--clean" `
                 "--paths" "$repoRoot" `
                 "--paths" "desktop_app" `
-                "--hidden-import" "agent" `
                 "--hidden-import" "agent.agent" `
                 "--hidden-import" "agent.runtime" `
                 "--add-data" "agent/config.json;agent" `

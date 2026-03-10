@@ -17,7 +17,7 @@ else:
     ROOT_DIR = Path(__file__).resolve().parent.parent
 AGENT_DIR = ROOT_DIR / "agent"
 
-for import_path in (ROOT_DIR, AGENT_DIR, ROOT_DIR / "desktop_app"):
+for import_path in (ROOT_DIR, ROOT_DIR / "desktop_app"):
     import_path_text = str(import_path)
     if import_path_text not in sys.path:
         sys.path.insert(0, import_path_text)
