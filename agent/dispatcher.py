@@ -21,6 +21,7 @@ class RequestContext:
     def __init__(
         self,
         sender: str,
+        source: str,
         raw_message: str,
         workspace: Any,
         allowed_directories: list,
@@ -29,6 +30,7 @@ class RequestContext:
     ):
         self.request_id = str(uuid.uuid4())[:8]
         self.sender = sender
+        self.source = source
         self.raw_message = raw_message
         self.workspace = workspace
         self.allowed_directories = allowed_directories
@@ -79,6 +81,7 @@ class Dispatcher:
             request_id=context.request_id,
             sender=context.sender,
             raw_message=context.raw_message,
+            source=context.source,
         )
         
         # Try to interpret message
@@ -103,6 +106,7 @@ class Dispatcher:
                 raw_message=context.raw_message,
                 interpreted_intent=tool_name,
                 confidence=confidence,
+                source=context.source,
             )
         
         # Validate tool exists

@@ -72,10 +72,36 @@ class AgentRuntime:
         self.interpreter = NaturalLanguageInterpreter()
         self.dispatcher = Dispatcher(self.registry, self.interpreter, self.logger)
 
-    async def execute_nl(self, message: str, sender: str = "unknown", request_id: Optional[str] = None) -> dict:
+    def _resolve_source(self, sender: str, source: Optional[str]) -> str:
+        if source:
+            return source.strip().lower()
+        if str(sender).lower().startswith("sms"):
+            return "sms"
+        return "desktop"
+
+    def _format_output_for_source(self, value: Optional[str], source: str, max_sms_chars: int = 320) -> Optional[str]:
+        if value is None:
+            return None
+        if source != "sms":
+            return value
+
+        compact = " ".join(str(value).split())
+        if len(compact) <= max_sms_chars:
+            return compact
+        return f"{compact[: max_sms_chars - 3]}..."
+
+    async def execute_nl(
+        self,
+        message: str,
+        sender: str = "unknown",
+        request_id: Optional[str] = None,
+        source: Optional[str] = None,
+    ) -> dict:
         """Execute a natural-language request through the shared dispatcher pipeline."""
+        request_source = self._resolve_source(sender, source)
         context = RequestContext(
             sender=sender,
+            source=request_source,
             raw_message=message,
             workspace=self.workspace,
             allowed_directories=self.config.get_allowed_directories(),
@@ -85,14 +111,30 @@ class AgentRuntime:
         if request_id:
             context.request_id = request_id
 
-        return await self.dispatcher.dispatch(context)
+        result = await self.dispatcher.dispatch(context)
+        result["output"] = self._format_output_for_source(result.get("output"), request_source)
+        result["error"] = self._format_output_for_source(result.get("error"), request_source)
+        result["source"] = request_source
+        trace = result.get("trace") or {}
+        trace["source"] = request_source
+        result["trace"] = trace
+        return result
 
-    async def execute_tool(self, tool_name: str, args: Optional[dict] = None, sender: str = "unknown", request_id: Optional[str] = None) -> dict:
+    async def execute_tool(
+        self,
+        tool_name: str,
+        args: Optional[dict] = None,
+        sender: str = "unknown",
+        request_id: Optional[str] = None,
+        source: Optional[str] = None,
+    ) -> dict:
         """Execute a specific tool through the same validation/execution path used by the API."""
         args = args or {}
+        request_source = self._resolve_source(sender, source)
 
         context = RequestContext(
             sender=sender,
+            source=request_source,
             raw_message=f"execute: {tool_name}",
             workspace=self.workspace,
             allowed_directories=self.config.get_allowed_directories(),
@@ -116,6 +158,7 @@ class AgentRuntime:
                 "request_id": context.request_id,
                 "trace": {
                     "raw_request": context.raw_message,
+                    "source": request_source,
                     "interpreted_intent": tool_name,
                     "interpreted_args": args,
                     "confidence": 1.0,
@@ -141,6 +184,7 @@ class AgentRuntime:
                 "request_id": context.request_id,
                 "trace": {
                     "raw_request": context.raw_message,
+                    "source": request_source,
                     "interpreted_intent": tool_name,
                     "interpreted_args": args,
                     "confidence": 1.0,
@@ -168,6 +212,7 @@ class AgentRuntime:
                 "request_id": context.request_id,
                 "trace": {
                     "raw_request": context.raw_message,
+                    "source": request_source,
                     "interpreted_intent": tool_name,
                     "interpreted_args": args,
                     "confidence": 1.0,
@@ -212,6 +257,7 @@ class AgentRuntime:
                 "request_id": context.request_id,
                 "trace": {
                     "raw_request": context.raw_message,
+                    "source": request_source,
                     "interpreted_intent": tool_name,
                     "interpreted_args": args,
                     "confidence": 1.0,
@@ -240,11 +286,13 @@ class AgentRuntime:
         return {
             "success": result.success,
             "tool_name": tool_name,
-            "output": result.output,
-            "error": result.error,
+            "output": self._format_output_for_source(result.output, request_source),
+            "error": self._format_output_for_source(result.error, request_source),
             "request_id": context.request_id,
+            "source": request_source,
             "trace": {
                 "raw_request": context.raw_message,
+                "source": request_source,
                 "interpreted_intent": tool_name,
                 "interpreted_args": args,
                 "confidence": 1.0,

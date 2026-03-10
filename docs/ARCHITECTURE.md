@@ -176,54 +176,41 @@ All events logged as JSON lines for easy parsing:
 
 ### 6. SMS Bridge (`sms-bridge/sms-server.js`)
 
-Node.js Express server that:
-- Receives SMS via Twilio webhook
-- Validates Twilio signature
-- Checks sender against allowlist
-- Forwards message to agent
-- Handles response formatting
-- Sends SMS reply
+Node.js Express server that stays transport-only:
+- Receives Twilio webhook requests
+- Validates Twilio signature (optional) and sender allowlist (optional)
+- Forwards non-empty messages to the shared core endpoint: `POST /execute-nl`
+- Sends TwiML SMS responses
 
-**Endpoints:**
+Bridge endpoints:
 
 ```
-GET  /health              Agent bridge status
-POST /sms                 Twilio webhook (main entry point)
-GET  /                    Health check
+GET  /health              Bridge status
+GET  /                    Basic liveness
+GET  /sms                 SMS endpoint liveness
+POST /sms                 Twilio webhook entry point
 ```
 
-### 7. FastAPI Agent (`agent/agent.py`)
+The bridge does not execute business logic locally and does not bypass the dispatcher.
 
-**New Endpoints:**
+### 7. Agent API (`agent/agent.py`)
+
+Shared backend endpoints consumed by both desktop and SMS transports:
 
 ```
-GET  /health                        Agent status
-GET  /tools                         List all available tools
-GET  /tools/{name}                  Get tool info
-POST /execute                       Execute tool directly
-POST /execute-nl                    Execute natural language request
-POST /run                           Legacy compatibility
+GET  /health
+GET  /tools
+GET  /tools/{tool_name}
+POST /execute
+POST /execute-nl
+POST /run                 (legacy compatibility)
 ```
 
-**Request Examples:**
+Source-aware behavior is provided via request headers:
+- `x-sender`: original sender identifier (desktop client or phone number)
+- `x-source`: `desktop` or `sms`
 
-Direct tool execution:
-```bash
-curl -X POST http://localhost:8787/execute \
-  -H "x-api-key: YOUR_KEY" \
-  -H "x-sender: +15551234567" \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "system_info", "args": {}}'
-```
-
-Natural language:
-```bash
-curl -X POST http://localhost:8787/execute-nl \
-  -H "x-api-key: YOUR_KEY" \
-  -H "x-sender: +15551234567" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "what time is it"}'
-```
+The same runtime pipeline handles both channels; only response formatting differs by source.
 
 ## Request Lifecycle
 

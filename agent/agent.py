@@ -103,6 +103,7 @@ async def execute_tool(
     x_api_key: str = Header(None),
     x_request_id: str = Header(None),
     x_sender: str = Header(None),
+    x_source: str = Header(None),
 ):
     """
     Execute a tool directly by name with structured arguments.
@@ -121,6 +122,7 @@ async def execute_tool(
         args=req.args,
         sender=x_sender or "unknown",
         request_id=x_request_id,
+        source=x_source,
     )
 
     if result["tool_name"] is None and "not found" in (result.get("error") or ""):
@@ -139,6 +141,7 @@ async def execute_tool(
         "output": result["output"],
         "error": result["error"],
         "request_id": result["request_id"],
+        "source": result.get("source", x_source or "unknown"),
         "trace": result.get("trace"),
     }
 
@@ -149,6 +152,7 @@ async def execute_natural_language(
     x_api_key: str = Header(None),
     x_request_id: str = Header(None),
     x_sender: str = Header(None),
+    x_source: str = Header(None),
 ):
     """
     Execute a natural language request. The system interprets the message,
@@ -164,6 +168,7 @@ async def execute_natural_language(
         message=req.message,
         sender=x_sender or "unknown",
         request_id=x_request_id,
+        source=x_source,
     )
     
     # Format response
@@ -174,6 +179,7 @@ async def execute_natural_language(
         "error": result["error"],
         "request_id": result["request_id"],
         "sender": x_sender or "unknown",
+        "source": result.get("source", x_source or "unknown"),
         "trace": result.get("trace"),
     }
 
@@ -189,6 +195,7 @@ async def run_legacy_command(
     x_api_key: str = Header(None),
     x_request_id: str = Header(None),
     x_sender: str = Header(None),
+    x_source: str = Header(None),
 ):
     """
     Legacy compatibility endpoint. Forwards to new /execute endpoint.
@@ -201,6 +208,7 @@ async def run_legacy_command(
         x_api_key=x_api_key,
         x_request_id=x_request_id,
         x_sender=x_sender,
+        x_source=x_source,
     )
 
 

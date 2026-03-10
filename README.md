@@ -1,10 +1,14 @@
 # AI-SMS-Agent
 
-**Control your computer from SMS using a tool-based AI agent.**
+**Desktop-first Windows AI assistant with optional remote SMS access through the same shared backend.**
 
-AI-SMS-Agent is a secure, local AI system that interprets SMS messages, maps them to allowed tools, executes them safely, and returns results via text. It features a clean tool registry architecture, natural language interpretation, and structured logging for full observability and audit trails.
+AI-SMS-Agent is a secure Windows desktop AI assistant with a full local interface as the primary experience. SMS is a secondary remote access channel that targets the same shared assistant core.
 
-The project also includes a local desktop control app for development/testing. The desktop app uses the same dispatcher/interpreter/tool-selection pipeline as SMS, starts the local agent automatically, and keeps local messages local (no Twilio SMS replies).
+Both desktop and SMS use one execution pipeline:
+
+transport/input -> interpreter -> dispatcher -> tool registry -> sandboxed tool execution -> result
+
+This keeps behavior consistent across channels while allowing source-aware response formatting (desktop full detail, SMS compact responses).
 
 ## ✨ What's New in v2.0
 

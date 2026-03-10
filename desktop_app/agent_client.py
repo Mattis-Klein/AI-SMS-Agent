@@ -42,6 +42,7 @@ class AgentClient:
             headers["x-api-key"] = self.api_key
         if include_sender:
             headers["x-sender"] = sender
+            headers["x-source"] = "desktop"
 
         data = None
         if body is not None:
