@@ -2,11 +2,12 @@
 
 Complete reference for all configuration variables in `.env` files.
 
-## 2026-03 Update: Context + Config-Driven Access
+## 2026-03 Update: Context + Config-Driven Access + Chat Configuration
 
 - Backend now maintains in-memory session context per sender/source and does not require persistent storage configuration.
 - Email setup guidance supports both canonical and alias variable names.
 - SMS sender access control is configured via `sms-bridge/.env` (and optional JSON config file), not hardcoded in transport logic.
+- **NEW**: Configuration variables can now be provided directly through chat using the `set_config_variable` tool.
 
 ## Two `.env` Files
 
@@ -14,6 +15,51 @@ The project has two separate configuration files:
 
 1. **`agent/.env`** - Local agent settings
 2. **`sms-bridge/.env`** - Bridge and Twilio settings
+
+### Configuration via Chat (NEW)
+
+Most variables in `agent/.env` can now be configured directly through the assistant chat without manually editing files.
+
+**How it works:**
+
+Send messages like:
+```
+EMAIL_ADDRESS = myemail@gmail.com
+EMAIL_PASSWORD = app-password-123
+EMAIL_IMAP_HOST = imap.gmail.com
+EMAIL_IMAP_PORT = 993
+```
+
+The assistant will:
+- Validate the variable name and format
+- Validate the value (email format, port numbers, etc.)
+- Save it to `agent/.env` safely
+- Persist across service restarts
+- Apply immediately on next tool execution
+
+**Supported variables for chat configuration:**
+- Email: `EMAIL_PROVIDER`, `EMAIL_IMAP_HOST`, `IMAP_SERVER`, `EMAIL_IMAP_PORT`, `IMAP_PORT`, `EMAIL_USERNAME`, `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `EMAIL_MAILBOX`, `EMAIL_USE_SSL`
+- OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`
+- Desktop: `LOCAL_APP_PIN`, `AGENT_WORKSPACE`
+- SMS Bridge: `AGENT_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
+
+**Security:**
+- Sensitive values (passwords, API keys) are validated but not echoed back in messages
+- Values are persisted to disk and survive process restarts
+- All validation happens in the backend tool system
+
+**Example workflow:**
+
+```
+User:  I need to set up email
+Assistant: Email access needs configuration. You can provide values directly...
+User: EMAIL_ADDRESS = user@example.com
+Assistant: ✓ Configuration updated: EMAIL_ADDRESS has been set.
+User: EMAIL_PASSWORD = my-password
+Assistant: ✓ Configuration updated: EMAIL_PASSWORD has been set.
+User: Show me my recent emails
+Assistant: [emails now load successfully]
+```
 
 ---
 

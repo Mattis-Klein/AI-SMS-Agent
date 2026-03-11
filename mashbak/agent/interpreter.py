@@ -17,6 +17,16 @@ class ParsedRequest:
 class NaturalLanguageInterpreter:
     """Maps natural language SMS to tool calls"""
     
+    # Known configuration variables for detection
+    CONFIG_VARIABLES = {
+        "OPENAI_API_KEY", "OPENAI_MODEL",
+        "EMAIL_PROVIDER", "EMAIL_IMAP_HOST", "EMAIL_IMAP_PORT",
+        "EMAIL_USERNAME", "EMAIL_PASSWORD", "EMAIL_MAILBOX", "EMAIL_USE_SSL",
+        "IMAP_SERVER", "IMAP_PORT", "EMAIL_ADDRESS",
+        "AGENT_API_KEY", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER",
+        "LOCAL_APP_PIN", "AGENT_WORKSPACE",
+    }
+    
     def __init__(self):
         # Map patterns to (tool_name, args_extractor_fn)
         self.patterns = [
@@ -100,11 +110,87 @@ class NaturalLanguageInterpreter:
 
     def parse(self, message: str) -> ParsedRequest:
         """Two-stage parse result used by dispatcher and future model upgrades."""
+        
+        # Check for configuration variable assignment first
+        config_result = self._detect_config_variable(message)
+        if config_result[0]:  # Found config variable
+            return ParsedRequest(
+                intent="configuration",
+                tool=config_result[0],
+                args=config_result[1],
+                confidence=config_result[2],
+                mode="tool"
+            )
+        
         intent = self.classify_intent(message)
         tool_name, match, confidence = self.select_tool(message, intent)
         args = self.extract_args(tool_name, match)
         mode = "tool" if tool_name else ("explanation" if intent == "explanation" else "conversation")
         return ParsedRequest(intent=intent, tool=tool_name, args=args, confidence=confidence, mode=mode)
+
+    def parse_to_dict(self, message: str, context: Optional[dict[str, Any]] = None) -> dict:
+        """Return structured parse in tool/args format."""
+        parsed = self.parse(message)
+        context = context or {}
+        followup_topic = self._infer_followup_topic(message, parsed, context)
+        entities = self._extract_entities(parsed.tool, parsed.args)
+        topic = self._infer_topic(parsed.intent, parsed.tool, parsed.args)
+        if followup_topic and not topic:
+            topic = followup_topic
+        return {
+            "tool": parsed.tool,
+            "args": parsed.args,
+            "intent": parsed.intent,
+            "confidence": parsed.confidence,
+            "mode": parsed.mode,
+            "topic": topic,
+            "followup_topic": followup_topic,
+            "entities": entities,
+        }
+
+    def _detect_config_variable(self, message: str) -> tuple[Optional[str], dict, float]:
+        """
+        Detect if message contains a configuration variable assignment.
+        
+        Recognizes patterns:
+        - VARIABLE_NAME = value
+        - VARIABLE_NAME: value
+        - VARIABLE_NAME value (if variable name matches known config)
+        
+        Returns (tool_name, args, confidence) or (None, {}, 0)
+        """
+        msg = message.strip()
+        
+        # Pattern 1: VARIABLE = value or VARIABLE: value
+        assign_pattern = r"^([A-Z_][A-Z0-9_]*)\s*[:=]\s*(.+)$"
+        match = re.match(assign_pattern, msg, re.IGNORECASE)
+        if match:
+            var_name = match.group(1).upper()
+            var_value = match.group(2).strip()
+            
+            if var_name in self.CONFIG_VARIABLES and var_value:
+                return (
+                    "set_config_variable",
+                    {"variable_name": var_name, "variable_value": var_value},
+                    0.95
+                )
+        
+        # Pattern 2: Known variable at start of message followed by space and value
+        # (only if it's clearly a config context)
+        for var_name in self.CONFIG_VARIABLES:
+            if msg.upper().startswith(var_name):
+                remainder = msg[len(var_name):].strip()
+                # Check if looks like value assignment
+                if remainder and not remainder[0].isalpha():  # Not a continuation of variable name
+                    var_value = remainder.lstrip(":= ").strip()
+                    if var_value:
+                        return (
+                            "set_config_variable",
+                            {"variable_name": var_name, "variable_value": var_value},
+                            0.85
+                        )
+        
+        return None, {}, 0.0
 
     def parse_to_dict(self, message: str, context: Optional[dict[str, Any]] = None) -> dict:
         """Return structured parse in tool/args format."""
@@ -135,10 +221,14 @@ class NaturalLanguageInterpreter:
         return context.get("last_topic")
 
     def _infer_topic(self, intent: Optional[str], tool_name: Optional[str], args: dict[str, Any]) -> Optional[str]:
+        if tool_name == "set_config_variable":
+            return "configuration"
         if tool_name and "email" in tool_name:
             return "email"
         if intent == "email":
             return "email"
+        if intent == "configuration":
+            return "configuration"
         if "path" in args:
             return "filesystem"
         if intent == "system":

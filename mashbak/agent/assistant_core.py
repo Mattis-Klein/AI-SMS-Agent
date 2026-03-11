@@ -308,9 +308,15 @@ class AssistantCore:
         email_tools = {"list_recent_emails", "summarize_inbox", "search_emails", "read_email_thread"}
         if error_type == "missing_configuration":
             field_text = ", ".join(missing_config_fields or [])
-            where = "Add them to mashbak/agent/.env"
-            details = f" Missing values: {field_text}." if field_text else ""
-            return f"I can help with that, but setup is incomplete.{details} {where}"
+            if field_text:
+                return (
+                    f"Configuration incomplete. Missing: {field_text}.\n\n"
+                    f"You can provide these values directly in chat by sending messages like:\n"
+                    f"EMAIL_ADDRESS = myemail@example.com\n"
+                    f"EMAIL_PASSWORD = mypassword\n\n"
+                    f"Or edit mashbak/agent/.env manually."
+                )
+            return "Configuration incomplete. Provide values via chat or edit mashbak/agent/.env."
         if remediation:
             return remediation
         if tool_name in email_tools or (tool_name and "email" in tool_name):
@@ -327,10 +333,13 @@ class AssistantCore:
 
     def _email_setup_guidance(self) -> str:
         return (
-            "Email access is not configured yet. Add these settings in mashbak/agent/.env: "
-            "EMAIL_IMAP_HOST or IMAP_SERVER, EMAIL_IMAP_PORT or IMAP_PORT, "
-            "EMAIL_USERNAME or EMAIL_ADDRESS, and EMAIL_PASSWORD. "
-            "Optional values: EMAIL_PROVIDER, EMAIL_MAILBOX, EMAIL_USE_SSL."
+            "Email access needs configuration. You can provide values directly in chat:\n"
+            "• EMAIL_IMAP_HOST = imap.gmail.com\n"
+            "• EMAIL_IMAP_PORT = 993\n"
+            "• EMAIL_USERNAME = your-email@gmail.com\n"
+            "• EMAIL_PASSWORD = your-app-password\n\n"
+            "Or add them to mashbak/agent/.env manually. "
+            "Use IMAP_SERVER and EMAIL_ADDRESS as alternatives to HOST and USERNAME."
         )
 
     def _fallback_tool_reply(self, tool_name: str | None, output: str | None, data: Any) -> str:

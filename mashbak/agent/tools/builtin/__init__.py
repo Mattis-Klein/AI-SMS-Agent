@@ -10,6 +10,7 @@ from .network_status import NetworkStatusTool
 from .list_processes import ListProcessesTool
 from .uptime import UptimeTool
 from .email_tools import ListRecentEmailsTool, SummarizeInboxTool, SearchEmailsTool, ReadEmailThreadTool
+from .config_tools import SetConfigVariableTool
 
 ALL_BUILTIN_TOOLS = [
     DirInboxTool(),
@@ -26,6 +27,7 @@ ALL_BUILTIN_TOOLS = [
     SummarizeInboxTool(),
     SearchEmailsTool(),
     ReadEmailThreadTool(),
+    SetConfigVariableTool(),
 ]
 
 __all__ = ["ALL_BUILTIN_TOOLS"]
