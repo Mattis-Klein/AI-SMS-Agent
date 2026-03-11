@@ -1,6 +1,13 @@
 {
     "allowed_directories": [
         "C:\\Users\\owner\\Documents",
+        "C:\\Users\\owner\\Desktop",
+        "C:\\Users\\owner\\By type",
+        "C:\\Users\\owner\\Pictures",
+        "C:\\Users\\owner\\Downloads",
+        "C:\\Users\\owner\\Mashbak",
+        "C:\\Users\\mattis",
+        "C:\\Users\\public",
         "C:\\Temp"
     ],
     "allowed_commands": {
