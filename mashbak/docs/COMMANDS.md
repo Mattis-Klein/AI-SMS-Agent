@@ -526,7 +526,7 @@ The AI will:
 | `Command rejected` | Not in allowlist | See `help` for valid commands |
 | `No reply within 30s` | Bridge or agent crashed | Check logs, restart services |
 | `Invalid Twilio token` | Signature validation failed | Verify `TWILIO_AUTH_TOKEN` |
-| `Sender not allowed` | Your number not in allowlist | Add to `ALLOWED_SMS_FROM` |
+| `Sender not allowed` | Your number not in allowlist | Add to `SMS_ACCESS_REQUEST_NUMBERS` |
 
 ---
 

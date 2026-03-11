@@ -338,7 +338,7 @@ class AssistantCore:
             "• EMAIL_IMAP_PORT = 993\n"
             "• EMAIL_USERNAME = your-email@gmail.com\n"
             "• EMAIL_PASSWORD = your-app-password\n\n"
-            "Or add them to mashbak/agent/.env manually. "
+            "Or add them to mashbak/.env.master manually. "
             "Use IMAP_SERVER and EMAIL_ADDRESS as alternatives to HOST and USERNAME."
         )
 

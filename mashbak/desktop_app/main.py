@@ -27,28 +27,15 @@ for import_path in (ROOT_DIR, ROOT_DIR / "desktop_app"):
         sys.path.insert(0, import_path_text)
 
 from agent.runtime import create_runtime  # noqa: E402
+from agent.config_loader import ConfigLoader  # noqa: E402
 from agent_client import AgentClient  # noqa: E402
 from agent_service import AgentService  # noqa: E402
 from ui import DesktopControlApp  # noqa: E402
 
 
-def _load_env_value(env_file: Path, key: str) -> str | None:
-    if not env_file.exists():
-        return None
-
-    for raw in env_file.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        env_key, env_value = line.split("=", 1)
-        if env_key.strip() == key:
-            value = env_value.strip()
-            return value or None
-    return None
-
-
 def _resolve_setting(key: str, default: str | None = None) -> str | None:
-    value = os.getenv(key) or _load_env_value(AGENT_DIR / ".env", key)
+    ConfigLoader.load(reload=True)
+    value = ConfigLoader.get(key)
     if value:
         return value
 

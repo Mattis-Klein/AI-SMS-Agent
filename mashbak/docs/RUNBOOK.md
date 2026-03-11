@@ -329,7 +329,7 @@ When your tunnel URL changes:
    cloudflared tunnel --url http://localhost:34567
    ```
 
-2. Update `sms-bridge/.env`:
+2. Update `mashbak/.env.master`:
    ```
    PUBLIC_BASE_URL=https://YOUR-NEW-URL.trycloudflare.com
    ```
@@ -347,12 +347,12 @@ When your tunnel URL changes:
 
 If you need to change the API key:
 
-1. Update `agent/.env`:
+1. Update `mashbak/.env.master`:
    ```
    AGENT_API_KEY=new-super-secret-key
    ```
 
-2. Update `sms-bridge/.env`:
+2. Update `mashbak/.env.master`:
    ```
    AGENT_API_KEY=new-super-secret-key
    ```
@@ -365,7 +365,7 @@ If you need to change the API key:
 
 1. Get OpenAI API key from https://platform.openai.com/api-keys
 
-2. Add to `sms-bridge/.env`:
+2. Add to `mashbak/.env.master`:
    ```
    OPENAI_API_KEY=sk-proj-your-key-here
    ```
@@ -477,7 +477,7 @@ If port conflict:
 # Find what's using the port
 Get-Process | Where-Object {$_.Id -eq (Get-NetTCPConnection | Where-Object LocalPort -eq 34567).OwningProcess}
 
-# Or change BRIDGE_PORT in sms-bridge/.env
+# Or change BRIDGE_PORT in mashbak/.env.master
 BRIDGE_PORT=34568
 ```
 

@@ -26,7 +26,7 @@ class DesktopControlApp:
         local_app_pin: str | None = None,
     ):
         if not local_app_pin:
-            raise RuntimeError("LOCAL_APP_PIN is required. Set it in mashbak/agent/.env or the environment.")
+            raise RuntimeError("LOCAL_APP_PIN is required. Set it in mashbak/.env.master or the environment.")
 
         self.root = root
         self.root.title("Mashbak Desktop")

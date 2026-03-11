@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
@@ -12,6 +11,7 @@ from email.header import decode_header, make_header
 from email.parser import BytesParser
 from typing import Any, Dict, Iterator, Optional
 
+from ...config_loader import ConfigLoader
 from ..base import Tool, ToolResult
 
 try:
@@ -33,12 +33,12 @@ class EmailMessageSummary:
 class EmailToolBase(Tool):
     def __init__(self, name: str, description: str, requires_args: bool = False):
         super().__init__(name=name, description=description, requires_args=requires_args)
-        self.host = (os.getenv("EMAIL_IMAP_HOST") or os.getenv("IMAP_SERVER") or "").strip()
-        self.port = int(os.getenv("EMAIL_IMAP_PORT") or os.getenv("IMAP_PORT") or "993")
-        self.username = (os.getenv("EMAIL_USERNAME") or os.getenv("EMAIL_ADDRESS") or "").strip()
-        self.password = os.getenv("EMAIL_PASSWORD", "").strip()
-        self.mailbox = os.getenv("EMAIL_MAILBOX", "INBOX").strip() or "INBOX"
-        self.use_ssl = os.getenv("EMAIL_USE_SSL", "true").strip().lower() not in {"0", "false", "no"}
+        self.host = (ConfigLoader.get("EMAIL_IMAP_HOST") or ConfigLoader.get("IMAP_SERVER") or "").strip()
+        self.port = ConfigLoader.get_int("EMAIL_IMAP_PORT", ConfigLoader.get_int("IMAP_PORT", 993))
+        self.username = (ConfigLoader.get("EMAIL_USERNAME") or ConfigLoader.get("EMAIL_ADDRESS") or "").strip()
+        self.password = (ConfigLoader.get("EMAIL_PASSWORD", "") or "").strip()
+        self.mailbox = (ConfigLoader.get("EMAIL_MAILBOX", "INBOX") or "INBOX").strip() or "INBOX"
+        self.use_ssl = ConfigLoader.get_bool("EMAIL_USE_SSL", True)
 
     def _required_config(self) -> tuple[bool, list[str]]:
         missing: list[str] = []
@@ -60,7 +60,7 @@ class EmailToolBase(Tool):
             return True, "", []
         return False, (
             "Email is not configured. Set EMAIL_IMAP_HOST or IMAP_SERVER, EMAIL_IMAP_PORT or IMAP_PORT, "
-            "EMAIL_USERNAME or EMAIL_ADDRESS, and EMAIL_PASSWORD in mashbak/agent/.env."
+            "EMAIL_USERNAME or EMAIL_ADDRESS, and EMAIL_PASSWORD in mashbak/.env.master."
         ), missing
 
     @contextmanager
@@ -202,7 +202,7 @@ class ListRecentEmailsTool(EmailToolBase):
                 tool_name=self.name,
                 arguments=args,
                 missing_config_fields=missing,
-                remediation="Add the missing email variables in mashbak/agent/.env and retry.",
+                remediation="Add the missing email variables in mashbak/.env.master and retry.",
             )
 
         limit = int(args.get("limit", 5))
@@ -262,7 +262,7 @@ class SummarizeInboxTool(EmailToolBase):
                 tool_name=self.name,
                 arguments=args,
                 missing_config_fields=missing,
-                remediation="Add the missing email variables in mashbak/agent/.env and retry.",
+                remediation="Add the missing email variables in mashbak/.env.master and retry.",
             )
 
         limit = int(args.get("limit", 5))
@@ -322,7 +322,7 @@ class SearchEmailsTool(EmailToolBase):
                 tool_name=self.name,
                 arguments=args,
                 missing_config_fields=missing,
-                remediation="Add the missing email variables in mashbak/agent/.env and retry.",
+                remediation="Add the missing email variables in mashbak/.env.master and retry.",
             )
 
         query = str(args.get("query", "")).strip().replace('"', "")
@@ -377,7 +377,7 @@ class ReadEmailThreadTool(EmailToolBase):
                 tool_name=self.name,
                 arguments=args,
                 missing_config_fields=missing,
-                remediation="Add the missing email variables in mashbak/agent/.env and retry.",
+                remediation="Add the missing email variables in mashbak/.env.master and retry.",
             )
 
         email_id = str(args.get("email_id", "")).strip()

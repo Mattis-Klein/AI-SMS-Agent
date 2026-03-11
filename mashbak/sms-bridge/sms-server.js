@@ -41,9 +41,6 @@ function loadEnvFile(envPath) {
 const masterEnvPath = path.join(__dirname, "..", ".env.master");
 loadEnvFile(masterEnvPath);
 
-// Load bridge-specific config (reads from sms-bridge/.env), can override master
-loadEnvFile(path.join(__dirname, ".env"));
-
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
@@ -69,7 +66,7 @@ const twilioRestClient = (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN)
     : null;
 
 if (!AGENT_API_KEY) {
-    throw new Error("AGENT_API_KEY is required. Set it in sms-bridge/.env or the environment.");
+    throw new Error("AGENT_API_KEY is required. Set it in mashbak/.env.master or the environment.");
 }
 
 if (!PUBLIC_BASE_URL) {

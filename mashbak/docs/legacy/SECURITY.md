@@ -7,7 +7,7 @@ This document describes the **baseline security** implemented in the system. For
 ### Authentication
 
 - **API Key Required:** Bridge and agent communicate with `AGENT_API_KEY`
-  - Must be the same in both `agent/.env` and `sms-bridge/.env`
+  - Must be the same in both `mashbak/.env.master` and `mashbak/.env.master`
   - Prevents unauthorized access to the local agent
 
 ### Sender Verification
@@ -17,7 +17,7 @@ This document describes the **baseline security** implemented in the system. For
   - Prevents spoofed SMS
 
 - **Sender Allowlist:** Filter by phone number
-  - Set `ALLOWED_SMS_FROM` to restrict who can use the bridge
+  - Set `SMS_ACCESS_REQUEST_NUMBERS` to restrict who can use the bridge
   - Recommended: Set to only your phone number
 
 ### Path Isolation
@@ -39,12 +39,12 @@ This document describes the **baseline security** implemented in the system. For
 ✅ **Enable before regular use:**
 
 ```env
-# In sms-bridge/.env
+# In mashbak/.env.master
 TWILIO_AUTH_TOKEN=<get from Twilio Console>
-ALLOWED_SMS_FROM=<your phone number>
+SMS_ACCESS_REQUEST_NUMBERS=<your phone number>
 AGENT_API_KEY=<strong random string, not default>
 
-# In agent/.env
+# In mashbak/.env.master
 AGENT_API_KEY=<same as above>
 ```
 

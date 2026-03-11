@@ -51,11 +51,11 @@ pip install -r requirements.txt  # If available
 cd ..\sms-bridge
 npm install
 
-# 4. Create .env files (copy from .env.example)
-copy .env.example .env
-copy ..\agent\.env.example ..\agent\.env
+# 4. Create mashbak/.env.master file (copy from .env.example)
+copy .env.master.example .env.master
+copy ..\mashbak\\.env.master.example ..\mashbak\\.env.master
 
-# 5. Edit .env files with real configuration
+# 5. Edit mashbak/.env.master file with real configuration
 ```
 
 ---
@@ -66,13 +66,13 @@ copy ..\agent\.env.example ..\agent\.env
 C:\AI-SMS-Agent\
 ├── agent/
 │   ├── agent.py              # Main FastAPI app
-│   ├── .env                  # Config
+│   ├── runtime.py            # Runtime bootstrap
 │   ├── workspace/            # Data directory
 │   └── .venv/                # Python dependencies
 │
 ├── sms-bridge/
 │   ├── sms-server.js         # Main Express app
-│   ├── .env                  # Config
+│   ├── access-control-config.js # SMS access control config loader
 │   ├── logs/                 # Runtime logs
 │   └── node_modules/         # Node dependencies
 │
@@ -439,8 +439,7 @@ Quick checklist:
 Protect sensitive data:
 
 ```
-.env
-.env.local
+.env.master
 .venv/
 node_modules/
 *.log
@@ -453,11 +452,11 @@ logs/
 
 ```powershell
 git status
-# Make sure .env files are NOT listed
+# Make sure mashbak/.env.master is NOT listed
 
 # If you accidentally added them:
-git rm --cached .env
-git commit -m "Remove .env from tracking"
+git rm --cached mashbak/.env.master
+git commit -m "Remove .env.master from tracking"
 ```
 
 ---
@@ -488,7 +487,7 @@ Before deploying to "production" (personal use):
 
 - [ ] All tests pass
 - [ ] Logs are clean (no errors)
-- [ ] `.env` files updated with real credentials
+- [ ] `mashbak/.env.master` file updated with real credentials
 - [ ] Twilio webhook URL is correct
 - [ ] Cloudflare tunnel is running
 - [ ] Security review done (see Security Hardening)

@@ -38,7 +38,7 @@ This creates `dist/AISMSDesktop.exe`, which launches with no terminal window and
 ## 🚀 Running & Operations
 
 - [Runbook](RUNBOOK.md) - Start/stop/restart commands and operational procedures
-- [Environment Configuration](ENVIRONMENT.md) - All `.env` settings explained
+- [Environment Configuration](ENVIRONMENT.md) - All `mashbak/.env.master` settings explained
 - [Logging Guide](LOGGING.md) - Where to find logs and how to read them
 
 ## 🔧 Using the System
@@ -166,7 +166,7 @@ C:\AI-SMS-Agent\
 │   ├── INSTALLATION.md       # Full 30-min setup
 │   ├── RUNBOOK.md            # Daily operations
 │   ├── COMMANDS.md           # SMS commands
-│   ├── ENVIRONMENT.md        # .env config
+│   ├── ENVIRONMENT.md        # master env config
 │   ├── LOGGING.md            # Log guide
 │   ├── API.md                # Agent API
 │   ├── AI-INTEGRATION.md     # AI setup

@@ -83,12 +83,12 @@ C:\AI-SMS-Agent\
 ## Environment Files
 
 Tracked templates only:
-- `agent/.env.example`
-- `sms-bridge/.env.example`
+- `mashbak/.env.master.example`
+- `mashbak/.env.master.example`
 
 Local-only runtime files (not tracked):
-- `agent/.env`
-- `sms-bridge/.env`
+- `mashbak/.env.master`
+- `mashbak/.env.master`
 
 ## Runtime-Generated Folders (Excluded)
 

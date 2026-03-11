@@ -11,7 +11,7 @@ Get the AI SMS Agent running in under 5 minutes.
 
 ## Step 1: Configure Environment (2 min)
 
-Create `sms-bridge/.env` from the template:
+Create `mashbak/.env.master` from the template:
 
 ```
 AGENT_URL=http://127.0.0.1:8787
@@ -24,7 +24,7 @@ TWILIO_FROM_NUMBER=+15551234567
 OPENAI_API_KEY=sk-... (optional)
 ```
 
-Create `agent/.env` from the template:
+Create `mashbak/.env.master` from the template:
 
 ```
 AGENT_API_KEY=your-secret-key-here
@@ -55,7 +55,7 @@ Watch for the tunnel URL in the `[tunnel]` log output. It will look like:
 
 1. Stop the launcher (Ctrl+C)
 2. Copy the tunnel URL from the logs
-3. Update `PUBLIC_BASE_URL` in `sms-bridge/.env` with that URL
+3. Update `PUBLIC_BASE_URL` in `mashbak/.env.master` with that URL
 4. Restart: `.\scripts\dev-start.ps1`
 
 ## Step 4: Update Twilio Webhook (1 min)
@@ -126,7 +126,7 @@ In a new terminal:
 cloudflared tunnel --url http://localhost:34567
 ```
 
-Use the public URL shown by `cloudflared` and set it in `sms-bridge/.env`.
+Use the public URL shown by `cloudflared` and set it in `mashbak/.env.master`.
 - `hello` - connectivity test
 - `help` - list commands
 - `read inbox/test.txt` - read a file

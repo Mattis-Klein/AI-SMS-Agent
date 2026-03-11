@@ -277,7 +277,7 @@ Webhook signature validation failed.
 - `PUBLIC_BASE_URL` doesn't match
 - Twilio sent different signature
 
-**Fix:** Check `.env` settings and Twilio Console.
+**Fix:** Check `mashbak/.env.master` settings and Twilio Console.
 
 ---
 
@@ -294,10 +294,10 @@ Phone number not in allowlist.
 ```
 
 **Likely causes:**
-- `ALLOWED_SMS_FROM` doesn't include this number
+- `SMS_ACCESS_REQUEST_NUMBERS` doesn't include this number
 - Number format mismatch (+1 prefix missing?)
 
-**Fix:** Add the number to `ALLOWED_SMS_FROM` in `.env`.
+**Fix:** Add the number to `SMS_ACCESS_REQUEST_NUMBERS` in `mashbak/.env.master`.
 
 ---
 
@@ -315,7 +315,7 @@ Bridge couldn't reach or parse agent response.
 
 **Likely causes:**
 - Agent not running
-- Wrong `AGENT_URL` in `.env`
+- Wrong `AGENT_URL` in `mashbak/.env.master`
 - Port mismatch
 
 **Fix:** Check agent is running on correct port.
@@ -527,7 +527,7 @@ Clear-Content agent\workspace\logs\agent.log
 # Restart services to recreate log files
 ```
 
-Or set `BRIDGE_LOG_MAX_BYTES` in `.env` for automatic rotation.
+Or set `BRIDGE_LOG_MAX_BYTES` in `mashbak/.env.master` for automatic rotation.
 
 ---
 

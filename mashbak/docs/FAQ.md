@@ -81,7 +81,7 @@ The launcher handles everything automatically and provides labeled log output. A
 
 ### Q: A port is already in use
 **A.**
-Change `BRIDGE_PORT` in `sms-bridge/.env`:
+Change `BRIDGE_PORT` in `mashbak/.env.master`:
 
 ```env
 BRIDGE_PORT=34568
@@ -93,17 +93,17 @@ Then restart bridge and update tunnel/Twilio webhook accordingly.
 
 ## Configuration
 
-### Q: Where are the `.env` files?
+### Q: Where are the `mashbak/.env.master` file?
 **A:** Two locations:
-- `agent/.env` - Agent config
-- `sms-bridge/.env` - Bridge/Twilio config
+- `mashbak/.env.master` - Agent config
+- `mashbak/.env.master` - Bridge/Twilio config
 
 ---
 
-### Q: What if I lose my `.env` files?
+### Q: What if I lose my `mashbak/.env.master` file?
 **A:** 
 - Both directories have `.env.example` templates
-- Copy the example: `copy .env.example .env`
+- Copy the example: `copy .env.master.example .env.master`
 - Fill in your secrets again
 
 ---
@@ -131,7 +131,7 @@ Use the printed `https://...trycloudflare.com` URL.
 **A:** It can change if your machine restarts or you reconnect. If it does:
 
 1. Start tunnel and get new URL: `cloudflared tunnel --url http://localhost:34567`
-2. Update `sms-bridge/.env`: `PUBLIC_BASE_URL=...`
+2. Update `mashbak/.env.master`: `PUBLIC_BASE_URL=...`
 3. Update Twilio webhook in console: `https://NEW-URL.trycloudflare.com/sms`
 4. Restart bridge
 
@@ -164,7 +164,7 @@ All should return OK or "Running".
    - Do you see an inbound message?
 
 3. **Is your phone number allowed?**
-   - Check `ALLOWED_SMS_FROM` in `sms-bridge/.env`
+   - Check `SMS_ACCESS_REQUEST_NUMBERS` in `mashbak/.env.master`
    - Is your phone number there?
 
 4. **Check the logs**
@@ -283,7 +283,7 @@ Get-Content sms-bridge\logs\bridge.log -Tail 1 | ConvertFrom-Json | Format-List
 Clear-Content sms-bridge\logs\bridge.log
 Clear-Content agent\workspace\logs\agent.log
 
-# Or set auto-rotation in sms-bridge/.env
+# Or set auto-rotation in mashbak/.env.master
 BRIDGE_LOG_MAX_BYTES=1000000
 ```
 
@@ -351,7 +351,7 @@ But then any SMS from any URL could hit your bridge. Use sender allowlisting ins
 ## AI Mode
 
 ### Q: Is AI enabled by default?
-**A:** No. You need to set `OPENAI_API_KEY` in `.env`.
+**A:** No. You need to set `OPENAI_API_KEY` in `mashbak/.env.master`.
 
 Without it, only fixed commands work.
 
@@ -370,7 +370,7 @@ Roughly: $0.001 - $0.10 per message
 2. Create account
 3. API keys section
 4. Create new key
-5. Copy it to `sms-bridge/.env`: `OPENAI_API_KEY=sk-...`
+5. Copy it to `mashbak/.env.master`: `OPENAI_API_KEY=sk-...`
 
 ---
 
@@ -410,7 +410,7 @@ Roughly: $0.001 - $0.10 per message
 **A:** 
 - Yes, change from default before production use
 - If you shared/exposed the key, regenerate it
-- Both `.env` files must match
+- the `mashbak/.env.master` file must match
 
 ---
 
@@ -479,7 +479,7 @@ But nothing is 100% secure. See [Security Hardening](SECURITY-HARDENING.md).
 2. Check the logs (they're very helpful)
 3. Try restarting all services
 4. Read [Troubleshooting](legacy/TROUBLESHOOTING.md)
-5. Make sure your .env files have all required fields
+5. Make sure your mashbak/.env.master file have all required fields
 
 ---
 

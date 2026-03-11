@@ -44,7 +44,7 @@ npm start
 
 # Terminal 3 (after Terminal 2 is ready):
 cloudflared tunnel --url http://localhost:34567
-# Copy URL and ensure it matches PUBLIC_BASE_URL in sms-bridge/.env
+# Copy URL and ensure it matches PUBLIC_BASE_URL in mashbak/.env.master
 ```
 
 ---
@@ -63,7 +63,7 @@ cloudflared tunnel --url http://localhost:34567
 ```
 
 If URL changed:
-1. Update `sms-bridge/.env`: `PUBLIC_BASE_URL=...`
+1. Update `mashbak/.env.master`: `PUBLIC_BASE_URL=...`
 2. Restart bridge
 3. Update Twilio webhook
 
@@ -168,10 +168,10 @@ Get-ChildItem "C:\AI-SMS-Agent\agent\workspace\outbox" |
 
 ```powershell
 # 1. Rotate API key (recommended but not required)
-# Edit agent/.env
+# Edit mashbak/.env.master
 # Change AGENT_API_KEY to new random string
 
-# Edit sms-bridge/.env
+# Edit mashbak/.env.master
 # Change AGENT_API_KEY to same new string
 
 # Restart services
@@ -220,9 +220,9 @@ New-Item agent\workspace\logs\agent.log -ItemType File -Force
    - Empty responses
 
 4. **Fix the issue**
-   - Wrong API key? Update both `.env` files
+   - Wrong API key? Update the `mashbak/.env.master` file
    - Port in use? Change `BRIDGE_PORT` or kill process
-   - Twilio webhook wrong? Update `.env` and Twilio Console
+   - Twilio webhook wrong? Update `mashbak/.env.master` and Twilio Console
    - Agent not running? Restart it
    - Bridge not running? Restart it
    - See [Troubleshooting](legacy/TROUBLESHOOTING.md)
@@ -236,7 +236,7 @@ New-Item agent\workspace\logs\agent.log -ItemType File -Force
 ❌ **Don't:**
 - Commit API keys to git
 - Paste secrets in chat/email
-- Share `.env` files publicly
+- Share `mashbak/.env.master` file publicly
 - Run agent/bridge as Administrator (unnecessary)
 - Delete logs without backing up first
 - Change port numbers without updating other configs
@@ -422,7 +422,7 @@ If you modify `sms-server.js`:
 
 ### Files to Keep
 
-- ✅ Configuration (.env files, when new)
+- ✅ Configuration (mashbak/.env.master file, when new)
 - ✅ Code (agent.py, sms-server.js)
 - ✅ Documentation (this directory)
 - ✅ Active workspace files
@@ -451,8 +451,8 @@ Monthly backup:
 
 ```powershell
 # 1. Backup configuration
-Copy-Item agent\.env "backups\agent\.env.$(Get-Date -Format 'yyyyMMdd')"
-Copy-Item sms-bridge\.env "backups\sms-bridge\.env.$(Get-Date -Format 'yyyyMMdd')"
+Copy-Item mashbak\\.env.master "backups\mashbak\\.env.master.$(Get-Date -Format 'yyyyMMdd')"
+Copy-Item mashbak\\.env.master "backups\mashbak\\.env.master.$(Get-Date -Format 'yyyyMMdd')"
 
 # 2. Backup workspace
 Copy-Item agent\workspace\ "backups\workspace.$(Get-Date -Format 'yyyyMMdd')" -Recurse
@@ -473,8 +473,8 @@ Get-ChildItem backups | Sort-Object LastWriteTime | Select-Object -First -3 |
 
 2. **Restore from backup**
    ```powershell
-   Copy-Item "backups\sms-bridge\.env.20250301" sms-bridge\.env -Force
-   Copy-Item "backups\agent\.env.20250301" agent\.env -Force
+   Copy-Item "backups\mashbak\\.env.master.20250301" mashbak\\.env.master -Force
+   Copy-Item "backups\mashbak\\.env.master.20250301" mashbak\\.env.master -Force
    ```
 
 3. **Restart services** (follow startup routine)
@@ -497,7 +497,7 @@ Get-ChildItem backups | Sort-Object LastWriteTime | Select-Object -First -3 |
 
 2. **Rotate API key**
    - Generate new key (see Monthly Maintenance)
-   - Update both `.env` files
+   - Update the `mashbak/.env.master` file
    - Restart services
 
 3. **Investigate**

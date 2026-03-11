@@ -251,7 +251,7 @@ Get-Content agent\workspace\logs\agent.log | ConvertFrom-Json | Where-Object { $
 - Old log is renamed to `bridge.log.1`
 - Previous `bridge.log.1` is deleted
 
-Configure in `sms-bridge/.env`:
+Configure in `mashbak/.env.master`:
 ```
 BRIDGE_LOG_MAX_BYTES=1000000
 ```
@@ -276,9 +276,9 @@ Logs contain:
 
 **Purpose:** Only allow SMS from authorized phone numbers
 
-**Configuration:** `sms-bridge/.env`
+**Configuration:** `mashbak/.env.master`
 ```
-ALLOWED_SMS_FROM=+15551234567,+15559876543
+SMS_ACCESS_REQUEST_NUMBERS=+15551234567,+15559876543
 ```
 
 **How it works:**
@@ -288,13 +288,13 @@ ALLOWED_SMS_FROM=+15551234567,+15559876543
 4. Checks against allowed list
 5. If not allowed, returns 403 Forbidden
 
-**Bypass:** Set `ALLOWED_SMS_FROM` to empty string to disable (not recommended)
+**Bypass:** Set `SMS_ACCESS_REQUEST_NUMBERS` to empty string to disable (not recommended)
 
 ## 🔒 Twilio Signature Verification
 
 **Purpose:** Verify SMS webhooks came from Twilio, not an attacker
 
-**Configuration:** `sms-bridge/.env`
+**Configuration:** `mashbak/.env.master`
 ```
 TWILIO_AUTH_TOKEN=your-twilio-token
 PUBLIC_BASE_URL=https://your-tunnel.trycloudflare.com
@@ -332,7 +332,7 @@ Even if one layer fails, others provide protection.
 1. **Regular audit:** Review logs weekly for suspicious activity
 2. **Minimize whitelist:** Only add commands you actually need
 3. **Restrict directories:** Keep `allowed_directories` minimal
-4. **Keep secrets secret:** Never commit `.env` files
+4. **Keep secrets secret:** Never commit `mashbak/.env.master` file
 5. **Update dependencies:** Run `npm audit` and `pip list --outdated` regularly
 6. **Test changes:** Test new commands in a safe environment first
 7. **Monitor logs:** Set up alerts for `status: "blocked"` entries
@@ -368,7 +368,7 @@ Get-Content agent\workspace\logs\agent.log | ConvertFrom-Json | Where-Object { $
 **Solution:**
 1. Check if command is in `config.json` whitelist
 2. Check logs for exact error: `Get-Content agent\workspace\logs\agent.log -Tail 20`
-3. Verify sender is in `ALLOWED_SMS_FROM`
+3. Verify sender is in `SMS_ACCESS_REQUEST_NUMBERS`
 4. Confirm path is in `allowed_directories` (for path-based commands)
 
 **Problem:** Logs are too large

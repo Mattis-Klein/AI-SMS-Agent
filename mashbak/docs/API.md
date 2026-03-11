@@ -276,7 +276,7 @@ API key for authentication.
 X-API-Key: your-api-key-here
 ```
 
-Must match `AGENT_API_KEY` in `agent/.env`.
+Must match `AGENT_API_KEY` in `mashbak/.env.master`.
 
 ---
 

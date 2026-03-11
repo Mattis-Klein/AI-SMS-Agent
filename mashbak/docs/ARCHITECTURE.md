@@ -80,7 +80,7 @@ Session behavior:
 
 Failure behavior:
 - Tool and dispatcher failures are categorized (`missing_configuration`, `validation_failure`, `unavailable_tool`, `denied_action`, `timeout`, `execution_failure`).
-- Assistant response shaping converts these structured failures into actionable language, including exact `.env` setup guidance for missing config.
+- Assistant response shaping converts these structured failures into actionable language, including exact `mashbak/.env.master` setup guidance for missing config.
 
 The `BackendOpenAIClient` uses the standard OpenAI REST API via `urllib` (no SDK dependency). When `OPENAI_API_KEY` is not configured, it falls back to simple canned responses.
 
@@ -390,14 +390,14 @@ curl -X POST http://localhost:8787/execute \
 
 ## Environment Variables
 
-**Agent** (`agent/.env`):
+**Agent** (`mashbak/.env.master`):
 
 ```
 AGENT_API_KEY=your-secret-key
 AGENT_WORKSPACE=/path/to/workspace
 ```
 
-**SMS Bridge** (`sms-bridge/.env`):
+**SMS Bridge** (`mashbak/.env.master`):
 
 ```
 AGENT_URL=http://127.0.0.1:8787
@@ -405,7 +405,7 @@ AGENT_API_KEY=your-secret-key (must match!)
 BRIDGE_PORT=34567
 PUBLIC_BASE_URL=https://your-domain.com
 TWILIO_AUTH_TOKEN=your-twilio-token
-ALLOWED_SMS_FROM=+15551234567,+15559876543
+SMS_ACCESS_REQUEST_NUMBERS=+15551234567,+15559876543
 OPENAI_API_KEY=sk-... (optional, for future AI features)
 OPENAI_MODEL=gpt-4.1-mini (optional)
 ```

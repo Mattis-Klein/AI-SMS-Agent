@@ -12,6 +12,7 @@ import urllib.request
 from pathlib import Path
 
 import uvicorn
+from agent.config_loader import ConfigLoader
 
 
 class AgentService:
@@ -135,30 +136,12 @@ class AgentService:
         self.process = None
 
     def _resolve_api_key(self) -> str:
-        env_key = os.getenv("AGENT_API_KEY")
+        ConfigLoader.load(reload=True)
+        env_key = (ConfigLoader.get("AGENT_API_KEY", "") or "").strip()
         if env_key:
             return env_key
 
-        for env_file in self._candidate_env_files():
-            if env_file.exists():
-                for raw in env_file.read_text(encoding="utf-8").splitlines():
-                    line = raw.strip()
-                    if not line or line.startswith("#") or "=" not in line:
-                        continue
-                    key, value = line.split("=", 1)
-                    if key.strip() == "AGENT_API_KEY" and value.strip():
-                        return value.strip()
-
         return "desktop-local-default-key"
-
-    def _candidate_env_files(self) -> list[Path]:
-        files = [self.project_root / "agent" / ".env"]
-
-        if getattr(sys, "frozen", False):
-            exe_repo_root = Path(sys.executable).resolve().parent.parent
-            files.append(exe_repo_root / "agent" / ".env")
-
-        return files
 
     def _is_authorized(self, api_key: str) -> bool:
         headers = {"x-api-key": api_key}

@@ -55,7 +55,7 @@ Common outcomes:
 
 - No `incoming_sms`: Twilio never reached the bridge.
 - `rejected` with `invalid_twilio_signature`: the auth token, public URL, or Twilio request signature does not match.
-- `rejected` with `sender_not_allowed`: the `From` number is not in `ALLOWED_SMS_FROM`.
+- `rejected` with `sender_not_allowed`: the `From` number is not in `SMS_ACCESS_REQUEST_NUMBERS`.
 - `agent_request` but no successful `agent_response`: the bridge could not complete the local tool call.
 
 ## 5. Check the Agent Log

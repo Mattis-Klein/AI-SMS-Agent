@@ -20,9 +20,9 @@ This guide adds layers on top for higher security.
 
 ### Current State
 
-Both `.env` files use the same API key:
-- `agent/.env`: `AGENT_API_KEY=...`
-- `sms-bridge/.env`: `AGENT_API_KEY=...`
+the `mashbak/.env.master` file use the same API key:
+- `mashbak/.env.master`: `AGENT_API_KEY=...`
+- `mashbak/.env.master`: `AGENT_API_KEY=...`
 
 ### Hardening: Rotate Keys Regularly
 
@@ -33,11 +33,11 @@ Both `.env` files use the same API key:
 $newKey = [guid]::NewGuid().ToString()
 Write-Output $newKey  # Copy this
 
-# 2. Update both .env files
-# Edit: agent/.env
+# 2. Update the mashbak/.env.master file
+# Edit: mashbak/.env.master
 # AGENT_API_KEY=<paste-new-key>
 
-# Edit: sms-bridge/.env
+# Edit: mashbak/.env.master
 # AGENT_API_KEY=<paste-new-key>
 
 # 3. Restart both services
@@ -63,19 +63,19 @@ $cred = Import-Clixml "$HOME\Secrets\agent-api-key.xml"
 $apiKey = $cred.GetNetworkCredential().Password
 ```
 
-But for this project, `.env` files are OK if:
-- `.env` never committed to git (check `.gitignore`)
+But for this project, `mashbak/.env.master` is OK if:
+- `mashbak/.env.master` is never committed to git (check `.gitignore`)
 - File permissions set to user-only (no others can read)
 
 ---
 
 ### Hardening: File Permissions
 
-Ensure only your user can read `.env`:
+Ensure only your user can read `mashbak/.env.master`:
 
 ```powershell
 # Remove inherited permissions
-$path = "C:\AI-SMS-Agent\agent\.env"
+$path = "C:\AI-SMS-Agent\mashbak\\.env.master"
 $acl = Get-Acl $path
 $acl.SetAccessRuleProtection($true, $false)
 Set-Acl $path $acl
@@ -100,7 +100,7 @@ Get-Acl $path | Select-Object Owner, Access
 ### Current State
 
 - `TWILIO_AUTH_TOKEN` validates webhook signatures
-- `ALLOWED_SMS_FROM` restricts sender numbers
+- `SMS_ACCESS_REQUEST_NUMBERS` restricts sender numbers
 - Both are checked before processing
 
 ### Hardening: Verify Twilio Signatures
@@ -108,7 +108,7 @@ Get-Acl $path | Select-Object Owner, Access
 Ensure signature validation is enabled:
 
 ```env
-# In sms-bridge/.env
+# In mashbak/.env.master
 TWILIO_AUTH_TOKEN=your-actual-token-from-console
 
 # NOT LIKE THIS (empty = disabled):
@@ -129,7 +129,7 @@ Only allow your actual phone number:
 
 ```env
 # Instead of blank or multiple numbers, use ONLY your number:
-ALLOWED_SMS_FROM=+18005551234
+SMS_ACCESS_REQUEST_NUMBERS=+18005551234
 
 # Check it's working:
 # Send SMS from a different number - should be rejected
@@ -138,7 +138,7 @@ ALLOWED_SMS_FROM=+18005551234
 
 **Verify:**
 - Get your real phone number
-- Set it in `ALLOWED_SMS_FROM`
+- Set it in `SMS_ACCESS_REQUEST_NUMBERS`
 - Test sending from different number (should fail)
 
 ---
@@ -325,7 +325,7 @@ Clear-Content "C:\AI-SMS-Agent\sms-bridge\logs\bridge.log"
 
 ### Current State
 
-OpenAI API key is stored in `.env` and used for all AI requests.
+OpenAI API key is stored in `mashbak/.env.master` and used for all AI requests.
 
 ### Hardening: Limit OpenAI Scope
 
@@ -386,12 +386,12 @@ Before going "live":
 ### Hardening: Don't Share Secrets
 
 - Never paste API keys in chat/email
-- Never commit `.env` files to git
-- Check `.gitignore` contains `.env`
+- Never commit `mashbak/.env.master` to git
+- Check `.gitignore` contains `.env.master`
 
 ```powershell
-# Verify .env is ignored
-git status  # Should NOT show .env files
+# Verify .env.master is ignored
+git status  # Should NOT show mashbak/.env.master
 ```
 
 ---
@@ -443,7 +443,7 @@ Incidents:
    - Check Twilio message history
 
 3. **Respond:**
-   - Change API key (both `.env` files)
+   - Change API key (the `mashbak/.env.master` file)
    - Clear logs
    - Restart services
    - Monitor for 24 hours
@@ -458,7 +458,7 @@ Incidents:
 ### If You Exposed API Key
 
 1. **Immediately:**
-   - Remove old key from both `.env` files
+   - Remove old key from the `mashbak/.env.master` file
    - Generate new key
    - Restart both services
 

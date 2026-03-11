@@ -130,7 +130,7 @@ if ($testsFailed -eq 0) {
     Write-Host "All tests passed. System is ready." -ForegroundColor Green
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Yellow
-    Write-Host "  1. Configure .env files (agent/.env and sms-bridge/.env)"
+    Write-Host "  1. Configure mashbak/.env.master"
     Write-Host "  2. Test locally: .\scripts\dev-start.ps1"
     Write-Host "  3. Push to GitHub:"
     Write-Host "     git remote add origin https://github.com/mattis-Klein/AI-SMS-Agent.git"

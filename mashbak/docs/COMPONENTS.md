@@ -304,7 +304,7 @@ Each operation logs:
 
 ### Configuration
 
-Started from terminal. The URL must be copied into `.env` as `PUBLIC_BASE_URL`:
+Started from terminal. The URL must be copied into `mashbak/.env.master` as `PUBLIC_BASE_URL`:
 
 ```powershell
 cloudflared tunnel --url http://localhost:34567

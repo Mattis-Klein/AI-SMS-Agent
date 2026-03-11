@@ -77,19 +77,13 @@ The master config is loaded by:
 - **SMS bridge** (Node.js) via dotenv at startup
 - **Desktop** indirectly through backend API calls
 
-### Legacy .env Files (Deprecated)
+### Configuration Policy
 
-Old per-component `.env` files (`agent/.env`, `sms-bridge/.env`) are still supported as **local overrides** for development:
-- Master config loaded first
-- Local `.env` values override master if needed
-- .gitignore prevents accidental commits of secrets
+Mashbak now uses a **master-only** configuration model.
 
-```powershell
-# Copy default
-cp mashbak/agent/.env.example mashbak/agent/.env
-
-# Edit with your values
-notepad mashbak/agent/.env
-```
+- Single source of truth: `mashbak/.env.master`
+- Chat updates write to `mashbak/.env.master`
+- Runtime services (agent, desktop flow, bridge) read from `mashbak/.env.master`
+- Process environment variables can still override values when explicitly set in the shell
 
 See [ENVIRONMENT.md](docs/ENVIRONMENT.md) for all variables and their meanings.

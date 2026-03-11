@@ -1,7 +1,6 @@
 """Shared agent runtime used by FastAPI endpoints and local desktop tooling."""
 
 import asyncio
-import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -28,41 +27,24 @@ else:
     from session_context import SessionContextManager
 
 
-def load_env_file(env_path: Path) -> None:
-    """Load environment variables from .env file before reading AGENT_* values."""
-    if not env_path.exists():
-        return
-
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip())
-
-
 class AgentRuntime:
     """Initializes and exposes shared dispatcher/tool runtime state."""
 
     def __init__(self, base_dir: Path):
         # Initialization order is intentional:
-        # 1) Load master config from .env.master, 2) set base dir, 3) load any
-        # local .env overrides, 4) read AGENT_* env vars, 5) initialize workspace.
+        # 1) Load master config from .env.master, 2) set base dir,
+        # 3) read AGENT_* values through ConfigLoader, 4) initialize workspace.
         self.base_dir = base_dir.resolve()
-        
-        # Load master config first
-        ConfigLoader.load()
-        
-        # Load local .env if it exists (allows local overrides)
-        load_env_file(self.base_dir / ".env")
+
+        # Always refresh config from master file on runtime init.
+        ConfigLoader.load(reload=True)
 
         self.workspace = Path(
-            os.getenv("AGENT_WORKSPACE", str(self.base_dir / "workspace"))
+            ConfigLoader.get("AGENT_WORKSPACE", str(self.base_dir / "workspace"))
         ).resolve()
-        self.api_key = os.getenv("AGENT_API_KEY", "")
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+        self.api_key = (ConfigLoader.get("AGENT_API_KEY", "") or "").strip()
+        self.openai_api_key = (ConfigLoader.get("OPENAI_API_KEY", "") or "").strip()
+        self.openai_model = (ConfigLoader.get("OPENAI_MODEL", "gpt-4.1-mini") or "gpt-4.1-mini").strip()
 
         if not self.api_key:
             raise RuntimeError("AGENT_API_KEY is required. Set it in mashbak/.env.master or environment.")
@@ -359,9 +341,9 @@ class AgentRuntime:
             "assistant_ai_enabled": bool(self.openai_api_key),
             "assistant_model": self.openai_model,
             "email_configured": bool(
-                (os.getenv("EMAIL_IMAP_HOST") or os.getenv("IMAP_SERVER"))
-                and (os.getenv("EMAIL_USERNAME") or os.getenv("EMAIL_ADDRESS"))
-                and os.getenv("EMAIL_PASSWORD")
+                (ConfigLoader.get("EMAIL_IMAP_HOST") or ConfigLoader.get("IMAP_SERVER"))
+                and (ConfigLoader.get("EMAIL_USERNAME") or ConfigLoader.get("EMAIL_ADDRESS"))
+                and ConfigLoader.get("EMAIL_PASSWORD")
             ),
             "version": "2.0.0",
         }

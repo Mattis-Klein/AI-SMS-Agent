@@ -1,5 +1,7 @@
-import os
+import tempfile
+from pathlib import Path
 
+from agent.config_loader import ConfigLoader
 from agent.interpreter import NaturalLanguageInterpreter
 from agent.session_context import SessionContextManager
 from agent.tools.builtin.email_tools import ListRecentEmailsTool
@@ -42,26 +44,21 @@ def test_session_context_isolated_between_sessions():
 
 
 def test_email_missing_config_returns_structured_error():
-    original = {key: os.environ.get(key) for key in [
-        "EMAIL_IMAP_HOST",
-        "IMAP_SERVER",
-        "EMAIL_USERNAME",
-        "EMAIL_ADDRESS",
-        "EMAIL_PASSWORD",
-    ]}
-
-    for key in original:
-        os.environ.pop(key, None)
-
+    original_method = ConfigLoader._get_master_env_path
+    original_cache = ConfigLoader._config_cache
     try:
-        tool = ListRecentEmailsTool()
-        result = __import__("asyncio").run(tool.execute({"limit": 3}))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_master_path = Path(tmpdir) / ".env.master"
+            test_master_path.write_text("OPENAI_MODEL=gpt-4.1-mini\n", encoding="utf-8")
+
+            ConfigLoader._get_master_env_path = classmethod(lambda cls: test_master_path)
+            ConfigLoader._config_cache = None
+
+            tool = ListRecentEmailsTool()
+            result = __import__("asyncio").run(tool.execute({"limit": 3}))
     finally:
-        for key, value in original.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
+        ConfigLoader._get_master_env_path = original_method
+        ConfigLoader._config_cache = original_cache
 
     assert result.success is False
     assert result.error_type == "missing_configuration"

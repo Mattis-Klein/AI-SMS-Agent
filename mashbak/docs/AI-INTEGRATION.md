@@ -81,7 +81,7 @@ For higher rate limits:
 
 ### 2.1 Update Configuration
 
-Edit `sms-bridge/.env`:
+Edit `mashbak/.env.master`:
 
 ```env
 OPENAI_API_KEY=sk-proj-your-key-here
@@ -402,7 +402,7 @@ If you get auth error:
 **Fix:**
 1. Go to https://platform.openai.com/api-keys
 2. Generate a new key
-3. Update `sms-bridge/.env`
+3. Update `mashbak/.env.master`
 4. Restart bridge
 
 ---
@@ -512,7 +512,7 @@ A: Currently OpenAI only. Could add Claude, Gemini later.
 A: OpenAI has free $5 trial credits. Then paid.
 
 **Q: Can I disable AI?**  
-A: Yes, remove `OPENAI_API_KEY` from `.env`.
+A: Yes, remove `OPENAI_API_KEY` from `mashbak/.env.master`.
 
 **Q: How do I see AI logs?**  
 A: Check `sms-bridge/logs/bridge.log` for `ai_request` and `ai_response` entries.

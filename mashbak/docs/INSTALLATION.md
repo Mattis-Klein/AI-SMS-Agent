@@ -42,9 +42,9 @@ npm run check  # Verify syntax
 
 ## Step 2: Configure Local Agent
 
-### 2.1 Create `.env` file
+### 2.1 Create `mashbak/.env.master` file
 
-In `agent/` directory, create `.env`:
+Create `mashbak/.env.master` with your settings:
 
 ```
 AGENT_API_KEY=dev-secret-key-change-this
@@ -64,9 +64,9 @@ curl.exe http://127.0.0.1:8787/health  # Should fail (not running yet)
 
 ## Step 3: Configure SMS Bridge
 
-### 3.1 Create `.env` file
+### 3.1 Create `mashbak/.env.master` file
 
-In `sms-bridge/` directory, create `.env`:
+Use the same `mashbak/.env.master` file for bridge values:
 
 ```
 # Local agent connection
@@ -79,7 +79,7 @@ PUBLIC_BASE_URL=https://YOUR-CLOUDFLARE-URL.trycloudflare.com
 
 # Twilio credentials (get from Twilio Console)
 TWILIO_AUTH_TOKEN=your-auth-token
-ALLOWED_SMS_FROM=+18005551234
+SMS_ACCESS_REQUEST_NUMBERS=+18005551234
 
 # Optional: AI mode
 OPENAI_API_KEY=sk-your-key
@@ -115,9 +115,9 @@ Copy the `https://...trycloudflare.com` URL printed by cloudflared.
 
 Use that URL as your bridge public base URL.
 
-### 4.4 Update `.env` with Public URL
+### 4.4 Update `mashbak/.env.master` with Public URL
 
-Update `sms-bridge/.env`:
+Update `mashbak/.env.master`:
 
 ```
 PUBLIC_BASE_URL=https://YOUR-CLOUDFLARE-URL.trycloudflare.com
@@ -139,9 +139,9 @@ In Twilio Console, for your SMS number:
 - **Incoming Messages Webhook**: `https://YOUR-CLOUDFLARE-URL.trycloudflare.com/sms`
 - **Method**: POST
 
-### 5.3 Update Bridge `.env`
+### 5.3 Update Bridge `mashbak/.env.master`
 
-Set `TWILIO_AUTH_TOKEN` and `ALLOWED_SMS_FROM`.
+Set `TWILIO_AUTH_TOKEN` and `SMS_ACCESS_REQUEST_NUMBERS`.
 
 ## Step 6: Test Local System (Without Twilio)
 
@@ -234,7 +234,7 @@ You should receive a reply SMS within 10 seconds.
 
 ## Step 9 (Optional): Enable AI Mode
 
-Edit `sms-bridge/.env` and add:
+Edit `mashbak/.env.master` and add:
 
 ```
 OPENAI_API_KEY=sk-your-real-key
@@ -247,8 +247,8 @@ Then restart the bridge. Natural-language messages will now be AI-powered.
 Read [Security Hardening](SECURITY-HARDENING.md) and apply recommendations:
 
 - Change all default keys
-- Enable Twilio signature validation (already in `.env`)
-- Verify your phone number in `ALLOWED_SMS_FROM`
+- Enable Twilio signature validation (already in `mashbak/.env.master`)
+- Verify your phone number in `SMS_ACCESS_REQUEST_NUMBERS`
 - Consider Cloudflare Access or additional gateway restrictions for production
 
 ---

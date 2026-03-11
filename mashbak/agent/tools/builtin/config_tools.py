@@ -14,7 +14,7 @@ class SetConfigVariableTool(Tool):
     """
     Set environment variables safely through chat.
     
-    Validates variable names and values, then updates agent/.env with proper persistence.
+    Validates variable names and values, then updates mashbak/.env.master with proper persistence.
     Sensitive variables (passwords, keys) are not echoed in output.
     """
 
@@ -112,7 +112,7 @@ class SetConfigVariableTool(Tool):
             name="set_config_variable",
             description="Set environment configuration variables through chat. "
                        "Supports EMAIL_* variables, API keys, ports, and other config settings. "
-                       "Values are validated and safely persisted to .env file.",
+                       "Values are validated and safely persisted to mashbak/.env.master.",
             requires_args=True
         )
         self.env_path = self._get_env_path()
@@ -142,7 +142,7 @@ class SetConfigVariableTool(Tool):
 
     async def execute(self, args: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> ToolResult:
         """
-        Set a configuration variable and persist it to .env.
+        Set a configuration variable and persist it to .env.master.
         
         Args:
             args: Must contain 'variable_name' and 'variable_value'
@@ -190,7 +190,7 @@ class SetConfigVariableTool(Tool):
                 arguments=args,
             )
         
-        # Try to update .env file
+        # Try to update .env.master file
         try:
             self._update_env_file(var_name, var_value)
             

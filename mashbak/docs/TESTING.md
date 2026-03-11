@@ -119,7 +119,7 @@ Test entire system with real SMS.
 **Requirements:**
 - All three services running (agent, bridge, tunnel)
 - Twilio account with SMS number
-- Your phone number allowed in ALLOWED_SMS_FROM
+- Your phone number allowed in SMS_ACCESS_REQUEST_NUMBERS
 
 **Test Steps:**
 
@@ -356,7 +356,7 @@ curl.exe -X POST http://127.0.0.1:8787/read `
 
 #### Test 5.1: Allowed Sender
 
-**Requirements:** `ALLOWED_SMS_FROM=+18005551234` in `.env`
+**Requirements:** `SMS_ACCESS_REQUEST_NUMBERS=+18005551234` in `mashbak/.env.master`
 
 **SMS from +18005551234:** `hello`
 
@@ -366,7 +366,7 @@ curl.exe -X POST http://127.0.0.1:8787/read `
 
 #### Test 5.2: Blocked Sender
 
-**Requirements:** `ALLOWED_SMS_FROM=+18005551234` in `.env`
+**Requirements:** `SMS_ACCESS_REQUEST_NUMBERS=+18005551234` in `mashbak/.env.master`
 
 **SMS from +18881234567:** `hello`
 
@@ -381,7 +381,7 @@ curl.exe -X POST http://127.0.0.1:8787/read `
 
 #### Test 6.1: Natural Language Command
 
-**Requirements:** `OPENAI_API_KEY` set in `.env`
+**Requirements:** `OPENAI_API_KEY` set in `mashbak/.env.master`
 
 **SMS:** `List my inbox`
 
