@@ -1,7 +1,7 @@
 """Reusable Tkinter widget helpers for the local desktop console."""
 
-from tkinter import BOTH, END, LEFT, X, Text
-from tkinter import ttk
+from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Text
+from tkinter import scrolledtext, ttk
 
 
 def labeled_text_area(parent: ttk.Frame, title: str, height: int = 10, wrap: str = "word") -> Text:
@@ -10,6 +10,22 @@ def labeled_text_area(parent: ttk.Frame, title: str, height: int = 10, wrap: str
     text = Text(frame, height=height, wrap=wrap)
     text.pack(fill=BOTH, expand=True, padx=8, pady=8)
     return text
+
+
+def labeled_scroll_text(
+    parent,
+    height: int = 10,
+    font: tuple = ("Consolas", 9),
+    wrap: str = "word",
+) -> scrolledtext.ScrolledText:
+    """Fill the parent frame with a ScrolledText widget (no LabelFrame wrapper)."""
+    widget = scrolledtext.ScrolledText(
+        parent, wrap=wrap, font=font,
+        relief="flat", bd=0,
+        height=height if height > 0 else 1,
+    )
+    widget.pack(fill=BOTH, expand=True)
+    return widget
 
 
 def action_bar(parent: ttk.Frame) -> ttk.Frame:

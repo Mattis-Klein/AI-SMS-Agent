@@ -19,7 +19,8 @@ AGENT_API_KEY=your-secret-key-here
 BRIDGE_PORT=34567
 PUBLIC_BASE_URL=https://YOUR-CLOUDFLARE-URL.trycloudflare.com
 TWILIO_AUTH_TOKEN=your-twilio-token
-ALLOWED_SMS_FROM=+18005555555
+TWILIO_ACCOUNT_SID=your-twilio-account-sid
+TWILIO_FROM_NUMBER=+15551234567
 OPENAI_API_KEY=sk-... (optional)
 ```
 

@@ -3,7 +3,6 @@
 import json
 import urllib.error
 import urllib.request
-from typing import Any, Dict
 
 
 class AgentClient:
@@ -11,13 +10,13 @@ class AgentClient:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
 
-    def health(self) -> Dict[str, Any]:
+    def health(self) -> dict:
         return self._request("GET", "/health")
 
-    def list_tools(self) -> Dict[str, Any]:
+    def list_tools(self) -> dict:
         return self._request("GET", "/tools", include_auth=True)
 
-    def execute_nl(self, message: str, sender: str = "local-desktop") -> Dict[str, Any]:
+    def execute_nl(self, message: str, sender: str = "local-desktop") -> dict:
         return self._request(
             "POST",
             "/execute-nl",
@@ -34,8 +33,8 @@ class AgentClient:
         include_auth: bool = False,
         include_sender: bool = False,
         sender: str = "local-desktop",
-        body: Dict[str, Any] | None = None,
-    ) -> Dict[str, Any]:
+        body: dict | None = None,
+    ) -> dict:
         url = f"{self.base_url}{path}"
         headers = {}
         if include_auth:

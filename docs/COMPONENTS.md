@@ -95,7 +95,8 @@ SMS reply sent
 | BRIDGE_PORT | Yes | Port to listen on |
 | PUBLIC_BASE_URL | Yes | Base URL for Twilio |
 | TWILIO_AUTH_TOKEN | No | Validate webhook signature |
-| ALLOWED_SMS_FROM | No | Allowlist phone numbers |
+| TWILIO_ACCOUNT_SID | No | Owner notification SMS |
+| TWILIO_FROM_NUMBER | No | Owner notification sender |
 | OPENAI_API_KEY | No | Enable AI mode |
 | OPENAI_MODEL | No | Which AI model to use |
 

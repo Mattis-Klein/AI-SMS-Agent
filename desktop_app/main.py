@@ -9,7 +9,6 @@ import os
 import sys
 from pathlib import Path
 from tkinter import Tk
-from tkinter import ttk
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     # Prefer repo root when running dist/Mashbak.exe in-place, otherwise use bundle temp dir.
@@ -119,10 +118,6 @@ def main() -> None:
     client = AgentClient(base_url=service.base_url, api_key=service.api_key)
 
     root = Tk()
-    style = ttk.Style(root)
-    if "vista" in style.theme_names():
-        style.theme_use("vista")
-
     app = DesktopControlApp(
         root,
         client,
