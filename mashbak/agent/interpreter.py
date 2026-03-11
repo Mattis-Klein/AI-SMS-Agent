@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 
 @dataclass
@@ -106,16 +106,53 @@ class NaturalLanguageInterpreter:
         mode = "tool" if tool_name else ("explanation" if intent == "explanation" else "conversation")
         return ParsedRequest(intent=intent, tool=tool_name, args=args, confidence=confidence, mode=mode)
 
-    def parse_to_dict(self, message: str) -> dict:
+    def parse_to_dict(self, message: str, context: Optional[dict[str, Any]] = None) -> dict:
         """Return structured parse in tool/args format."""
         parsed = self.parse(message)
+        context = context or {}
+        followup_topic = self._infer_followup_topic(message, parsed, context)
+        entities = self._extract_entities(parsed.tool, parsed.args)
+        topic = self._infer_topic(parsed.intent, parsed.tool, parsed.args)
+        if followup_topic and not topic:
+            topic = followup_topic
         return {
             "tool": parsed.tool,
             "args": parsed.args,
             "intent": parsed.intent,
             "confidence": parsed.confidence,
             "mode": parsed.mode,
+            "topic": topic,
+            "followup_topic": followup_topic,
+            "entities": entities,
         }
+
+    def _infer_followup_topic(self, message: str, parsed: ParsedRequest, context: dict[str, Any]) -> Optional[str]:
+        msg = message.lower().strip()
+        if parsed.tool:
+            return None
+        if not any(token in msg for token in ["it", "that", "this", "configure", "set up", "setup"]):
+            return None
+        return context.get("last_topic")
+
+    def _infer_topic(self, intent: Optional[str], tool_name: Optional[str], args: dict[str, Any]) -> Optional[str]:
+        if tool_name and "email" in tool_name:
+            return "email"
+        if intent == "email":
+            return "email"
+        if "path" in args:
+            return "filesystem"
+        if intent == "system":
+            return "system"
+        return None
+
+    def _extract_entities(self, tool_name: Optional[str], args: dict[str, Any]) -> dict[str, Any]:
+        entities: dict[str, Any] = {}
+        if tool_name:
+            entities["tool"] = tool_name
+        for key in ("query", "path", "email_id", "limit"):
+            if key in args:
+                entities[key] = args[key]
+        return entities
     
     def interpret(self, message: str) -> Tuple[Optional[str], dict, float]:
         """

@@ -16,6 +16,7 @@ from typing import Any, Optional
 class AssistantMetadata:
     sender: str
     source: str
+    session_id: str
     owner_unlocked: Optional[bool] = None
     request_id: Optional[str] = None
 
@@ -81,7 +82,8 @@ class AssistantCore:
         if metadata.source == "desktop" and metadata.owner_unlocked is False:
             return self._build_locked_response(message, metadata)
 
-        parsed = self.interpreter.parse_to_dict(message)
+        context_snapshot = self.runtime.session_context.get_snapshot(metadata.session_id)
+        parsed = self.interpreter.parse_to_dict(message, context=context_snapshot)
         mode = parsed.get("mode") or "conversation"
 
         if parsed.get("tool"):
@@ -92,9 +94,29 @@ class AssistantCore:
                 request_id=request_id,
                 source=metadata.source,
             )
-            return await self._finalize_tool_response(message, metadata, parsed, result)
+            finalized = await self._finalize_tool_response(message, metadata, parsed, result)
+            latest_context = self.runtime.session_context.update(
+                session_id=metadata.session_id,
+                user_message=message,
+                parsed=parsed,
+                result=finalized,
+            )
+            finalized_trace = finalized.get("trace") or {}
+            finalized_trace["context"] = latest_context
+            finalized["trace"] = finalized_trace
+            return finalized
 
-        return await self._build_conversation_response(message, metadata, parsed)
+        response = await self._build_conversation_response(message, metadata, parsed)
+        latest_context = self.runtime.session_context.update(
+            session_id=metadata.session_id,
+            user_message=message,
+            parsed=parsed,
+            result=response,
+        )
+        response_trace = response.get("trace") or {}
+        response_trace["context"] = latest_context
+        response["trace"] = response_trace
+        return response
 
     def _build_locked_response(self, message: str, metadata: AssistantMetadata) -> dict[str, Any]:
         reply = "Mashbak is locked right now. Unlock the desktop app first, then send your message again."
@@ -145,6 +167,8 @@ class AssistantCore:
                 "execution_status": "completed",
                 "confidence": parsed.get("confidence", 0.0),
                 "assistant_response_source": "openai" if self.model_client.enabled else "fallback",
+                "followup_topic": parsed.get("followup_topic"),
+                "topic": parsed.get("topic"),
             },
         }
 
@@ -170,6 +194,9 @@ class AssistantCore:
         trace["tool_data"] = result.get("data")
         if result.get("error"):
             trace["tool_error"] = result.get("error")
+            trace["error_type"] = result.get("error_type")
+            trace["remediation"] = result.get("remediation")
+            trace["missing_config_fields"] = result.get("missing_config_fields")
 
         result["assistant_reply"] = reply
         result["output"] = reply
@@ -179,11 +206,16 @@ class AssistantCore:
         return result
 
     async def _generate_conversation_reply(self, message: str, metadata: AssistantMetadata, parsed: dict[str, Any]) -> str:
+        followup_topic = parsed.get("followup_topic")
+        if followup_topic == "email" and any(token in message.lower() for token in ["configure", "set up", "setup"]):
+            return self._email_setup_guidance()
+
         system_prompt = self._build_system_prompt(metadata)
         if self.model_client.enabled:
             prompt = (
                 f"Request type: {parsed.get('mode') or 'conversation'}\n"
                 f"User message: {message}\n"
+                f"Context topic: {parsed.get('topic') or 'none'}\n"
                 "Reply naturally. Do not mention internal tools unless the user asked for technical detail."
             )
             ai_reply = await self.model_client.complete(
@@ -205,7 +237,13 @@ class AssistantCore:
         result: dict[str, Any],
     ) -> str:
         if not result.get("success"):
-            return self._fallback_error_reply(result.get("error"), result.get("tool_name"))
+            return self._fallback_error_reply(
+                error=result.get("error"),
+                tool_name=result.get("tool_name"),
+                error_type=result.get("error_type"),
+                missing_config_fields=result.get("missing_config_fields"),
+                remediation=result.get("remediation"),
+            )
 
         if self.model_client.enabled:
             system_prompt = self._build_system_prompt(metadata)
@@ -259,13 +297,41 @@ class AssistantCore:
 
         return "I can help with questions, check your computer's status, work with files, and handle email once it's configured."
 
-    def _fallback_error_reply(self, error: str | None, tool_name: str | None) -> str:
+    def _fallback_error_reply(
+        self,
+        error: str | None,
+        tool_name: str | None,
+        error_type: str | None = None,
+        missing_config_fields: list[str] | None = None,
+        remediation: str | None = None,
+    ) -> str:
         email_tools = {"list_recent_emails", "summarize_inbox", "search_emails", "read_email_thread"}
+        if error_type == "missing_configuration":
+            field_text = ", ".join(missing_config_fields or [])
+            where = "Add them to mashbak/agent/.env"
+            details = f" Missing values: {field_text}." if field_text else ""
+            return f"I can help with that, but setup is incomplete.{details} {where}"
+        if remediation:
+            return remediation
         if tool_name in email_tools or (tool_name and "email" in tool_name):
             if error and "not configured" in error.lower():
-                return "I can't check your email yet because email access hasn't been configured in mashbak/agent/.env."
+                return self._email_setup_guidance()
             return "I couldn't reach your email right now."
+        if error_type == "validation_failure":
+            return error or "I need a bit more detail to run that request safely."
+        if error_type == "timeout":
+            return "That request took too long and timed out. Try again with a narrower scope."
+        if error_type == "denied_action":
+            return "That action is currently restricted by policy settings."
         return error or "I couldn't complete that request."
+
+    def _email_setup_guidance(self) -> str:
+        return (
+            "Email access is not configured yet. Add these settings in mashbak/agent/.env: "
+            "EMAIL_IMAP_HOST or IMAP_SERVER, EMAIL_IMAP_PORT or IMAP_PORT, "
+            "EMAIL_USERNAME or EMAIL_ADDRESS, and EMAIL_PASSWORD. "
+            "Optional values: EMAIL_PROVIDER, EMAIL_MAILBOX, EMAIL_USE_SSL."
+        )
 
     def _fallback_tool_reply(self, tool_name: str | None, output: str | None, data: Any) -> str:
         if tool_name == "cpu_usage":

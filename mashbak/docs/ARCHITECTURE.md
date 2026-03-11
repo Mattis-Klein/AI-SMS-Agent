@@ -10,6 +10,7 @@ Mashbak is a **desktop-first personal AI assistant** with a shared backend reaso
 - **Safety first**: All tool execution goes through a validated whitelist; no arbitrary command execution.
 - **Transparency**: Every action is logged with full context and a shared request ID.
 - **Conversational**: Responses are natural language, not raw tool output.
+- **Session-aware**: Backend keeps lightweight in-memory per-session context (`last_topic`, `last_intent`, `last_tool`, `last_entities`) to resolve follow-up references.
 
 ## System Architecture
 
@@ -71,6 +72,15 @@ The single reasoning brain shared by all transports. Sits between the FastAPI en
 - **If conversation**: calls `BackendOpenAIClient` → returns natural-language reply
 - **If tool**: calls `runtime.execute_tool()` → wraps raw output in natural language
 - **Output**: always a human-readable string, never raw JSON or tool output
+
+Session behavior:
+- Desktop and SMS both use the same backend context manager.
+- Session identity is source-aware (`desktop:<sender>` vs `sms:<normalized-number>`), so channels do not leak context into each other.
+- Context is memory-only and resets on restart.
+
+Failure behavior:
+- Tool and dispatcher failures are categorized (`missing_configuration`, `validation_failure`, `unavailable_tool`, `denied_action`, `timeout`, `execution_failure`).
+- Assistant response shaping converts these structured failures into actionable language, including exact `.env` setup guidance for missing config.
 
 The `BackendOpenAIClient` uses the standard OpenAI REST API via `urllib` (no SDK dependency). When `OPENAI_API_KEY` is not configured, it falls back to simple canned responses.
 
@@ -208,6 +218,7 @@ Sender access control (bridge):
 - Special numbers get fixed responses without agent forwarding
 - Access-request numbers get a fixed response; if they text `@mashbak`, bridge sends owner notification SMS
 - All other senders are denied in bridge
+- Access rules are configuration-driven (environment/config file) instead of hardcoded in bridge logic.
 
 Bridge endpoints:
 

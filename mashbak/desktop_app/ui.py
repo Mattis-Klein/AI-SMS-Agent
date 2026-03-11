@@ -419,6 +419,7 @@ class DesktopControlApp:
         self.chat_state_label.configure(text="Connected and ready")
 
         trace = result.get("trace") or {}
+        context = trace.get("context") or {}
         raw_tool_output = trace.get("tool_output")
         detail_lines = [
             f"Assistant mode: {trace.get('assistant_mode')}",
@@ -433,6 +434,10 @@ class DesktopControlApp:
             f"Selected tool:  {trace.get('selected_tool')}",
             f"Validation:     {trace.get('validation_status')}",
             f"Exec status:    {trace.get('execution_status')}",
+            f"Topic:          {trace.get('topic') or trace.get('followup_topic')}",
+            f"Ctx topic:      {context.get('last_topic')}",
+            f"Ctx intent:     {context.get('last_intent')}",
+            f"Ctx tool:       {context.get('last_tool')}",
             "",
             f"Args: {json.dumps(trace.get('interpreted_args', {}), ensure_ascii=True)}",
         ]

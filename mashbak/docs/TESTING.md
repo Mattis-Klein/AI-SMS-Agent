@@ -2,6 +2,25 @@
 
 How to test the AI SMS Agent system.
 
+## Current Automated Tests (Recommended)
+
+Run from `mashbak/`:
+
+```powershell
+python -m pytest tests
+cd sms-bridge
+npm test
+```
+
+Coverage focus in this pass:
+- backend follow-up context carryover,
+- session isolation by source/sender,
+- structured missing-configuration failures for tools,
+- desktop locked vs unlocked request behavior,
+- SMS authorization/routing decisions from configuration.
+
+These tests protect the context-aware behavior and smart failure guidance from regressions.
+
 ---
 
 ## Testing Levels

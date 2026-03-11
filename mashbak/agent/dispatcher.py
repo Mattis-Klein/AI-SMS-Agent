@@ -27,6 +27,8 @@ class RequestContext:
         allowed_directories: list,
         allowed_tools: Optional[list] = None,
         tool_timeout_seconds: float = 10.0,
+        session_id: str = "session:unknown",
+        session_context: Optional[dict] = None,
     ):
         self.request_id = str(uuid.uuid4())[:8]
         self.sender = sender
@@ -36,6 +38,8 @@ class RequestContext:
         self.allowed_directories = allowed_directories
         self.allowed_tools = allowed_tools
         self.tool_timeout_seconds = float(tool_timeout_seconds)
+        self.session_id = session_id
+        self.session_context = session_context or {}
         self.interpreted_tool = None
         self.interpreted_args = None
         self.confidence = 0.0
@@ -66,6 +70,8 @@ class Dispatcher:
         """
         trace = {
             "raw_request": context.raw_message,
+            "session_id": context.session_id,
+            "session_context": context.session_context,
             "intent_classification": None,
             "interpreted_intent": None,
             "interpreted_args": {},
@@ -85,7 +91,7 @@ class Dispatcher:
         )
         
         # Try to interpret message
-        parsed = self.interpreter.parse_to_dict(context.raw_message)
+        parsed = self.interpreter.parse_to_dict(context.raw_message, context=context.session_context)
         tool_name = parsed.get("tool")
         args = parsed.get("args", {})
         confidence = parsed.get("confidence", 0.0)
@@ -121,6 +127,7 @@ class Dispatcher:
                 "tool_name": None,
                 "output": None,
                 "error": "I didn't understand that. Try: list inbox, check cpu, show files in documents, etc.",
+                "error_type": "unavailable_tool",
                 "request_id": context.request_id,
                 "trace": trace,
             }
@@ -139,6 +146,7 @@ class Dispatcher:
                 "tool_name": tool_name,
                 "output": None,
                 "error": f"Tool '{tool_name}' is not allowed",
+                "error_type": "denied_action",
                 "request_id": context.request_id,
                 "trace": trace,
             }
@@ -162,6 +170,7 @@ class Dispatcher:
                 "tool_name": tool_name,
                 "output": None,
                 "error": f"Invalid input: {validation_error}",
+                "error_type": "validation_failure",
                 "request_id": context.request_id,
                 "trace": trace,
             }
@@ -221,6 +230,9 @@ class Dispatcher:
                 "tool_name": tool_name,
                 "output": result.output,
                 "error": result.error,
+                "error_type": result.error_type,
+                "missing_config_fields": result.missing_config_fields,
+                "remediation": result.remediation,
                 "request_id": context.request_id,
                 "trace": {
                     **trace,
@@ -250,6 +262,7 @@ class Dispatcher:
                 "tool_name": tool_name,
                 "output": None,
                 "error": f"Tool timeout after {context.tool_timeout_seconds:.0f}s",
+                "error_type": "timeout",
                 "request_id": context.request_id,
                 "trace": {
                     **trace,
@@ -269,6 +282,7 @@ class Dispatcher:
                 "tool_name": tool_name,
                 "output": None,
                 "error": f"Tool execution failed: {str(e)}",
+                "error_type": "execution_failure",
                 "request_id": context.request_id,
                 "trace": {
                     **trace,

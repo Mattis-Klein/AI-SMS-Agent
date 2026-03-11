@@ -6,7 +6,8 @@
   "type": "commonjs",
   "scripts": {
     "start": "node sms-server.js",
-    "check": "node --check sms-server.js"
+    "check": "node --check sms-server.js",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "body-parser": "^2.2.2",

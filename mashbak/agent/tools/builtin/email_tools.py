@@ -33,25 +33,39 @@ class EmailMessageSummary:
 class EmailToolBase(Tool):
     def __init__(self, name: str, description: str, requires_args: bool = False):
         super().__init__(name=name, description=description, requires_args=requires_args)
-        self.host = os.getenv("EMAIL_IMAP_HOST", "").strip()
-        self.port = int(os.getenv("EMAIL_IMAP_PORT", "993") or "993")
-        self.username = os.getenv("EMAIL_USERNAME", "").strip()
+        self.host = (os.getenv("EMAIL_IMAP_HOST") or os.getenv("IMAP_SERVER") or "").strip()
+        self.port = int(os.getenv("EMAIL_IMAP_PORT") or os.getenv("IMAP_PORT") or "993")
+        self.username = (os.getenv("EMAIL_USERNAME") or os.getenv("EMAIL_ADDRESS") or "").strip()
         self.password = os.getenv("EMAIL_PASSWORD", "").strip()
         self.mailbox = os.getenv("EMAIL_MAILBOX", "INBOX").strip() or "INBOX"
         self.use_ssl = os.getenv("EMAIL_USE_SSL", "true").strip().lower() not in {"0", "false", "no"}
 
-    def _ensure_configured(self) -> tuple[bool, str]:
+    def _required_config(self) -> tuple[bool, list[str]]:
+        missing: list[str] = []
+        if not self.host:
+            missing.append("EMAIL_IMAP_HOST|IMAP_SERVER")
+        if not self.username:
+            missing.append("EMAIL_USERNAME|EMAIL_ADDRESS")
+        if not self.password:
+            missing.append("EMAIL_PASSWORD")
+        if not self.port:
+            missing.append("EMAIL_IMAP_PORT|IMAP_PORT")
+        return len(missing) == 0, missing
+
+    def _ensure_configured(self) -> tuple[bool, str, list[str]]:
         if imaplib is None:
-            return False, "IMAP support is unavailable in this build. Rebuild Mashbak with Python email/imap libraries included."
-        if self.host and self.username and self.password:
-            return True, ""
+            return False, "IMAP support is unavailable in this build. Rebuild Mashbak with Python email/imap libraries included.", []
+        ok, missing = self._required_config()
+        if ok:
+            return True, "", []
         return False, (
-            "Email is not configured. Set EMAIL_IMAP_HOST, EMAIL_USERNAME, and EMAIL_PASSWORD in mashbak/agent/.env."
-        )
+            "Email is not configured. Set EMAIL_IMAP_HOST or IMAP_SERVER, EMAIL_IMAP_PORT or IMAP_PORT, "
+            "EMAIL_USERNAME or EMAIL_ADDRESS, and EMAIL_PASSWORD in mashbak/agent/.env."
+        ), missing
 
     @contextmanager
     def _connect(self) -> Iterator[imaplib.IMAP4]:
-        ok, error = self._ensure_configured()
+        ok, error, _missing = self._ensure_configured()
         if not ok:
             raise RuntimeError(error)
 
@@ -178,9 +192,18 @@ class ListRecentEmailsTool(EmailToolBase):
         return True, ""
 
     async def execute(self, args: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> ToolResult:
-        ok, error = self._ensure_configured()
+        ok, error, missing = self._ensure_configured()
         if not ok:
-            return ToolResult(success=False, output="", error=error, tool_name=self.name, arguments=args)
+            return ToolResult(
+                success=False,
+                output="",
+                error=error,
+                error_type="missing_configuration",
+                tool_name=self.name,
+                arguments=args,
+                missing_config_fields=missing,
+                remediation="Add the missing email variables in mashbak/agent/.env and retry.",
+            )
 
         limit = int(args.get("limit", 5))
         unread_only = bool(args.get("unread_only", False))
@@ -190,7 +213,7 @@ class ListRecentEmailsTool(EmailToolBase):
                 email_ids.reverse()
                 messages = self._fetch_messages(client, email_ids)
         except Exception as exc:
-            return ToolResult(success=False, output="", error=str(exc), tool_name=self.name, arguments=args)
+            return ToolResult(success=False, output="", error=str(exc), error_type="execution_failure", tool_name=self.name, arguments=args)
 
         lines = [
             f"{item['email_id']}: {item['from']} | {item['subject']} | {item['date']}"
@@ -229,9 +252,18 @@ class SummarizeInboxTool(EmailToolBase):
         return True, ""
 
     async def execute(self, args: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> ToolResult:
-        ok, error = self._ensure_configured()
+        ok, error, missing = self._ensure_configured()
         if not ok:
-            return ToolResult(success=False, output="", error=error, tool_name=self.name, arguments=args)
+            return ToolResult(
+                success=False,
+                output="",
+                error=error,
+                error_type="missing_configuration",
+                tool_name=self.name,
+                arguments=args,
+                missing_config_fields=missing,
+                remediation="Add the missing email variables in mashbak/agent/.env and retry.",
+            )
 
         limit = int(args.get("limit", 5))
         unread_only = bool(args.get("unread_only", True))
@@ -242,7 +274,7 @@ class SummarizeInboxTool(EmailToolBase):
                 email_ids.reverse()
                 messages = self._fetch_messages(client, email_ids)
         except Exception as exc:
-            return ToolResult(success=False, output="", error=str(exc), tool_name=self.name, arguments=args)
+            return ToolResult(success=False, output="", error=str(exc), error_type="execution_failure", tool_name=self.name, arguments=args)
 
         unread_count = len(messages) if unread_only else len([item for item in messages if item.get("unread")])
         summary_lines = [
@@ -280,9 +312,18 @@ class SearchEmailsTool(EmailToolBase):
         return True, ""
 
     async def execute(self, args: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> ToolResult:
-        ok, error = self._ensure_configured()
+        ok, error, missing = self._ensure_configured()
         if not ok:
-            return ToolResult(success=False, output="", error=error, tool_name=self.name, arguments=args)
+            return ToolResult(
+                success=False,
+                output="",
+                error=error,
+                error_type="missing_configuration",
+                tool_name=self.name,
+                arguments=args,
+                missing_config_fields=missing,
+                remediation="Add the missing email variables in mashbak/agent/.env and retry.",
+            )
 
         query = str(args.get("query", "")).strip().replace('"', "")
         limit = int(args.get("limit", 5))
@@ -294,7 +335,7 @@ class SearchEmailsTool(EmailToolBase):
                 email_ids.reverse()
                 messages = self._fetch_messages(client, email_ids)
         except Exception as exc:
-            return ToolResult(success=False, output="", error=str(exc), tool_name=self.name, arguments=args)
+            return ToolResult(success=False, output="", error=str(exc), error_type="execution_failure", tool_name=self.name, arguments=args)
 
         data = {
             "count": len(messages),
@@ -326,9 +367,18 @@ class ReadEmailThreadTool(EmailToolBase):
         return True, ""
 
     async def execute(self, args: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> ToolResult:
-        ok, error = self._ensure_configured()
+        ok, error, missing = self._ensure_configured()
         if not ok:
-            return ToolResult(success=False, output="", error=error, tool_name=self.name, arguments=args)
+            return ToolResult(
+                success=False,
+                output="",
+                error=error,
+                error_type="missing_configuration",
+                tool_name=self.name,
+                arguments=args,
+                missing_config_fields=missing,
+                remediation="Add the missing email variables in mashbak/agent/.env and retry.",
+            )
 
         email_id = str(args.get("email_id", "")).strip()
         try:
@@ -342,7 +392,7 @@ class ReadEmailThreadTool(EmailToolBase):
                 related_ids.reverse()
                 messages = self._fetch_messages(client, related_ids)
         except Exception as exc:
-            return ToolResult(success=False, output="", error=str(exc), tool_name=self.name, arguments=args)
+            return ToolResult(success=False, output="", error=str(exc), error_type="execution_failure", tool_name=self.name, arguments=args)
 
         data = {
             "count": len(messages),

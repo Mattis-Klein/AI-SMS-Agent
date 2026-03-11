@@ -5,6 +5,12 @@ const crypto = require("crypto");
 const express = require("express");
 const bodyParser = require("body-parser");
 const twilio = require("twilio");
+const {
+    isAccessRequestCommand,
+    loadSenderAccessConfig,
+    normalizePhoneNumber,
+    resolveSenderAction,
+} = require("./access-control-config");
 
 function loadEnvFile(envPath) {
     if (!fs.existsSync(envPath)) {
@@ -49,16 +55,7 @@ const LOG_DIR = path.join(BASE_DIR, "logs");
 const LOG_FILE = path.join(LOG_DIR, "bridge.log");
 const LOG_ARCHIVE_FILE = path.join(LOG_DIR, "bridge.log.1");
 const LOG_MAX_BYTES = Number(process.env.BRIDGE_LOG_MAX_BYTES || 1_000_000);
-
-const OWNER_NUMBER = "8483291230";
-const ACCESS_REQUEST_RESPONSE = "This number is not authorized to use this program. To request access, send @mashbak to this number and we will review your request.";
-const ACCESS_REQUEST_NUMBERS = new Set([
-    "9297546860",
-    "9176355825",
-]);
-const SPECIAL_RESPONSES = new Map([
-    ["8457017405", "האלט דיך רואיג הערשי, ס'איז נאכנישט גרייט"],
-]);
+const SENDER_ACCESS = loadSenderAccessConfig(process.env);
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
@@ -130,16 +127,8 @@ function truncateText(value, maxLength = 500) {
     return `${text.slice(0, maxLength)}...`;
 }
 
-function normalizePhoneNumber(value) {
-    const digits = String(value || "").replace(/\D/g, "");
-    if (digits.length > 10) {
-        return digits.slice(-10);
-    }
-    return digits;
-}
-
 function toE164Us(value) {
-    const digits = normalizePhoneNumber(value);
+    const digits = normalizePhoneNumber(value, SENDER_ACCESS.normalizationDigits);
     if (digits.length === 10) {
         return `+1${digits}`;
     }
@@ -149,50 +138,8 @@ function toE164Us(value) {
     return String(value || "").trim();
 }
 
-function isAccessRequestCommand(message) {
-    return String(message || "").trim().toLowerCase() === "@mashbak";
-}
-
-function resolveSenderAction(from) {
-    const normalizedFrom = normalizePhoneNumber(from);
-
-    if (normalizedFrom === OWNER_NUMBER) {
-        return {
-            action: "forwarded",
-            normalizedFrom,
-            shouldForward: true,
-            reply: null,
-        };
-    }
-
-    if (SPECIAL_RESPONSES.has(normalizedFrom)) {
-        return {
-            action: "special_response",
-            normalizedFrom,
-            shouldForward: false,
-            reply: SPECIAL_RESPONSES.get(normalizedFrom),
-        };
-    }
-
-    if (ACCESS_REQUEST_NUMBERS.has(normalizedFrom)) {
-        return {
-            action: "access_request_response",
-            normalizedFrom,
-            shouldForward: false,
-            reply: ACCESS_REQUEST_RESPONSE,
-        };
-    }
-
-    return {
-        action: "denied",
-        normalizedFrom,
-        shouldForward: false,
-        reply: "This number is not allowed.",
-    };
-}
-
 async function notifyOwnerAccessRequest({ requestId, normalizedFrom, inboundTo }) {
-    const ownerTo = toE164Us(OWNER_NUMBER);
+    const ownerTo = toE164Us(SENDER_ACCESS.ownerNumber);
     const fromNumber = toE164Us(TWILIO_FROM_NUMBER || inboundTo || "");
 
     if (!twilioRestClient) {
@@ -415,7 +362,7 @@ app.post("/sms", async (req, res) => {
     const message = (req.body.Body || "").trim();
     const from = req.body.From || "";
     const to = req.body.To || "";
-    const senderDecision = resolveSenderAction(from);
+    const senderDecision = resolveSenderAction(from, SENDER_ACCESS);
 
     console.log(`[sms] requestId=${requestId} from=${from} body=${message}`);
     logBridgeEvent({
@@ -473,7 +420,7 @@ app.post("/sms", async (req, res) => {
             reply = await buildReply(message, requestId, from);
         } else {
             reply = senderDecision.reply;
-            if (senderDecision.action === "access_request_response" && isAccessRequestCommand(message)) {
+            if (senderDecision.action === "access_request_response" && isAccessRequestCommand(message, SENDER_ACCESS)) {
                 await notifyOwnerAccessRequest({
                     requestId,
                     normalizedFrom: senderDecision.normalizedFrom,
@@ -519,9 +466,9 @@ app.listen(PORT, () => {
         publicBaseUrl: PUBLIC_BASE_URL,
         twilioValidationEnabled: Boolean(TWILIO_AUTH_TOKEN),
         senderAccessControlEnabled: true,
-        ownerNumber: OWNER_NUMBER,
-        specialNumbers: Array.from(SPECIAL_RESPONSES.keys()),
-        accessRequestNumbers: Array.from(ACCESS_REQUEST_NUMBERS),
+        ownerNumber: SENDER_ACCESS.ownerNumber,
+        specialNumbers: Object.keys(SENDER_ACCESS.specialResponses),
+        accessRequestNumbers: Array.from(SENDER_ACCESS.accessRequestNumbers),
     });
     console.log(`SMS server running on port ${PORT}`);
 });

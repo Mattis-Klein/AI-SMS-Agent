@@ -2,6 +2,12 @@
 
 Complete reference for all configuration variables in `.env` files.
 
+## 2026-03 Update: Context + Config-Driven Access
+
+- Backend now maintains in-memory session context per sender/source and does not require persistent storage configuration.
+- Email setup guidance supports both canonical and alias variable names.
+- SMS sender access control is configured via `sms-bridge/.env` (and optional JSON config file), not hardcoded in transport logic.
+
 ## Two `.env` Files
 
 The project has two separate configuration files:
@@ -95,9 +101,9 @@ LOCAL_APP_PIN=1234
 #### `OPENAI_API_KEY`
 
 **Type:** String (secret)  
-**Required:** Yes (desktop freeform chat)
+**Required:** No (optional for richer conversation responses)
 
-API key used by desktop app for freeform AI chat after unlock.
+API key used by backend assistant for richer conversational responses and tool-result summarization.
 
 **Example:**
 ```
@@ -106,7 +112,27 @@ OPENAI_API_KEY=sk-proj-abc123...
 
 **Rules:**
 - Stored in `agent/.env` or process environment
-- Required by desktop startup for freeform chat mode
+- If missing, Mashbak still runs with deterministic fallback replies
+
+---
+
+### Email Tool Configuration (`agent/.env`)
+
+Required values (canonical + alias support):
+- `EMAIL_IMAP_HOST` or `IMAP_SERVER`
+- `EMAIL_IMAP_PORT` or `IMAP_PORT`
+- `EMAIL_USERNAME` or `EMAIL_ADDRESS`
+- `EMAIL_PASSWORD`
+
+Optional:
+- `EMAIL_PROVIDER`
+- `EMAIL_MAILBOX`
+- `EMAIL_USE_SSL`
+
+When missing, assistant responses now include:
+- exact missing variable names,
+- config file location (`mashbak/agent/.env`),
+- and clear remediation instructions.
 
 ---
 
@@ -222,6 +248,23 @@ Use the URL printed by your tunnel command, for example:
 ```powershell
 cloudflared tunnel --url http://localhost:34567
 ```
+
+---
+
+### Sender Access Control Variables (`sms-bridge/.env`)
+
+These preserve current behavior while making routing configurable:
+
+- `SMS_OWNER_NUMBER`
+- `SMS_ACCESS_REQUEST_NUMBERS` (comma-separated)
+- `SMS_ACCESS_REQUEST_KEYWORD`
+- `SMS_ACCESS_REQUEST_RESPONSE`
+- `SMS_DENIAL_RESPONSE`
+- `SMS_SPECIAL_RESPONSES_JSON` (JSON map)
+- `SMS_PHONE_NORMALIZATION_DIGITS`
+- `SMS_ACCESS_CONFIG_FILE` (optional JSON file path)
+
+These settings are evaluated in the bridge transport layer; the backend remains the only reasoning core.
 
 ---
 

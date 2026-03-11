@@ -11,18 +11,24 @@ class ToolResult:
     success: bool
     output: str
     error: Optional[str] = None
+    error_type: Optional[str] = None
     tool_name: Optional[str] = None
     arguments: Optional[Dict[str, Any]] = None
     data: Optional[Any] = None
+    missing_config_fields: Optional[list[str]] = None
+    remediation: Optional[str] = None
     
     def to_dict(self) -> dict:
         return {
             "success": self.success,
             "output": self.output,
             "error": self.error,
+            "error_type": self.error_type,
             "tool_name": self.tool_name,
             "arguments": self.arguments,
             "data": self.data,
+            "missing_config_fields": self.missing_config_fields,
+            "remediation": self.remediation,
         }
 
 

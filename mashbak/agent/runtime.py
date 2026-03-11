@@ -14,6 +14,7 @@ if __package__:
     from .tools.builtin import ALL_BUILTIN_TOOLS
     from .dispatcher import Dispatcher, RequestContext
     from .interpreter import NaturalLanguageInterpreter
+    from .session_context import SessionContextManager
 else:
     from config import Config
     from assistant_core import AssistantCore, AssistantMetadata
@@ -22,6 +23,7 @@ else:
     from tools.builtin import ALL_BUILTIN_TOOLS
     from dispatcher import Dispatcher, RequestContext
     from interpreter import NaturalLanguageInterpreter
+    from session_context import SessionContextManager
 
 
 def load_env_file(env_path: Path) -> None:
@@ -75,6 +77,7 @@ class AgentRuntime:
 
         self.interpreter = NaturalLanguageInterpreter()
         self.dispatcher = Dispatcher(self.registry, self.interpreter, self.logger)
+        self.session_context = SessionContextManager(max_recent_turns=4)
         self.assistant = AssistantCore(self)
 
     def _resolve_source(self, sender: str, source: Optional[str]) -> str:
@@ -95,6 +98,17 @@ class AgentRuntime:
             return compact
         return f"{compact[: max_sms_chars - 3]}..."
 
+    def _normalize_sender_key(self, sender: str) -> str:
+        sender_text = str(sender or "unknown").strip().lower()
+        digits = "".join(ch for ch in sender_text if ch.isdigit())
+        if digits:
+            return digits[-10:]
+        return sender_text or "unknown"
+
+    def build_session_id(self, source: str, sender: str) -> str:
+        sender_key = self._normalize_sender_key(sender)
+        return f"{source}:{sender_key}"
+
     async def execute_nl(
         self,
         message: str,
@@ -110,6 +124,7 @@ class AgentRuntime:
             AssistantMetadata(
                 sender=sender,
                 source=request_source,
+                session_id=self.build_session_id(request_source, sender),
                 owner_unlocked=owner_unlocked,
                 request_id=request_id,
             ),
@@ -142,6 +157,8 @@ class AgentRuntime:
             allowed_directories=self.config.get_allowed_directories(),
             allowed_tools=self.config.get_allowed_tools(),
             tool_timeout_seconds=self.config.get_tool_timeout_seconds(),
+            session_id=self.build_session_id(request_source, sender),
+            session_context=self.session_context.get_snapshot(self.build_session_id(request_source, sender)),
         )
         if request_id:
             context.request_id = request_id
@@ -157,9 +174,12 @@ class AgentRuntime:
                 "tool_name": None,
                 "output": None,
                 "error": f"Tool '{tool_name}' not found. Available tools: {', '.join(self.registry.list_all())}",
+                "error_type": "unavailable_tool",
                 "request_id": context.request_id,
                 "trace": {
                     "raw_request": context.raw_message,
+                    "session_id": context.session_id,
+                    "session_context": context.session_context,
                     "source": request_source,
                     "interpreted_intent": tool_name,
                     "interpreted_args": args,
@@ -183,9 +203,12 @@ class AgentRuntime:
                 "tool_name": tool_name,
                 "output": None,
                 "error": f"Tool '{tool_name}' is not allowed",
+                "error_type": "denied_action",
                 "request_id": context.request_id,
                 "trace": {
                     "raw_request": context.raw_message,
+                    "session_id": context.session_id,
+                    "session_context": context.session_context,
                     "source": request_source,
                     "interpreted_intent": tool_name,
                     "interpreted_args": args,
@@ -211,9 +234,12 @@ class AgentRuntime:
                 "tool_name": tool_name,
                 "output": None,
                 "error": validation_error,
+                "error_type": "validation_failure",
                 "request_id": context.request_id,
                 "trace": {
                     "raw_request": context.raw_message,
+                    "session_id": context.session_id,
+                    "session_context": context.session_context,
                     "source": request_source,
                     "interpreted_intent": tool_name,
                     "interpreted_args": args,
@@ -256,9 +282,12 @@ class AgentRuntime:
                 "tool_name": tool_name,
                 "output": None,
                 "error": f"Tool timeout after {context.tool_timeout_seconds:.0f}s",
+                "error_type": "timeout",
                 "request_id": context.request_id,
                 "trace": {
                     "raw_request": context.raw_message,
+                    "session_id": context.session_id,
+                    "session_context": context.session_context,
                     "source": request_source,
                     "interpreted_intent": tool_name,
                     "interpreted_args": args,
@@ -290,11 +319,16 @@ class AgentRuntime:
             "tool_name": tool_name,
             "output": self._format_output_for_source(result.output, request_source),
             "error": self._format_output_for_source(result.error, request_source),
+            "error_type": result.error_type,
+            "missing_config_fields": result.missing_config_fields,
+            "remediation": result.remediation,
             "request_id": context.request_id,
             "source": request_source,
             "data": result.data,
             "trace": {
                 "raw_request": context.raw_message,
+                "session_id": context.session_id,
+                "session_context": context.session_context,
                 "source": request_source,
                 "interpreted_intent": tool_name,
                 "interpreted_args": args,
@@ -317,7 +351,11 @@ class AgentRuntime:
             "registered_tools": self.registry.list_all(),
             "assistant_ai_enabled": bool(self.openai_api_key),
             "assistant_model": self.openai_model,
-            "email_configured": bool(os.getenv("EMAIL_IMAP_HOST") and os.getenv("EMAIL_USERNAME") and os.getenv("EMAIL_PASSWORD")),
+            "email_configured": bool(
+                (os.getenv("EMAIL_IMAP_HOST") or os.getenv("IMAP_SERVER"))
+                and (os.getenv("EMAIL_USERNAME") or os.getenv("EMAIL_ADDRESS"))
+                and os.getenv("EMAIL_PASSWORD")
+            ),
             "version": "2.0.0",
         }
 
