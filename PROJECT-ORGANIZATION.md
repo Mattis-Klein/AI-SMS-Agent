@@ -1,6 +1,6 @@
 # Project Organization Guide
 
-This file matches the current repository layout exactly.
+This file reflects the current multi-assistant repository layout.
 
 ## Root Structure
 
@@ -8,81 +8,49 @@ This file matches the current repository layout exactly.
 C:\AI-SMS-Agent\
 ├── .gitignore
 ├── .vscode/
-│   └── settings.json
 ├── README.md
 ├── PROJECT-ORGANIZATION.md
-├── scripts/
-│   ├── dev-start.ps1
-│   ├── start-agent.ps1
-│   ├── start-bridge.ps1
-│   └── start-cloudflare.ps1
-├── agent/
-│   ├── .env.example
-│   ├── agent.py
-│   ├── requirements.txt
+├── mashbak/
+│   ├── README.md
+│   ├── agent/
+│   ├── desktop_app/
+│   ├── sms-bridge/
+│   ├── scripts/
+│   ├── docs/
 │   └── workspace/
-├── sms-bridge/
-│   ├── .env.example
-│   ├── package.json
-│   ├── package-lock.json
-│   └── sms-server.js
-└── docs/
-    ├── INDEX.md
-    ├── QUICK-START.md
-    ├── INSTALLATION.md
-    ├── RUNBOOK.md
-    ├── COMMANDS.md
-    ├── ENVIRONMENT.md
-    ├── LOGGING.md
-    ├── API.md
-    ├── AI-INTEGRATION.md
-    ├── FAQ.md
-    ├── SECURITY-HARDENING.md
-    ├── BEST-PRACTICES.md
-    ├── COMPONENTS.md
-    ├── PROJECT-STRUCTURE.md
-    ├── DEVELOPMENT.md
-    ├── TESTING.md
-    └── legacy/
-        ├── ARCHITECTURE.md
-        ├── SECURITY.md
-        ├── TROUBLESHOOTING.md
-        └── mashbak-integration.md
+└── bucherim/
+    ├── README.md
+    ├── agent/
+    ├── sms-bridge/
+    ├── config/
+    └── workspace/
 ```
 
 ## Environment Files Policy
 
-- Tracked in repo: `agent/.env.example`, `sms-bridge/.env.example`
+- Tracked in repo: `mashbak/agent/.env.example`, `mashbak/sms-bridge/.env.example`
 - Not tracked in repo: real `.env` files with secrets
-- Create local `.env` files by copying from each `.env.example`
+- Create local `.env` files by copying from the tracked `.env.example` files
 
 ## Runtime Clutter Policy
 
-Runtime artifacts are not part of source structure:
+Generated artifacts stay out of source control:
 
-- `agent/.venv/`
-- `agent/__pycache__/`
-- `sms-bridge/node_modules/`
-- `sms-bridge/logs/`
+- Python virtual environments and caches
+- PyInstaller build output
+- `mashbak/sms-bridge/node_modules/`
+- `mashbak/agent/workspace/` runtime contents except `.gitkeep`
+- `mashbak/sms-bridge/logs/` except `.gitkeep`
 - local `.env` files
 
-VS Code also hides these in Explorer via `.vscode/settings.json`.
+## Application Roles
 
-## Architecture Flow
-
-```text
-Flip phone SMS
-  -> Twilio number
-  -> Cloudflare tunnel URL
-  -> sms-bridge/sms-server.js
-  -> agent/agent.py
-  -> SMS response back through Twilio
-```
+- `mashbak/`: active production assistant, desktop-first with optional SMS transport
+- `bucherim/`: future assistant scaffold, not yet runnable
 
 ## Start Points
 
-- Main overview: `README.md`
-- Unified launcher: `.\scripts\dev-start.ps1` (recommended - starts all services)
-- Documentation index: `docs/INDEX.md`
-- Operations: `docs/RUNBOOK.md`
-- Structure reference: `docs/PROJECT-STRUCTURE.md`
+- Repo overview: `README.md`
+- Mashbak overview: `mashbak/README.md`
+- Mashbak docs index: `mashbak/docs/INDEX.md`
+- Mashbak build script: `mashbak/scripts/build-app.ps1`

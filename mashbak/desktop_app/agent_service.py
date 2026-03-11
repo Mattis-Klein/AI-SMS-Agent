@@ -1,5 +1,6 @@
 """Manages local FastAPI agent lifecycle for desktop app usage."""
 
+import copy
 import importlib
 import os
 import socket
@@ -104,11 +105,29 @@ class AgentService:
             host=self.host,
             port=self.port,
             log_level="warning",
+            log_config=self._build_in_process_log_config(),
+            access_log=False,
         )
         self.server = uvicorn.Server(config)
         self.server_thread = threading.Thread(target=self.server.run, daemon=True)
         self.server_thread.start()
         self.started_by_app = True
+
+    def _build_in_process_log_config(self) -> dict[str, object]:
+        log_config = copy.deepcopy(uvicorn.config.LOGGING_CONFIG)
+
+        for formatter_name in ("default", "access"):
+            formatter = log_config.get("formatters", {}).get(formatter_name)
+            if isinstance(formatter, dict):
+                formatter["use_colors"] = False
+
+        handlers = log_config.get("handlers", {})
+        if sys.stderr is None:
+            handlers["default"] = {"class": "logging.NullHandler"}
+        if sys.stdout is None:
+            handlers["access"] = {"class": "logging.NullHandler"}
+
+        return log_config
 
     def stop(self) -> None:
         if not self.started_by_app:

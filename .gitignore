@@ -1,4 +1,4 @@
-# Environment Variables (SECRETS - NEVER COMMIT)
+# Environment Variables (secrets - never commit)
 .env
 .env.*
 .env.local
@@ -9,26 +9,20 @@
 
 # Local configuration overrides
 config.local.json
-agent/config.local.json
-sms-bridge/config.local.json
+*.local.json
 
-# Python Virtual Environments
-agent/.venv/
-agent/venv/
+# Python environments and caches
 .venv/
 venv/
-
-# Python Cache
 __pycache__/
 *.py[cod]
-*.pyc
 *.pyo
 *$py.class
 *.so
 .Python
 build/
-develop-eggs/
 dist/
+develop-eggs/
 downloads/
 eggs/
 .eggs/
@@ -46,28 +40,15 @@ share/python-wheels/
 
 # Node.js
 node_modules/
-sms-bridge/node_modules/
-sms-bridge/npm-debug.log*
-sms-bridge/yarn-debug.log*
-sms-bridge/yarn-error.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Generic logs
+# Generated logs
 *.log
 logs/*
-workspace/logs/*
-!workspace/logs/.gitkeep
 
-# Application Data (Runtime Generated)
-agent/workspace/inbox/*
-agent/workspace/outbox/*
-agent/workspace/logs/*
-!agent/workspace/inbox/.gitkeep
-!agent/workspace/outbox/.gitkeep
-!agent/workspace/logs/.gitkeep
-sms-bridge/logs/*
-!sms-bridge/logs/.gitkeep
-
-# Mashbak assistant runtime data
+# Mashbak runtime data
 mashbak/agent/workspace/inbox/*
 mashbak/agent/workspace/outbox/*
 mashbak/agent/workspace/logs/*
@@ -77,7 +58,7 @@ mashbak/agent/workspace/logs/*
 mashbak/sms-bridge/logs/*
 !mashbak/sms-bridge/logs/.gitkeep
 
-# IDE & Editor
+# IDE and editor files
 .vscode/settings.json
 .idea/
 *.swp
@@ -85,7 +66,7 @@ mashbak/sms-bridge/logs/*
 *~
 .DS_Store
 
-# OS
+# OS and packaging artifacts
 Thumbs.db
 .env.bak
 *.spec
