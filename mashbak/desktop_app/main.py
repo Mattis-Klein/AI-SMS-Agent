@@ -26,10 +26,7 @@ for import_path in (ROOT_DIR, ROOT_DIR / "desktop_app"):
     if import_path_text not in sys.path:
         sys.path.insert(0, import_path_text)
 
-try:
-    from agent.runtime import create_runtime  # noqa: E402
-except ImportError:
-    from runtime import create_runtime  # noqa: E402
+from agent.runtime import create_runtime  # noqa: E402
 from agent_client import AgentClient  # noqa: E402
 from agent_service import AgentService  # noqa: E402
 from ui import DesktopControlApp  # noqa: E402

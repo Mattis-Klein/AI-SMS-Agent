@@ -253,6 +253,30 @@ Operator check:
 Prevention note:
 - Keep packaged GUI startup on `log_config=None` unless a custom stream-safe logging config is introduced and tested in frozen mode.
 
+### Error Chain: `No module named 'runtime'` / `config` / `imaplib`
+
+Symptom in packaged executable:
+
+```
+ModuleNotFoundError: No module named 'imaplib'
+...
+ModuleNotFoundError: No module named 'config'
+...
+ModuleNotFoundError: No module named 'runtime'
+```
+
+Root cause:
+- Broad `except ImportError` fallback imports in startup/runtime modules masked the original error and cascaded into misleading module-not-found exceptions.
+- Email tools imported `imaplib` at module import time; if unavailable in a given build, startup could fail instead of degrading gracefully.
+
+Stabilized fix in code:
+- Files: `mashbak/agent/runtime.py`, `mashbak/agent/agent.py`, `mashbak/agent/dispatcher.py`, `mashbak/desktop_app/main.py`
+- Change: replace broad import fallback blocks with package-context import paths so real root-cause exceptions surface.
+- File: `mashbak/agent/tools/builtin/email_tools.py`
+- Change: guard `imaplib` import and return a tool-level error when IMAP support is unavailable instead of crashing app startup.
+- File: `mashbak/scripts/build-app.ps1`
+- Change: include hidden imports for `imaplib` and core `email` modules.
+
 ### Test Local SMS Endpoint (No Twilio)
 
 Simulate an SMS locally:

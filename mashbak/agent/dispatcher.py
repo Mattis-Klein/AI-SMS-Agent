@@ -5,11 +5,11 @@ import time
 import uuid
 from typing import Optional, Dict, Any
 
-try:
+if __package__:
     from .tools import ToolRegistry
     from .interpreter import NaturalLanguageInterpreter
     from .logger import StructuredLogger
-except ImportError:
+else:
     from tools import ToolRegistry
     from interpreter import NaturalLanguageInterpreter
     from logger import StructuredLogger

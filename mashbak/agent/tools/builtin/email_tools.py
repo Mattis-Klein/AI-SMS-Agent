@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import imaplib
 import os
 import re
 from contextlib import contextmanager
@@ -14,6 +13,11 @@ from email.parser import BytesParser
 from typing import Any, Dict, Iterator, Optional
 
 from ..base import Tool, ToolResult
+
+try:
+    import imaplib
+except ModuleNotFoundError:
+    imaplib = None
 
 
 @dataclass
@@ -37,6 +41,8 @@ class EmailToolBase(Tool):
         self.use_ssl = os.getenv("EMAIL_USE_SSL", "true").strip().lower() not in {"0", "false", "no"}
 
     def _ensure_configured(self) -> tuple[bool, str]:
+        if imaplib is None:
+            return False, "IMAP support is unavailable in this build. Rebuild Mashbak with Python email/imap libraries included."
         if self.host and self.username and self.password:
             return True, ""
         return False, (

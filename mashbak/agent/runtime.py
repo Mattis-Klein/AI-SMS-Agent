@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-try:
+if __package__:
     from .config import Config
     from .assistant_core import AssistantCore, AssistantMetadata
     from .logger import StructuredLogger
@@ -14,7 +14,7 @@ try:
     from .tools.builtin import ALL_BUILTIN_TOOLS
     from .dispatcher import Dispatcher, RequestContext
     from .interpreter import NaturalLanguageInterpreter
-except ImportError:
+else:
     from config import Config
     from assistant_core import AssistantCore, AssistantMetadata
     from logger import StructuredLogger
