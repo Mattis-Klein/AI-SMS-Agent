@@ -1,93 +1,64 @@
 # Mashbak Assistant
 
-Mashbak is the current production assistant in this repository.
+Mashbak is a desktop-first assistant with one shared backend reasoning engine.
 
-- Desktop-first local application
-- Optional SMS bridge for remote transport
-- Shared backend runtime for both desktop and SMS inputs
+- Desktop UI is transport and presentation only.
+- SMS bridge is transport and access-control only.
+- Tool execution runs only through backend interpreter, dispatcher, and tool registry.
 
 ## Run
 
+From repository root:
+
 ```powershell
-# Agent
-cd mashbak/agent
-python -m uvicorn agent:app --host 127.0.0.1 --port 8787
+# Backend (FastAPI)
+python -m uvicorn agent.agent:app --app-dir mashbak --host 127.0.0.1 --port 8787
 
 # SMS bridge
 cd mashbak/sms-bridge
 npm start
 
 # Desktop UI
-python mashbak/desktop_app/main.py
+cd ..
+python desktop_app/main.py
 ```
 
-## Build
+## Build Desktop Executable
 
 ```powershell
 .\mashbak\scripts\build-app.ps1 -Clean
 ```
 
+Output:
+- `mashbak/dist/Mashbak.exe` for one-file mode (default)
+- `mashbak/dist/Mashbak/` for one-dir mode (`-OneDir`)
+
 ## Configuration
 
-### Single Master Configuration File
+Canonical configuration files:
+- Runtime source: `mashbak/.env.master`
+- Committed template: `mashbak/.env.master.example`
 
-All system configuration is now centralized in a single file for easy inspection and management:
-
-```
-mashbak/.env.master
-```
-
-This file contains all variables for desktop, backend, email, SMS bridge, and Twilio integration.
-
-**Setup:**
-1. Copy the template: `cp mashbak/.env.master.example mashbak/.env.master`
-2. Fill in your values
-3. The file is automatically loaded by both Python and Node services
-
-### Via Chat (Recommended for Users)
-
-Configure variables directly through assistant chat:
-
-```
-User:  EMAIL_ADDRESS = myemail@gmail.com
-Assistant: ✓ Configuration updated: EMAIL_ADDRESS has been set.
-
-User:  EMAIL_PASSWORD = app-password
-Assistant: ✓ Configuration updated: EMAIL_PASSWORD has been set.
-```
-
-Variables are validated, persisted to `mashbak/.env.master`, and take effect on next tool execution.
-
-See [ENVIRONMENT.md](docs/ENVIRONMENT.md) for the complete list of chat-configurable variables.
-
-### Via Master Config File (Developers)
-
-Edit `mashbak/.env.master` directly:
+Create local runtime config:
 
 ```powershell
-# Copy template
-cp mashbak/.env.master.example mashbak/.env.master
-
-# Edit with your values
+Copy-Item mashbak/.env.master.example mashbak/.env.master
 notepad mashbak/.env.master
 ```
 
-The master config is loaded by:
-- **Python backend** via `ConfigLoader` at startup
-- **SMS bridge** (Node.js) via its master env loader at startup
-- **Desktop** indirectly through backend API calls
+Config updates through chat use the same backend path as all requests and write to `mashbak/.env.master` via `set_config_variable`.
 
-### Configuration Policy
+Accepted assignment styles include:
 
-Mashbak now uses a **master-only** configuration model.
+```text
+EMAIL_PASSWORD = app-password
+set MODEL_RESPONSE_MAX_TOKENS to 250
+and password is app-password   (when continuing a config thread)
+```
 
-- Single source of truth: `mashbak/.env.master`
-- Chat updates write to `mashbak/.env.master`
-- Runtime services (agent, desktop flow, bridge) read from `mashbak/.env.master`
-- Process environment variables can still override values when explicitly set in the shell
+Reload behavior:
+- Backend/OpenAI/email/runtime tuning values reload in-process.
+- Bridge transport and access-control values are startup-loaded and require bridge restart.
+- `AGENT_API_KEY` change requires callers to use the new key and typically restart active clients.
 
-Runtime behavior after chat-based config updates:
-- Backend/email/OpenAI settings are reloaded in-process.
-- SMS bridge transport/access-control settings are startup-loaded and require bridge restart.
-
-See [ENVIRONMENT.md](docs/ENVIRONMENT.md) for all variables and their meanings.
+See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for complete variable reference and restart details.

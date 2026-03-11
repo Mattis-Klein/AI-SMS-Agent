@@ -1,114 +1,81 @@
 # Project Structure
 
-This document reflects the current repository structure exactly.
+This document describes the Mashbak subtree rooted at mashbak/.
 
 ## Directory Tree
 
 ```text
-C:\AI-SMS-Agent\
-├── .gitignore
-├── .vscode/
-│   └── settings.json
+mashbak/
+├── .env.master
+├── .env.master.example
 ├── README.md
-├── PROJECT-ORGANIZATION.md
-├── local-memory-notes/      ← Local markdown memory folder (gitignored)
-├── scripts/
-│   ├── dev-start.ps1         ← Unified launcher (starts everything)
-│   ├── build-app.ps1         ← Desktop app packaging script (PyInstaller)
-│   ├── start-agent.ps1
-│   ├── start-bridge.ps1
-│   └── start-cloudflare.ps1
+├── Mashbak.spec
 ├── agent/
-│   ├── .env.example
+│   ├── __init__.py
 │   ├── agent.py
 │   ├── runtime.py
-│   ├── dispatcher.py
+│   ├── assistant_core.py
 │   ├── interpreter.py
+│   ├── dispatcher.py
+│   ├── session_context.py
 │   ├── logger.py
-│   ├── tools/
+│   ├── redaction.py
+│   ├── config.py
+│   ├── config_loader.py
+│   ├── config.json
 │   ├── requirements.txt
+│   ├── tools/
 │   └── workspace/
 ├── desktop_app/
 │   ├── main.py
-│   ├── agent_service.py
-│   ├── agent_client.py
 │   ├── ui.py
-│   └── widgets.py
+│   ├── widgets.py
+│   ├── agent_client.py
+│   └── agent_service.py
 ├── sms-bridge/
-│   ├── .env.example
+│   ├── sms-server.js
+│   ├── access-control-config.js
+│   ├── redaction.js
 │   ├── package.json
-│   ├── package-lock.json
-│   └── sms-server.js
-└── docs/
-    ├── INDEX.md
-    ├── QUICK-START.md
-    ├── INSTALLATION.md
-    ├── RUNBOOK.md
-    ├── COMMANDS.md
-    ├── ENVIRONMENT.md
-    ├── LOGGING.md
-    ├── API.md
-    ├── AI-INTEGRATION.md
-    ├── FAQ.md
-    ├── SECURITY-HARDENING.md
-    ├── BEST-PRACTICES.md
-    ├── COMPONENTS.md
-    ├── PROJECT-STRUCTURE.md
-    ├── DEVELOPMENT.md
-    ├── TESTING.md
-    └── legacy/
-        ├── ARCHITECTURE.md
-        ├── SECURITY.md
-        ├── TROUBLESHOOTING.md
-        └── mashbak-integration.md
+│   ├── tests/
+│   └── logs/
+├── tests/
+├── docs/
+├── scripts/
+├── build/
+├── dist/
+└── workspace/
 ```
 
-## What Each Top-Level Folder Does
+## Role Of Each Area
 
-- `agent/`: Python FastAPI agent for controlled local actions
-- `sms-bridge/`: Node.js Twilio bridge
-- `scripts/`: PowerShell launcher scripts
-  - `dev-start.ps1` — Unified launcher (recommended) - starts all three services
-  - `build-app.ps1` — Builds `AISMSDesktop.exe` for normal desktop usage
-  - `start-agent.ps1` — Launch only the Python agent
-  - `start-bridge.ps1` — Launch only the SMS bridge
-  - `start-cloudflare.ps1` — Launch only the Cloudflare tunnel
-- `desktop_app/`: Local desktop application (header/sidebar/chat/activity-status layout)
-  - Starts local agent automatically
-  - Uses same dispatcher/tool pipeline as SMS
-  - Never sends SMS replies
-- `docs/`: project documentation
-- `.vscode/`: workspace display settings (hides runtime clutter)
+- agent/: backend API, reasoning, interpreter, dispatcher, tool registry, and tools
+- desktop_app/: local desktop transport and UI only
+- sms-bridge/: Twilio transport and sender access-control only
+- tests/: Python regression tests for backend behavior
+- sms-bridge/tests/: bridge regression tests
+- docs/: operational and developer documentation
+- scripts/: launch and packaging scripts
 
 ## Environment Files
 
-Tracked templates only:
-- `mashbak/.env.master.example`
-- `mashbak/.env.master.example`
+- Committed template: mashbak/.env.master.example
+- Local runtime source: mashbak/.env.master
 
-Local-only runtime files (not tracked):
-- `mashbak/.env.master`
-- `mashbak/.env.master`
+## Build Output
 
-## Runtime-Generated Folders (Excluded)
+- Default executable: mashbak/dist/Mashbak.exe
+- One-dir output: mashbak/dist/Mashbak/
 
-These are expected during execution but not part of the clean source tree:
+## Runtime-Generated/Local Folders
 
-- `agent/.venv/`
-- `agent/__pycache__/`
-- `sms-bridge/node_modules/`
-- `sms-bridge/logs/`
-- `local-memory-notes/`
+Common local artifacts:
+- agent/.venv/
+- agent/__pycache__/
+- agent/workspace/logs/
+- sms-bridge/node_modules/
+- sms-bridge/logs/
+- build/
+- dist/
 
-## Quick Lookup
-
-- System overview: [README.md](../README.md)
-- Documentation index: [INDEX.md](INDEX.md)
-- Operations: [RUNBOOK.md](RUNBOOK.md)
-- Environment variables: [ENVIRONMENT.md](ENVIRONMENT.md)
-- Legacy references: [legacy/](legacy)
-
----
-
-**Last Updated:** March 10, 2026
-
+Last Updated: March 11, 2026

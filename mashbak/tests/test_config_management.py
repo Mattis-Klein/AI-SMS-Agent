@@ -51,6 +51,13 @@ def test_interpreter_detects_config_assignment():
     assert parsed.args["variable_name"] == "TWILIO_FROM_NUMBER"
     assert parsed.args["variable_value"] == "+15551234567"
     print("✓ Detected TWILIO_FROM_NUMBER assignment")
+
+    # Test natural language config assignment pattern
+    parsed = interpreter.parse("set MODEL_RESPONSE_MAX_TOKENS to 250")
+    assert parsed.tool == "set_config_variable"
+    assert parsed.args["variable_name"] == "MODEL_RESPONSE_MAX_TOKENS"
+    assert parsed.args["variable_value"] == "250"
+    print("✓ Detected natural-language config assignment")
     
     # Test unknown variable (should not match)
     parsed = interpreter.parse("UNKNOWN_VAR = somevalue")
@@ -162,6 +169,27 @@ def test_config_tool_value_validation():
         elif "port" not in result.error.lower():
             print("✓ Port validation passed (file error is expected in test)")
     asyncio.run(check_valid_port())
+
+
+def test_interpreter_followup_config_assignment():
+    """Test follow-up config mapping for password/username in setup threads."""
+    interpreter = NaturalLanguageInterpreter()
+
+    parsed = interpreter.parse_to_dict(
+        "and password is hunter2",
+        context={"last_topic": "email_access"},
+    )
+    assert parsed["tool"] == "set_config_variable"
+    assert parsed["args"]["variable_name"] == "EMAIL_PASSWORD"
+    assert parsed["args"]["variable_value"] == "hunter2"
+
+    parsed = interpreter.parse_to_dict(
+        "and username is review@example.com",
+        context={"last_topic": "email_setup"},
+    )
+    assert parsed["tool"] == "set_config_variable"
+    assert parsed["args"]["variable_name"] == "EMAIL_USERNAME"
+    assert parsed["args"]["variable_value"] == "review@example.com"
 
 
 if __name__ == "__main__":

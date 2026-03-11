@@ -38,6 +38,21 @@ class NaturalLanguageInterpreter:
         "do you need my password", "do u have access", "do u need my password", "what now",
     }
 
+    CONFIG_NAME_ALIASES = {
+        "email": "EMAIL_USERNAME",
+        "email address": "EMAIL_USERNAME",
+        "email user": "EMAIL_USERNAME",
+        "email username": "EMAIL_USERNAME",
+        "username": "EMAIL_USERNAME",
+        "email password": "EMAIL_PASSWORD",
+        "imap server": "EMAIL_IMAP_HOST",
+        "imap host": "EMAIL_IMAP_HOST",
+        "imap port": "EMAIL_IMAP_PORT",
+        "model response max tokens": "MODEL_RESPONSE_MAX_TOKENS",
+        "session context max turns": "SESSION_CONTEXT_MAX_TURNS",
+        "tool execution timeout": "TOOL_EXECUTION_TIMEOUT",
+    }
+
     def __init__(self):
         self.patterns = [
             (r"(?:do i have|any|show|list|check).*(?:new|recent|latest|unread).*(?:emails?|mail|messages?)", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True}),
@@ -77,6 +92,19 @@ class NaturalLanguageInterpreter:
         parsed = self.parse(message)
 
         followup_topic = self._resolve_followup_topic(message, parsed, context)
+
+        if not parsed.tool:
+            followup_tool, followup_args, followup_confidence = self._detect_followup_config_assignment(message, followup_topic)
+            if followup_tool:
+                parsed = ParsedRequest(
+                    intent="config_update",
+                    tool=followup_tool,
+                    args=followup_args,
+                    confidence=followup_confidence,
+                    mode="tool",
+                )
+                followup_topic = None
+
         topic = self._infer_topic(message, parsed, followup_topic)
         entities = self._extract_entities(parsed.tool, parsed.args)
 
@@ -120,7 +148,54 @@ class NaturalLanguageInterpreter:
                     if var_value:
                         return "set_config_variable", {"variable_name": var_name, "variable_value": var_value}, 0.86
 
+        natural_pattern = r"^(?:set|update|change)\s+([A-Za-z_][A-Za-z0-9_\-\s]*)\s+(?:to|=|:)\s*(.+)$"
+        natural_match = re.match(natural_pattern, msg, re.IGNORECASE)
+        if natural_match:
+            variable_candidate = natural_match.group(1).strip()
+            variable_value = natural_match.group(2).strip()
+            variable_name = self._resolve_config_variable_name(variable_candidate)
+            if variable_name and variable_value:
+                return "set_config_variable", {"variable_name": variable_name, "variable_value": variable_value}, 0.93
+
         return None, {}, 0.0
+
+    def _detect_followup_config_assignment(
+        self,
+        message: str,
+        followup_topic: Optional[str],
+    ) -> tuple[Optional[str], dict[str, Any], float]:
+        if followup_topic not in {"email_setup", "email_access", "config_update"}:
+            return None, {}, 0.0
+
+        msg = message.strip()
+        lower = msg.lower()
+
+        password_match = re.match(r"^(?:and\s+)?password\s*(?:is|=|:|to)\s+(.+)$", lower, re.IGNORECASE)
+        if password_match:
+            return "set_config_variable", {
+                "variable_name": "EMAIL_PASSWORD",
+                "variable_value": msg[password_match.start(1):].strip(),
+            }, 0.9
+
+        username_match = re.match(r"^(?:and\s+)?(?:email\s+)?(?:username|user|address|email)\s*(?:is|=|:|to)\s+(.+)$", lower, re.IGNORECASE)
+        if username_match:
+            return "set_config_variable", {
+                "variable_name": "EMAIL_USERNAME",
+                "variable_value": msg[username_match.start(1):].strip(),
+            }, 0.88
+
+        return None, {}, 0.0
+
+    def _resolve_config_variable_name(self, candidate: str) -> Optional[str]:
+        normalized_key = re.sub(r"\s+", " ", candidate.strip().lower())
+        if normalized_key in self.CONFIG_NAME_ALIASES:
+            return self.CONFIG_NAME_ALIASES[normalized_key]
+
+        normalized_var = re.sub(r"[^A-Za-z0-9]+", "_", candidate.strip()).upper().strip("_")
+        if normalized_var in self.CONFIG_VARIABLES:
+            return normalized_var
+
+        return None
 
     def _classify_intent(self, message: str) -> Optional[str]:
         msg = message.lower().strip()
@@ -179,6 +254,9 @@ class NaturalLanguageInterpreter:
         return any(
             key in message
             for key in ["password", "still need", "what else", "did that fix", "and now", "do you need", "setup", "configure"]
+        ) or any(
+            key in message
+            for key in ["username", "user", "email", "address", "imap", "server", "port"]
         ) or len(tokens) <= 2
 
     def _is_elliptical_followup(self, message: str) -> bool:

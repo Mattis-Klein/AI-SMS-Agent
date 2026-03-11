@@ -1,277 +1,93 @@
-# Complete Installation Guide
+# Installation Guide
 
-Full step-by-step setup from scratch.
+## Prerequisites
 
-## System Requirements
+- Windows 10+
+- Python 3.11+ recommended
+- Node.js 18+
+- Optional: cloudflared for public Twilio webhook testing
 
-- Windows 10 or later
-- Python 3.9+ (with venv)
-- Node.js 18+ (with npm)
-- Cloudflare Tunnel (`cloudflared`) installed
-- Administrator access for some steps
-
-## Quick Note: Unified Launcher
-
-After completing the setup steps below, you can launch the entire system with a single command:
+## 1. Python Dependencies
 
 ```powershell
-.\scripts\dev-start.ps1
+cd mashbak
+python -m pip install -r agent/requirements.txt
 ```
 
-This unified launcher handles virtual environment creation, dependency installation, and launches all three services (agent, bridge, tunnel) automatically. The manual steps below are useful for understanding what happens under the hood and for troubleshooting.
-
-## Step 1: Prerequisites & Dependencies
-
-### 1.1 Python Virtual Environment
+## 2. Node Dependencies
 
 ```powershell
-cd agent
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install --upgrade pip
-pip install fastapi uvicorn python-dotenv
-```
-
-### 1.2 Node.js Dependencies
-
-```powershell
-cd sms-bridge
+cd mashbak/sms-bridge
 npm install
-npm run check  # Verify syntax
 ```
 
-## Step 2: Configure Local Agent
-
-### 2.1 Create `mashbak/.env.master` file
-
-Create `mashbak/.env.master` with your settings:
-
-```
-AGENT_API_KEY=dev-secret-key-change-this
-AGENT_WORKSPACE=agent/workspace
-```
-
-**IMPORTANT**: Change `AGENT_API_KEY` to a random string. This must match the bridge.
-
-### 2.2 Verify Agent Setup
+## 3. Create Runtime Config
 
 ```powershell
-cd agent
-.\.venv\Scripts\activate
-python -m py_compile agent.py
-curl.exe http://127.0.0.1:8787/health  # Should fail (not running yet)
+cd mashbak
+Copy-Item .env.master.example .env.master
+notepad .env.master
 ```
 
-## Step 3: Configure SMS Bridge
+Required baseline keys:
+- AGENT_API_KEY
+- AGENT_URL
+- BRIDGE_PORT
+- PUBLIC_BASE_URL
 
-### 3.1 Create `mashbak/.env.master` file
+## 4. Run Services
 
-Use the same `mashbak/.env.master` file for bridge values:
-
-```
-# Local agent connection
-AGENT_URL=http://127.0.0.1:8787
-AGENT_API_KEY=dev-secret-key-change-this
-
-# Bridge settings
-BRIDGE_PORT=34567
-PUBLIC_BASE_URL=https://YOUR-CLOUDFLARE-URL.trycloudflare.com
-
-# Twilio credentials (get from Twilio Console)
-TWILIO_AUTH_TOKEN=your-auth-token
-SMS_ACCESS_REQUEST_NUMBERS=+18005551234
-
-# Optional: AI mode
-OPENAI_API_KEY=sk-your-key
-OPENAI_MODEL=gpt-4.1-mini
-```
-
-### 3.2 Verify Bridge Setup
+Backend:
 
 ```powershell
-cd sms-bridge
-npm run check
+python -m uvicorn agent.agent:app --app-dir mashbak --host 127.0.0.1 --port 8787
 ```
 
-Expected: No errors.
-
-## Step 4: Setup Cloudflare Tunnel
-
-### 4.1 Install cloudflared
-
-Download from https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
-
-### 4.2 Start Tunnel
+Bridge:
 
 ```powershell
-cloudflared tunnel --url http://localhost:34567
-```
-
-### 4.3 Copy Public URL
-
-```powershell
-Copy the `https://...trycloudflare.com` URL printed by cloudflared.
-```
-
-Use that URL as your bridge public base URL.
-
-### 4.4 Update `mashbak/.env.master` with Public URL
-
-Update `mashbak/.env.master`:
-
-```
-PUBLIC_BASE_URL=https://YOUR-CLOUDFLARE-URL.trycloudflare.com
-```
-
-## Step 5: Setup Twilio
-
-### 5.1 Create Twilio Account
-
-1. Go to https://www.twilio.com/console
-2. Create a new account or use existing one
-3. Get a phone number (SMS enabled)
-4. Note the Auth Token (in Account Settings)
-
-### 5.2 Configure Webhook
-
-In Twilio Console, for your SMS number:
-
-- **Incoming Messages Webhook**: `https://YOUR-CLOUDFLARE-URL.trycloudflare.com/sms`
-- **Method**: POST
-
-### 5.3 Update Bridge `mashbak/.env.master`
-
-Set `TWILIO_AUTH_TOKEN` and `SMS_ACCESS_REQUEST_NUMBERS`.
-
-## Step 6: Test Local System (Without Twilio)
-
-### 6.1 Start Agent
-
-```powershell
-cd agent
-.\.venv\Scripts\activate
-uvicorn agent:app --host 127.0.0.1 --port 8787
-```
-
-Wait for: `Uvicorn running on...`
-
-### 6.2 Start Bridge (in new terminal)
-
-```powershell
-cd sms-bridge
+cd mashbak/sms-bridge
 npm start
 ```
 
-Wait for: `Bridge listening on port 34567`
-
-### 6.3 Test Agent
+Desktop:
 
 ```powershell
-$headers = @{"X-API-Key" = "dev-secret-key-change-this"}
-curl.exe -X POST http://127.0.0.1:8787/read `
-  -H "Content-Type: application/json" `
-  -H @headers `
-  -d '{"path":"inbox/test.txt"}'
+cd mashbak
+python desktop_app/main.py
 ```
 
-Expected: Either `404` (file missing) or content.
+## 5. Verify
 
-### 6.4 Test Bridge ↔ Agent
+Backend health:
 
 ```powershell
-curl.exe -X POST http://127.0.0.1:34567/sms `
-  -H "Content-Type: application/x-www-form-urlencoded" `
-  --data "Body=hello&From=%2B18005551234"
+Invoke-RestMethod -Method Get -Uri http://127.0.0.1:8787/health -Headers @{"x-api-key"="<AGENT_API_KEY>"}
 ```
 
-Expected: TwiML response in XML format.
-
-## Step 7: Enable Public Access
-
-### 7.1 Start Cloudflare Tunnel
-
-In a new terminal:
+Bridge health:
 
 ```powershell
-cloudflared tunnel --url http://localhost:34567
+Invoke-RestMethod -Method Get -Uri http://127.0.0.1:34567/health
 ```
 
-### 7.2 Verify Public Endpoint
+## 6. Optional Twilio + Tunnel
+
+- Start cloudflared for bridge port.
+- Set PUBLIC_BASE_URL to active tunnel URL.
+- Configure Twilio webhook to: https://<public-url>/sms
+
+## 7. Build Desktop Executable
 
 ```powershell
-curl.exe https://YOUR-CLOUDFLARE-URL.trycloudflare.com/sms
+.\mashbak\scripts\build-app.ps1 -Clean
 ```
 
-Expected: Connection works (or 405 status - that's fine for now).
+Build output:
+- mashbak/dist/Mashbak.exe
 
-## Step 8: Test End-to-End with Twilio
+## Notes
 
-### 8.1 Have All Three Running
-
-- Terminal 1: Agent (`uvicorn agent:app...`)
-- Terminal 2: Bridge (`npm start`)
-- Terminal 3: Tunnel (`cloudflared tunnel --url ...`)
-
-### 8.2 Send SMS
-
-Send any SMS to your Twilio number.
-
-### 8.3 Check Logs
-
-**Bridge log**:
-```powershell
-Get-Content sms-bridge/logs/bridge.log -Tail 20
-```
-
-**Agent log**:
-```powershell
-Get-Content agent/workspace/logs/agent.log -Tail 20
-```
-
-### 8.4 Verify Reply
-
-You should receive a reply SMS within 10 seconds.
-
-## Step 9 (Optional): Enable AI Mode
-
-Edit `mashbak/.env.master` and add:
-
-```
-OPENAI_API_KEY=sk-your-real-key
-```
-
-Then restart the bridge. Natural-language messages will now be AI-powered.
-
-## Step 10: Secure Your Setup
-
-Read [Security Hardening](SECURITY-HARDENING.md) and apply recommendations:
-
-- Change all default keys
-- Enable Twilio signature validation (already in `mashbak/.env.master`)
-- Verify your phone number in `SMS_ACCESS_REQUEST_NUMBERS`
-- Consider Cloudflare Access or additional gateway restrictions for production
-
----
-
-## Troubleshooting Installation
-
-| Issue | Solution |
-|-------|----------|
-| Python not found | Install Python 3.9+, add to PATH |
-| Node not found | Install Node.js 18+, restart terminal |
-| `pip install` fails | Run `python -m pip install --upgrade pip` first |
-| Port already in use | Change `BRIDGE_PORT` or kill conflicting process |
-| cloudflared not found | Install cloudflared or add it to PATH |
-| Twilio webhook unreachable | Ensure `PUBLIC_BASE_URL` matches current cloudflared URL |
-
-## Next Steps
-
-1. [Quick Start](QUICK-START.md) - Fast verification
-2. [Runbook](RUNBOOK.md) - Daily operations
-3. [SMS Commands](COMMANDS.md) - What you can do
-4. [Troubleshooting](legacy/TROUBLESHOOTING.md) - If something breaks
-
----
-
-**Installation Time**: ~30 minutes  
-**Support**: See [FAQ](FAQ.md)
+- Runtime config source is mashbak/.env.master.
+- Chat config updates write to mashbak/.env.master.
+- Bridge transport/access-control values require bridge restart after change.

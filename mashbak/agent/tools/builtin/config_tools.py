@@ -279,9 +279,9 @@ class SetConfigVariableTool(Tool):
             
             # Build output message (don't echo sensitive values)
             if var_name in self.SENSITIVE_VARIABLES:
-                output = f"✓ Configuration updated: {var_name} has been set."
+                output = f"Configuration updated: {var_name} has been set."
             else:
-                output = f"✓ Configuration updated: {var_name} = {var_value}"
+                output = f"Configuration updated: {var_name} = {var_value}"
 
             if pending_restart:
                 output += f"\n\nPending restart required for: {', '.join(restart_required)}."

@@ -1,48 +1,30 @@
-# Environment Configuration (Master File Reference)
+# Environment Configuration
 
-Mashbak uses a single master configuration file for all services.
+Mashbak uses one canonical runtime file:
 
-## Source Of Truth
+- Runtime source: mashbak/.env.master
+- Committed template: mashbak/.env.master.example
 
-- Primary file: mashbak/.env.master
-- Template: mashbak/.env.master.example
-- Chat-based updates write to: mashbak/.env.master
-- Runtime services that read this file:
-  - Python agent runtime
-  - Desktop app runtime path (via agent config loader)
-  - SMS bridge runtime
+Chat-based config updates also persist to mashbak/.env.master.
 
-Process-level environment variables can still override values when explicitly set in the current shell.
+## Loading Rules
 
-## Runtime Reload Behavior
+- Backend loads from .env.master through ConfigLoader.
+- Bridge loads from .env.master at startup.
+- Shell environment variables can override values for the active process.
 
-- Agent runtime config updates from chat are reloaded in-process for backend/email/OpenAI behavior.
-- SMS bridge access-control and Twilio transport settings are startup-loaded; changing those requires an SMS bridge restart.
-- AGENT_API_KEY changes require coordinated restart/re-auth for callers using the previous key.
-
-## Setup
-
-1. Copy the template.
-2. Fill in your real values.
-3. Keep the file private.
-
-```powershell
-cd mashbak
-cp .env.master.example .env.master
-notepad .env.master
-```
-
-## Required Core Variables
+## Required Baseline Variables
 
 - AGENT_API_KEY
 - AGENT_URL
 - BRIDGE_PORT
 - PUBLIC_BASE_URL
 
-## Optional AI Variables
+## AI Variables
 
 - OPENAI_API_KEY
 - OPENAI_MODEL
+- MODEL_RESPONSE_MAX_TOKENS
 
 ## Email Variables
 
@@ -54,64 +36,101 @@ Canonical names:
 - EMAIL_MAILBOX
 - EMAIL_USE_SSL
 
-Alias compatibility names:
+Compatibility aliases accepted by validation and checks:
 - IMAP_SERVER
 - IMAP_PORT
 - EMAIL_ADDRESS
 
-At minimum, configure host/server, port, username/address, and password.
+## SMS Access-Control Variables
 
-## SMS Access Control Variables
+- SMS_OWNER_NUMBER
+- SMS_ACCESS_REQUEST_NUMBERS
+- SMS_ACCESS_REQUEST_RESPONSE
+- SMS_ACCESS_REQUEST_KEYWORD
+- HERSHY_NUMBER
+- HERSHY_RESPONSE
+- REJECTED_NUMBERS
+- REJECTED_RESPONSE
+- SMS_DENIAL_RESPONSE
+- SMS_PHONE_NORMALIZATION_DIGITS
 
-- SMS_OWNER_NUMBER: Phone number of the system owner (receives forwarded messages)
-- SMS_ACCESS_REQUEST_NUMBERS: Comma-separated numbers that receive access-request instructions
-- SMS_ACCESS_REQUEST_RESPONSE: Message sent to access-request numbers
-- SMS_ACCESS_REQUEST_KEYWORD: Keyword that triggers access request when sent by an access-request number
-- HERSHY_NUMBER: Single phone number that receives a custom special response
-- HERSHY_RESPONSE: Custom response text for the Hershy number
-- REJECTED_NUMBERS: Comma-separated numbers that receive the rejection response
-- REJECTED_RESPONSE: Message sent to rejected numbers
-- SMS_DENIAL_RESPONSE: Message sent to numbers not in any other category (default deny)
-- SMS_PHONE_NORMALIZATION_DIGITS: Number of digits to keep when normalizing phone numbers (default: 10)
-
-## Twilio Variables
+## Twilio Bridge Variables
 
 - TWILIO_ACCOUNT_SID
 - TWILIO_AUTH_TOKEN
 - TWILIO_FROM_NUMBER
 
-## Logging And Runtime Variables
+## Runtime And Logging Variables
 
-- BRIDGE_LOG_MAX_BYTES
 - AGENT_WORKSPACE
 - LOG_LEVEL
 - DEBUG_MODE
 - SESSION_CONTEXT_MAX_TURNS
 - TOOL_EXECUTION_TIMEOUT
+- BRIDGE_LOG_MAX_BYTES
+
+## Live Reload Versus Restart
+
+Reloaded in-process by backend runtime:
+- OPENAI_API_KEY
+- OPENAI_MODEL
 - MODEL_RESPONSE_MAX_TOKENS
+- SESSION_CONTEXT_MAX_TURNS
+- TOOL_EXECUTION_TIMEOUT
+- Email settings used by email tools
+
+Bridge restart required after change:
+- AGENT_URL
+- BRIDGE_PORT
+- PUBLIC_BASE_URL
+- TWILIO_ACCOUNT_SID
+- TWILIO_AUTH_TOKEN
+- TWILIO_FROM_NUMBER
+- SMS_OWNER_NUMBER
+- SMS_ACCESS_REQUEST_NUMBERS
+- SMS_ACCESS_REQUEST_RESPONSE
+- SMS_ACCESS_REQUEST_KEYWORD
+- HERSHY_NUMBER
+- HERSHY_RESPONSE
+- REJECTED_NUMBERS
+- REJECTED_RESPONSE
+- SMS_DENIAL_RESPONSE
+- SMS_PHONE_NORMALIZATION_DIGITS
+
+Coordinated restart/re-auth required:
+- AGENT_API_KEY
+
+set_config_variable tool responses include metadata:
+- applied_live: true or false
+- restart_required: component list (for example sms_bridge or agent_auth)
+
+## Setup
+
+```powershell
+cd mashbak
+Copy-Item .env.master.example .env.master
+notepad .env.master
+```
 
 ## Validation Checklist
 
-- mashbak/.env.master exists
-- AGENT_API_KEY is set
-- AGENT_URL points to the running agent
+- .env.master exists in mashbak root
+- AGENT_API_KEY is non-empty
+- AGENT_URL points to running backend
 - BRIDGE_PORT is available
-- PUBLIC_BASE_URL matches your active tunnel URL
+- PUBLIC_BASE_URL matches current tunnel URL
 - Twilio values are set for production webhook validation and owner notifications
-- Email values are set if email tools are used
+- Email values are set before email tools are used
 
 ## Troubleshooting
 
-- Missing configuration errors: set missing fields in mashbak/.env.master
-- Agent auth failures: verify AGENT_API_KEY is correct in mashbak/.env.master
-- Twilio signature failures: verify TWILIO_AUTH_TOKEN and PUBLIC_BASE_URL
-- Email tool not configured: set EMAIL_IMAP_HOST or IMAP_SERVER, EMAIL_IMAP_PORT or IMAP_PORT, EMAIL_USERNAME or EMAIL_ADDRESS, and EMAIL_PASSWORD
-- Config changed but SMS behavior unchanged: restart sms-bridge because access-control/Twilio config is loaded at startup
+- Missing configuration error: set reported fields in .env.master
+- Config changed but bridge behavior unchanged: restart sms-bridge
+- Config changed but desktop/backend unchanged: verify value, then retry request (backend reloads on execution)
+- Auth failures after key change: update callers with new AGENT_API_KEY
 
 ## Security Notes
 
-- Never commit mashbak/.env.master
-- Keep secrets only in mashbak/.env.master or secure process environment
-- Keep mashbak/.env.master.example non-secret and commit-safe
-
-Last Updated: March 11, 2026
+- Never commit .env.master
+- Keep secrets only in .env.master or secure process environment
+- Treat logs and traces as sensitive operational data even with redaction
