@@ -88,7 +88,26 @@ class NaturalLanguageInterpreter:
         return ParsedRequest(intent=intent, tool=tool_name, args=args, confidence=confidence, mode=mode)
 
     def parse_to_dict(self, message: str, context: Optional[dict[str, Any]] = None) -> dict:
+        """
+        Parse a user message into a structured intent dict, using session context
+        to resolve references from recent turns and task state.
+
+        Context fields consumed:
+          recent_turns         — rolling window of prior user+assistant turns
+          last_topic           — last conversation topic
+          last_failure_type    — last error category
+          last_task / last_result / last_args / last_created_path — task state
+          pending_task / missing_parameters   — pending task state
+          missing_config_fields               — outstanding config requirements
+        """
         context = context or {}
+
+        # --- 1. Try context-reference resolution first (elliptical queries) ---
+        ref_result = self._resolve_context_reference(message, context)
+        if ref_result is not None:
+            return ref_result
+
+        # --- 2. Standard parse ---
         parsed = self.parse(message)
 
         followup_topic = self._resolve_followup_topic(message, parsed, context)
@@ -112,6 +131,8 @@ class NaturalLanguageInterpreter:
             entities["followup_topic"] = followup_topic
         if context.get("missing_config_fields"):
             entities["missing_config_fields"] = list(context.get("missing_config_fields") or [])
+        if context.get("missing_parameters"):
+            entities["missing_parameters"] = list(context.get("missing_parameters") or [])
 
         return {
             "tool": parsed.tool,
@@ -123,6 +144,159 @@ class NaturalLanguageInterpreter:
             "followup_topic": followup_topic,
             "entities": entities,
         }
+
+    # ------------------------------------------------------------------
+    # Context-reference resolution
+    #
+    # Detects elliptical or pronoun-heavy follow-ups and resolves them
+    # against the session's recent turns and task state without requiring
+    # the user to repeat themselves.
+    # ------------------------------------------------------------------
+
+    # Patterns that signal the user is referring to something already in context.
+    _REF_LOCATION_PATTERNS = [
+        r"\bwhere(?:\s+was|\s+is|\s+did)?\s+it\b",
+        r"\bwhere(?:\s+was|\s+is)?\s+(?:that|the\s+\w+)\s+(?:added|created|saved|put|written)\b",
+        r"\bdid\s+(?:you|it)\s+(?:create|save|add|write|put)\s+it\b",
+        r"\bis\s+it\s+(?:there|saved|created|done|added)\b",
+    ]
+    _REF_THAT_FILE_PATTERNS = [
+        r"\bthat\s+file\b",
+        r"\bthe\s+(?:file|folder|path)\s+(?:we\s+(?:are|were)\s+talking\s+about|you\s+mentioned|i\s+mentioned)\b",
+        r"\bthe\s+one\s+(?:we\s+(?:are|were|just)\s+talking\s+about|you\s+(?:created|made|mentioned))\b",
+        r"\bit\s+(?:was|is)\s+(?:that\s+file|the\s+file)\b",
+    ]
+    _REF_WHAT_ELSE_PATTERNS = [
+        r"\bwhat\s+(?:else\s+)?do\s+you\s+need\b",
+        r"\bwhat\s+(?:else\s+)?(?:is\s+)?(?:still\s+)?(?:missing|needed|required)\b",
+        r"\bwhat\s+(?:other\s+)?(?:info(?:rmation)?|details?)\s+(?:do\s+you\s+need|are\s+(?:you\s+)?missing)\b",
+        r"\bdo\s+you\s+(?:still\s+)?need\s+(?:anything|my|more)\b",
+    ]
+    _REF_PASSWORD_PATTERNS = [
+        r"\bso\s+do\s+you\s+need\s+my\s+password\b",
+        r"\bdo\s+(?:you|u)\s+need\s+(?:my\s+)?password\b",
+        r"\bdo\s+(?:you|u)\s+(?:have\s+)?(?:(?:my|the)\s+)?password\b",
+    ]
+
+    def _resolve_context_reference(
+        self,
+        message: str,
+        context: dict[str, Any],
+    ) -> Optional[dict[str, Any]]:
+        """
+        Check if the message is an elliptical reference to prior conversation.
+
+        Returns a parse_to_dict-shaped dict when the reference is resolved, or
+        None when the message should go through normal parsing.
+        """
+        msg = message.strip()
+        lower = msg.lower()
+
+        # --- "where was it added?" / "did you create it?" ---
+        if any(re.search(p, lower) for p in self._REF_LOCATION_PATTERNS):
+            return self._build_reference_response(
+                message=message,
+                context=context,
+                reference_target="location",
+                intent="reference_query",
+            )
+
+        # --- "that file" / "the one we are talking about" ---
+        if any(re.search(p, lower) for p in self._REF_THAT_FILE_PATTERNS):
+            return self._build_reference_response(
+                message=message,
+                context=context,
+                reference_target="file_subject",
+                intent="reference_query",
+            )
+
+        # --- "what else do you need?" / "what's still missing?" ---
+        if any(re.search(p, lower) for p in self._REF_WHAT_ELSE_PATTERNS):
+            return self._build_reference_response(
+                message=message,
+                context=context,
+                reference_target="missing_requirements",
+                intent="status_query",
+            )
+
+        # --- "so do you need my password?" ---
+        if any(re.search(p, lower) for p in self._REF_PASSWORD_PATTERNS):
+            return self._build_reference_response(
+                message=message,
+                context=context,
+                reference_target="password_prompt",
+                intent="config_followup",
+            )
+
+        return None
+
+    def _build_reference_response(
+        self,
+        message: str,
+        context: dict[str, Any],
+        reference_target: str,
+        intent: str,
+    ) -> dict[str, Any]:
+        """
+        Construct the parse_to_dict result for a resolved context reference.
+        The entities dict carries the resolved values so assistant_core can
+        build an accurate reply without executing a new tool.
+        """
+        entities: dict[str, Any] = {
+            "reference_target": reference_target,
+        }
+
+        # Resolve the most relevant path from session task state or recent turns.
+        created_path = context.get("last_created_path") or self._find_path_in_recent_turns(context)
+        if created_path:
+            entities["resolved_path"] = created_path
+
+        # Carry forward what the last action was.
+        last_task = context.get("last_task")
+        last_result = context.get("last_result")
+        if last_task:
+            entities["last_task"] = last_task
+            entities["last_result"] = last_result
+
+        # What the system still requires from the user.
+        missing_params = list(context.get("missing_parameters") or [])
+        missing_config = list(context.get("missing_config_fields") or [])
+        if missing_params:
+            entities["missing_parameters"] = missing_params
+        if missing_config:
+            entities["missing_config_fields"] = missing_config
+
+        # Derive topic: when there is a missing_configuration error context,
+        # promote to "email_setup" regardless of the raw last_topic so that
+        # downstream reply builders apply the right guidance.
+        last_topic = context.get("last_topic")
+        if context.get("last_failure_type") == "missing_configuration" and missing_config:
+            last_topic = "email_setup"
+
+        return {
+            "tool": None,
+            "args": {},
+            "intent": intent,
+            "confidence": 0.92,
+            "mode": "conversation",
+            "topic": last_topic,
+            "followup_topic": last_topic,
+            "entities": entities,
+        }
+
+    def _find_path_in_recent_turns(self, context: dict[str, Any]) -> Optional[str]:
+        """Walk recent turns in reverse to find the most recent file/folder path."""
+        for turn in reversed(context.get("recent_turns") or []):
+            if turn.get("created_path"):
+                return turn["created_path"]
+            # Also check args of file/folder tools.
+            tool = turn.get("tool") or ""
+            if "file" in tool or "dir" in tool or "inbox" in tool or "outbox" in tool:
+                # The turn doesn't store raw args but last_args does via context.
+                pass
+        # Try last_args from context.
+        last_args = context.get("last_args") or {}
+        return last_args.get("path") or last_args.get("file_path")
 
     def interpret(self, message: str) -> Tuple[Optional[str], dict, float]:
         parsed = self.parse(message)

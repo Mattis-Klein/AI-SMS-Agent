@@ -101,6 +101,25 @@ def get_tool_info(tool_name: str, x_api_key: str = Header(None)):
 
 
 # ============================================================================
+# Session Debug Endpoint
+# ============================================================================
+
+@app.get("/session/{session_id}")
+def get_session_context(session_id: str, x_api_key: str = Header(None)):
+    """
+    Return a debug-safe summary of the current session context.
+
+    Shows recent context summary, pending task, missing parameters, last task,
+    last result, and last created path.  Sensitive config values are never
+    exposed here.
+
+    session_id format:  desktop:<sender_key>  or  sms:<digits>
+    """
+    authenticate(x_api_key)
+    return runtime.session_context.public_summary(session_id)
+
+
+# ============================================================================
 # Tool Execution Endpoints
 # ============================================================================
 

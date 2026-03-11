@@ -106,6 +106,13 @@ class AssistantCore:
                 parsed=parsed,
                 result=finalized,
             )
+            # Record the assistant reply back into the turn so follow-up turns
+            # can reference it in recent_turns.
+            assistant_reply_text = finalized.get("assistant_reply") or finalized.get("output") or ""
+            self.runtime.session_context.record_assistant_reply(
+                session_id=metadata.session_id,
+                assistant_reply=assistant_reply_text,
+            )
             finalized_trace = finalized.get("trace") or {}
             finalized_trace["context"] = latest_context
             finalized["trace"] = finalized_trace
@@ -117,6 +124,11 @@ class AssistantCore:
             user_message=message,
             parsed=parsed,
             result=response,
+        )
+        assistant_reply_text = response.get("assistant_reply") or response.get("output") or ""
+        self.runtime.session_context.record_assistant_reply(
+            session_id=metadata.session_id,
+            assistant_reply=assistant_reply_text,
         )
         response_trace = response.get("trace") or {}
         response_trace["context"] = latest_context
@@ -223,7 +235,14 @@ class AssistantCore:
         parsed: dict[str, Any],
         context_snapshot: dict[str, Any],
     ) -> str:
+        intent = parsed.get("intent") or ""
+        entities = parsed.get("entities") or {}
         followup_topic = parsed.get("followup_topic")
+
+        # --- Context-reference intents (resolved by interpreter from recent turns) ---
+        if intent in {"reference_query", "status_query", "config_followup"}:
+            return self._reply_for_reference_intent(intent, entities, context_snapshot)
+
         if followup_topic == "email_setup" and any(token in message.lower() for token in ["configure", "set up", "setup"]):
             return self._email_setup_guidance()
 
@@ -239,12 +258,15 @@ class AssistantCore:
 
         system_prompt = self._build_system_prompt(metadata)
         if self.model_client.enabled:
+            recent_turns_text = self._format_recent_turns_for_prompt(context_snapshot)
             prompt = (
                 f"Request type: {parsed.get('mode') or 'conversation'}\n"
                 f"User message: {sanitize_for_logging(message)}\n"
                 f"Context topic: {parsed.get('topic') or 'none'}\n"
-                "Reply naturally. Do not mention internal tools unless the user asked for technical detail."
             )
+            if recent_turns_text:
+                prompt += f"Recent conversation:\n{recent_turns_text}\n"
+            prompt += "Reply naturally. Do not mention internal tools unless the user asked for technical detail."
             ai_reply = await self.model_client.complete(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
@@ -254,6 +276,83 @@ class AssistantCore:
                 return ai_reply
 
         return self._fallback_conversation_reply(message)
+
+    def _reply_for_reference_intent(
+        self,
+        intent: str,
+        entities: dict[str, Any],
+        context_snapshot: dict[str, Any],
+    ) -> str:
+        """Build a factual reply for a context-reference query using resolved entities."""
+        reference_target = entities.get("reference_target", "")
+        resolved_path = entities.get("resolved_path")
+        last_task = entities.get("last_task") or context_snapshot.get("last_task")
+        last_result = entities.get("last_result") or context_snapshot.get("last_result")
+        missing_params = entities.get("missing_parameters") or context_snapshot.get("missing_parameters") or []
+        missing_config = entities.get("missing_config_fields") or context_snapshot.get("missing_config_fields") or []
+
+        if reference_target == "location":
+            # Safety rule: only confirm if backed by a real successful result.
+            if last_result == "success" and resolved_path:
+                return f"It was saved at: {resolved_path}"
+            if last_result == "success" and last_task:
+                return f"The {last_task} completed successfully, but the exact path was not recorded."
+            if last_result == "failure":
+                return "The last action didn't complete successfully, so nothing was created or saved."
+            return "I don't have a record of a file or folder being created in this session yet."
+
+        if reference_target == "file_subject":
+            if resolved_path:
+                return f"The file/folder we were working on is: {resolved_path}"
+            last_args = context_snapshot.get("last_args") or {}
+            path_hint = last_args.get("path") or last_args.get("file_path")
+            if path_hint:
+                return f"We were working with: {path_hint}"
+            if last_task:
+                return f"I last ran {last_task}, but no specific file path was captured."
+            return "I don't have a specific file or folder referenced in the current session."
+
+        if reference_target == "missing_requirements":
+            parts: list[str] = []
+            if missing_params:
+                parts.append(f"parameters: {', '.join(missing_params)}")
+            if missing_config:
+                parts.append(f"configuration: {', '.join(missing_config)}")
+            if parts:
+                return f"Still needed — {'; '.join(parts)}."
+            pending_task = context_snapshot.get("pending_task")
+            if pending_task:
+                return f"I have a pending {pending_task} task, but everything looks collected. Just confirm and I'll run it."
+            return "Nothing appears to be missing right now. What would you like to do?"
+
+        if reference_target == "password_prompt":
+            missing_config = context_snapshot.get("missing_config_fields") or []
+            needs_password = any("PASSWORD" in f.upper() for f in missing_config)
+            if needs_password:
+                return (
+                    "Yes, I still need your password. Send it as:\n"
+                    "EMAIL_PASSWORD = yourpassword"
+                )
+            if missing_config:
+                return f"Password looks covered, but I still need: {', '.join(missing_config)}."
+            return "No, I have everything I need right now. What would you like to do?"
+
+        return "I'm not sure what you're referring to. Can you give me a bit more detail?"
+
+    def _format_recent_turns_for_prompt(self, context_snapshot: dict[str, Any]) -> str:
+        """Format the last few turns (without sensitive values) for inclusion in AI prompts."""
+        turns = context_snapshot.get("recent_turns") or []
+        if not turns:
+            return ""
+        lines: list[str] = []
+        for turn in turns[-5:]:  # cap at 5 for prompt size
+            user_msg = turn.get("message") or ""
+            assistant_msg = turn.get("assistant_reply") or ""
+            if user_msg:
+                lines.append(f"User: {sanitize_for_logging(user_msg)}")
+            if assistant_msg:
+                lines.append(f"Assistant: {sanitize_for_logging(assistant_msg)}")
+        return "\n".join(lines)
 
     async def _generate_tool_reply(
         self,
@@ -275,7 +374,12 @@ class AssistantCore:
                 remediation=result.get("remediation"),
             )
 
+        # Safety rule: only describe a completed action when execution
+        # actually succeeded.  We already confirmed success=True above, so
+        # the AI prompt below is only reached for real successes.
         if self.model_client.enabled:
+            context_snapshot = self.runtime.session_context.get_snapshot(metadata.session_id)
+            recent_turns_text = self._format_recent_turns_for_prompt(context_snapshot)
             system_prompt = self._build_system_prompt(metadata)
             prompt = (
                 "You are summarizing the result of a backend tool for the user.\n"
@@ -284,7 +388,12 @@ class AssistantCore:
                 f"Intent: {parsed.get('intent')}\n"
                 f"Structured data: {self._safe_json(result.get('data'))}\n"
                 f"Raw tool output: {self._trim_text(result.get('output') or '')}\n"
-                "Write a natural reply. Keep it concise, helpful, and grounded in the tool result."
+            )
+            if recent_turns_text:
+                prompt += f"Recent conversation:\n{recent_turns_text}\n"
+            prompt += (
+                "Write a natural reply. Keep it concise, helpful, and grounded strictly in the tool result above. "
+                "Do not claim anything was created, saved, or completed unless the tool data confirms it."
             )
             ai_reply = await self.model_client.complete(
                 system_prompt=system_prompt,
