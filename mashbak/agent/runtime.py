@@ -8,6 +8,7 @@ from typing import Optional
 
 if __package__:
     from .config import Config
+    from .config_loader import ConfigLoader
     from .assistant_core import AssistantCore, AssistantMetadata
     from .logger import StructuredLogger
     from .tools import ToolRegistry
@@ -17,6 +18,7 @@ if __package__:
     from .session_context import SessionContextManager
 else:
     from config import Config
+    from config_loader import ConfigLoader
     from assistant_core import AssistantCore, AssistantMetadata
     from logger import StructuredLogger
     from tools import ToolRegistry
@@ -45,9 +47,14 @@ class AgentRuntime:
 
     def __init__(self, base_dir: Path):
         # Initialization order is intentional:
-        # 1) determine project root, 2) load .env, 3) read AGENT_* env vars,
-        # 4) initialize workspace paths/configuration.
+        # 1) Load master config from .env.master, 2) set base dir, 3) load any
+        # local .env overrides, 4) read AGENT_* env vars, 5) initialize workspace.
         self.base_dir = base_dir.resolve()
+        
+        # Load master config first
+        ConfigLoader.load()
+        
+        # Load local .env if it exists (allows local overrides)
         load_env_file(self.base_dir / ".env")
 
         self.workspace = Path(
@@ -58,7 +65,7 @@ class AgentRuntime:
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 
         if not self.api_key:
-            raise RuntimeError("AGENT_API_KEY is required. Set it in agent/.env or the environment.")
+            raise RuntimeError("AGENT_API_KEY is required. Set it in mashbak/.env.master or environment.")
 
         for required_dir in (
             self.workspace,

@@ -314,9 +314,9 @@ class AssistantCore:
                     f"You can provide these values directly in chat by sending messages like:\n"
                     f"EMAIL_ADDRESS = myemail@example.com\n"
                     f"EMAIL_PASSWORD = mypassword\n\n"
-                    f"Or edit mashbak/agent/.env manually."
+                    f"Or edit mashbak/.env.master manually."
                 )
-            return "Configuration incomplete. Provide values via chat or edit mashbak/agent/.env."
+            return "Configuration incomplete. Provide values via chat or edit mashbak/.env.master."
         if remediation:
             return remediation
         if tool_name in email_tools or (tool_name and "email" in tool_name):

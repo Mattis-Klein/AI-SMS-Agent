@@ -37,6 +37,11 @@ function loadEnvFile(envPath) {
     }
 }
 
+// Load master config first (reads from mashbak/.env.master)
+const masterEnvPath = path.join(__dirname, "..", ".env.master");
+loadEnvFile(masterEnvPath);
+
+// Load bridge-specific config (reads from sms-bridge/.env), can override master
 loadEnvFile(path.join(__dirname, ".env"));
 
 const app = express();

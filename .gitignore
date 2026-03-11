@@ -4,8 +4,11 @@
 .env.local
 .env.*.local
 !.env.example
+!.env.master.example
+!mashbak/.env.master.example
 !mashbak/agent/.env.example
 !mashbak/sms-bridge/.env.example
+*.secrets
 
 # Local configuration overrides
 config.local.json

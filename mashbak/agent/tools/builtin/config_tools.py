@@ -118,9 +118,9 @@ class SetConfigVariableTool(Tool):
         self.env_path = self._get_env_path()
 
     def _get_env_path(self) -> Path:
-        """Get path to agent/.env file."""
-        script_dir = Path(__file__).parent.parent.parent  # agent/
-        env_file = script_dir / ".env"
+        """Get path to master .env.master file in project root."""
+        script_dir = Path(__file__).parent.parent.parent.parent  # agent/ -> mashbak/
+        env_file = script_dir / ".env.master"
         return env_file
 
     def validate_args(self, args: Dict[str, Any]) -> tuple[bool, str]:

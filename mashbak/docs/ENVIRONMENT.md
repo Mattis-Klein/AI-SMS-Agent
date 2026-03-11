@@ -1,153 +1,113 @@
-# Environment Configuration (.env Reference)
+# Environment Configuration (.env.master Reference)
 
-Complete reference for all configuration variables in `.env` files.
+Complete reference for Mashbak's master configuration system.
 
-## 2026-03 Update: Context + Config-Driven Access + Chat Configuration
+## 2026-03 Update: Master Configuration File + Chat Configuration
 
-- Backend now maintains in-memory session context per sender/source and does not require persistent storage configuration.
-- Email setup guidance supports both canonical and alias variable names.
-- SMS sender access control is configured via `sms-bridge/.env` (and optional JSON config file), not hardcoded in transport logic.
-- **NEW**: Configuration variables can now be provided directly through chat using the `set_config_variable` tool.
+- **NEW**: Single master configuration file consolidates all environment variables: `mashbak/.env.master`
+- Configuration variables can be provided directly through chat
+- Backend maintains in-memory session context per sender/source
+- Email setup guidance supports both canonical and alias variable names
+- SMS sender access control is configuration-driven, not hardcoded
 
-## Two `.env` Files
+## Master Configuration System
 
-The project has two separate configuration files:
+### Single Source of Truth: `.env.master`
 
-1. **`agent/.env`** - Local agent settings
-2. **`sms-bridge/.env`** - Bridge and Twilio settings
+All Mashbak configuration is now centralized in a single file:
 
-### Configuration via Chat (NEW)
+```
+mashbak/.env.master
+```
 
-Most variables in `agent/.env` can now be configured directly through the assistant chat without manually editing files.
+Loading order:
+1. **Master config** (`mashbak/.env.master`) - primary source
+2. **Local overrides** (`mashbak/agent/.env` or `mashbak/sms-bridge/.env`) - optional development overrides
+3. **OS environment** - if neither file exists
+
+### Setup
+
+**1. Create from template:**
+```powershell
+cd mashbak
+cp .env.master.example .env.master
+```
+
+**2. Edit with your credentials:**
+```powershell
+notepad .env.master
+```
+
+**3. Secure the file (never commit to git):**
+```
+.env.master is in .gitignore - your secrets are safe
+```
+
+### Configuration via Chat (Recommended)
+
+Configure variables directly through assistant conversation:
+
+```
+User:  EMAIL_ADDRESS = myemail@gmail.com
+Assistant: ✓ Configuration updated: EMAIL_ADDRESS has been set.
+
+User:  EMAIL_PASSWORD = app-password-123
+Assistant: ✓ Configuration updated: EMAIL_PASSWORD has been set.
+
+User:  Show my recent emails
+Assistant: [emails load successfully]
+```
 
 **How it works:**
-
-Send messages like:
-```
-EMAIL_ADDRESS = myemail@gmail.com
-EMAIL_PASSWORD = app-password-123
-EMAIL_IMAP_HOST = imap.gmail.com
-EMAIL_IMAP_PORT = 993
-```
-
-The assistant will:
-- Validate the variable name and format
-- Validate the value (email format, port numbers, etc.)
-- Save it to `agent/.env` safely
-- Persist across service restarts
-- Apply immediately on next tool execution
+- You send: `VARIABLE_NAME = value`
+- Assistant validates the variable name and value format
+- If valid, updates `mashbak/.env.master` and applies immediately
+- Sensitive values (passwords, API keys) are never echoed in responses
 
 **Supported variables for chat configuration:**
-- Email: `EMAIL_PROVIDER`, `EMAIL_IMAP_HOST`, `IMAP_SERVER`, `EMAIL_IMAP_PORT`, `IMAP_PORT`, `EMAIL_USERNAME`, `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `EMAIL_MAILBOX`, `EMAIL_USE_SSL`
+- Email: `EMAIL_ADDRESS`, `EMAIL_PASSWORD`, `EMAIL_IMAP_HOST`, `IMAP_SERVER`, `EMAIL_IMAP_PORT`, `IMAP_PORT`, `EMAIL_MAILBOX`, `EMAIL_PROVIDER`, `EMAIL_USE_SSL`
 - OpenAI: `OPENAI_API_KEY`, `OPENAI_MODEL`
-- Desktop: `LOCAL_APP_PIN`, `AGENT_WORKSPACE`
-- SMS Bridge: `AGENT_API_KEY`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
+- Desktop: `LOCAL_APP_PIN`
+- SMS / Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `SMS_OWNER_NUMBER`
 
-**Security:**
-- Sensitive values (passwords, API keys) are validated but not echoed back in messages
-- Values are persisted to disk and survive process restarts
-- All validation happens in the backend tool system
+**Security Notes:**
+- Validated but not echoed: passwords, API keys, tokens, PINs
+- Changes persist across service restarts
+- All validation in backend tool system (never in UI/bridge)
 
-**Example workflow:**
+### Configuration via File (Developers)
+
+Edit `mashbak/.env.master` directly:
 
 ```
-User:  I need to set up email
-Assistant: Email access needs configuration. You can provide values directly...
-User: EMAIL_ADDRESS = user@example.com
-Assistant: ✓ Configuration updated: EMAIL_ADDRESS has been set.
-User: EMAIL_PASSWORD = my-password
-Assistant: ✓ Configuration updated: EMAIL_PASSWORD has been set.
-User: Show me my recent emails
-Assistant: [emails now load successfully]
+OPENAI_API_KEY=sk-proj-...
+EMAIL_ADDRESS=user@gmail.com
+EMAIL_PASSWORD=app-password
 ```
+
+Changes are immediately available to all services on next execution.
 
 ---
 
-## `agent/.env`
+## Master Configuration Variables
 
-Configuration for the local AI agent service.
+Organized by system component.
 
-### Required Variables
+### OPENAI / AI MODEL
 
-#### `AGENT_API_KEY`
+**Purpose:** Enable ChatGPT-powered features for conversation summarization
 
-**Type:** String (secret)  
-**Required:** Yes
-
-API key for authenticating bridge requests to the agent.
-
-**Example:**
 ```
-AGENT_API_KEY=my-super-secret-key-12345
+OPENAI_API_KEY=sk-proj-...
+OPENAI_MODEL=gpt-4o-mini
 ```
 
-**Rules:**
-- Must match `AGENT_API_KEY` in `sms-bridge/.env`
-- Min 8 characters recommended
-- Use a random string (no spaces, special chars OK)
-- Change from default before production
+- `OPENAI_API_KEY`: Leave empty to disable AI (fallback replies will be used)
+- `OPENAI_MODEL`: Default `gpt-4o-mini` (cheapest tier)
 
-**How to generate:**
-```powershell
-[guid]::NewGuid().ToString()  # PowerShell
-```
+### AGENT SECURITY & IDENTITY
 
----
-
-#### `AGENT_WORKSPACE`
-
-**Type:** Path  
-**Required:** No (default: `agent/workspace`)
-
-Base folder for all agent file operations.
-
-**Example:**
-```
-AGENT_WORKSPACE=agent/workspace
-AGENT_WORKSPACE=C:/data/agent-files
-AGENT_WORKSPACE=/mnt/shared/agent
-```
-
-**Rules:**
-- Relative or absolute path OK
-- Must be writable by the agent process
-- All file operations are relative to this path
-- Subdirectories created automatically
-
-**Default:**
-```
-agent/workspace/
-├── inbox/        (user input files)
-├── outbox/       (user output files)
-└── logs/         (agent.log)
-```
-
----
-
-### Optional Variables
-
-#### `LOCAL_APP_PIN`
-
-**Type:** String  
-**Required:** Yes (desktop app)
-
-PIN required to unlock Mashbak Desktop on startup.
-
-**Example:**
-```
-LOCAL_APP_PIN=1234
-```
-
-**Rules:**
-- Desktop starts locked until this PIN is entered
-- Do not commit real PIN values to git
-
----
-
-#### `OPENAI_API_KEY`
-
-**Type:** String (secret)  
-**Required:** No (optional for richer conversation responses)
+**Purpose:** Secure bridge-to-agent communication; agent workspace configuration
 
 API key used by backend assistant for richer conversational responses and tool-result summarization.
 
