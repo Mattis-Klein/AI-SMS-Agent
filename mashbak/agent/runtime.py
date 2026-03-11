@@ -8,6 +8,7 @@ from typing import Optional
 
 try:
     from .config import Config
+    from .assistant_core import AssistantCore, AssistantMetadata
     from .logger import StructuredLogger
     from .tools import ToolRegistry
     from .tools.builtin import ALL_BUILTIN_TOOLS
@@ -15,6 +16,7 @@ try:
     from .interpreter import NaturalLanguageInterpreter
 except ImportError:
     from config import Config
+    from assistant_core import AssistantCore, AssistantMetadata
     from logger import StructuredLogger
     from tools import ToolRegistry
     from tools.builtin import ALL_BUILTIN_TOOLS
@@ -50,6 +52,8 @@ class AgentRuntime:
             os.getenv("AGENT_WORKSPACE", str(self.base_dir / "workspace"))
         ).resolve()
         self.api_key = os.getenv("AGENT_API_KEY", "")
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 
         if not self.api_key:
             raise RuntimeError("AGENT_API_KEY is required. Set it in agent/.env or the environment.")
@@ -71,6 +75,7 @@ class AgentRuntime:
 
         self.interpreter = NaturalLanguageInterpreter()
         self.dispatcher = Dispatcher(self.registry, self.interpreter, self.logger)
+        self.assistant = AssistantCore(self)
 
     def _resolve_source(self, sender: str, source: Optional[str]) -> str:
         if source:
@@ -96,22 +101,19 @@ class AgentRuntime:
         sender: str = "unknown",
         request_id: Optional[str] = None,
         source: Optional[str] = None,
+        owner_unlocked: Optional[bool] = None,
     ) -> dict:
-        """Execute a natural-language request through the shared dispatcher pipeline."""
+        """Execute a natural-language request through Mashbak's shared assistant core."""
         request_source = self._resolve_source(sender, source)
-        context = RequestContext(
-            sender=sender,
-            source=request_source,
-            raw_message=message,
-            workspace=self.workspace,
-            allowed_directories=self.config.get_allowed_directories(),
-            allowed_tools=self.config.get_allowed_tools(),
-            tool_timeout_seconds=self.config.get_tool_timeout_seconds(),
+        result = await self.assistant.respond(
+            message,
+            AssistantMetadata(
+                sender=sender,
+                source=request_source,
+                owner_unlocked=owner_unlocked,
+                request_id=request_id,
+            ),
         )
-        if request_id:
-            context.request_id = request_id
-
-        result = await self.dispatcher.dispatch(context)
         result["output"] = self._format_output_for_source(result.get("output"), request_source)
         result["error"] = self._format_output_for_source(result.get("error"), request_source)
         result["source"] = request_source
@@ -290,6 +292,7 @@ class AgentRuntime:
             "error": self._format_output_for_source(result.error, request_source),
             "request_id": context.request_id,
             "source": request_source,
+            "data": result.data,
             "trace": {
                 "raw_request": context.raw_message,
                 "source": request_source,
@@ -312,6 +315,9 @@ class AgentRuntime:
             "allowed_tools": self.config.get_allowed_tools(),
             "tool_timeout_seconds": self.config.get_tool_timeout_seconds(),
             "registered_tools": self.registry.list_all(),
+            "assistant_ai_enabled": bool(self.openai_api_key),
+            "assistant_model": self.openai_model,
+            "email_configured": bool(os.getenv("EMAIL_IMAP_HOST") and os.getenv("EMAIL_USERNAME") and os.getenv("EMAIL_PASSWORD")),
             "version": "2.0.0",
         }
 

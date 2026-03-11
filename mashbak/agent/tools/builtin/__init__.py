@@ -9,6 +9,7 @@ from .current_time import CurrentTimeTool
 from .network_status import NetworkStatusTool
 from .list_processes import ListProcessesTool
 from .uptime import UptimeTool
+from .email_tools import ListRecentEmailsTool, SummarizeInboxTool, SearchEmailsTool, ReadEmailThreadTool
 
 ALL_BUILTIN_TOOLS = [
     DirInboxTool(),
@@ -21,6 +22,10 @@ ALL_BUILTIN_TOOLS = [
     NetworkStatusTool(),
     ListProcessesTool(),
     UptimeTool(),
+    ListRecentEmailsTool(),
+    SummarizeInboxTool(),
+    SearchEmailsTool(),
+    ReadEmailThreadTool(),
 ]
 
 __all__ = ["ALL_BUILTIN_TOOLS"]

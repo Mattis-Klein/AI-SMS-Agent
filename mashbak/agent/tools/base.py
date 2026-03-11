@@ -13,6 +13,7 @@ class ToolResult:
     error: Optional[str] = None
     tool_name: Optional[str] = None
     arguments: Optional[Dict[str, Any]] = None
+    data: Optional[Any] = None
     
     def to_dict(self) -> dict:
         return {
@@ -21,6 +22,7 @@ class ToolResult:
             "error": self.error,
             "tool_name": self.tool_name,
             "arguments": self.arguments,
+            "data": self.data,
         }
 
 

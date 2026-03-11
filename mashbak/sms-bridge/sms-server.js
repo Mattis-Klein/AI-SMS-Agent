@@ -4,7 +4,6 @@ const crypto = require("crypto");
 
 const express = require("express");
 const bodyParser = require("body-parser");
-const OpenAI = require("openai");
 const twilio = require("twilio");
 
 function loadEnvFile(envPath) {
@@ -50,9 +49,6 @@ const LOG_DIR = path.join(BASE_DIR, "logs");
 const LOG_FILE = path.join(LOG_DIR, "bridge.log");
 const LOG_ARCHIVE_FILE = path.join(LOG_DIR, "bridge.log.1");
 const LOG_MAX_BYTES = Number(process.env.BRIDGE_LOG_MAX_BYTES || 1_000_000);
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-const AI_MAX_TOOL_ROUNDS = Number(process.env.AI_MAX_TOOL_ROUNDS || 6);
 
 const OWNER_NUMBER = "8483291230";
 const ACCESS_REQUEST_RESPONSE = "This number is not authorized to use this program. To request access, send @mashbak to this number and we will review your request.";
@@ -66,7 +62,6 @@ const SPECIAL_RESPONSES = new Map([
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
-const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 const twilioRestClient = (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN)
     ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
     : null;
@@ -89,10 +84,6 @@ if (!TWILIO_ACCOUNT_SID) {
 
 if (!TWILIO_FROM_NUMBER) {
     console.warn("[bridge] TWILIO_FROM_NUMBER is not set. Inbound To number will be used for owner notifications when available.");
-}
-
-if (!OPENAI_API_KEY) {
-    console.warn("[bridge] OPENAI_API_KEY is not set. Natural-language AI mode is disabled.");
 }
 
 function rotateLogIfNeeded() {
@@ -311,13 +302,6 @@ function buildTwimlMessage(message) {
     return twiml.toString();
 }
 
-const AI_SYSTEM_PROMPT = [
-    "You are an SMS-based assistant for a Windows PC.",
-    "Keep replies concise because they are sent over SMS.",
-    "The local agent handles all tool execution and natural language interpretation.",
-].join(" ");
-
-
 async function postJson(endpoint, payload, requestId, sender = null) {
     logBridgeEvent({
         requestId,
@@ -372,24 +356,6 @@ async function postJson(endpoint, payload, requestId, sender = null) {
 
 async function callAgentExecuteNaturalLanguage(message, requestId, sender = null) {
     return postJson("/execute-nl", { message }, requestId, sender);
-}
-
-async function buildAiReply(message, from, requestId) {
-    // Simply forward to agent's natural language interpreter
-    const result = await callAgentExecuteNaturalLanguage(message, requestId, from);
-
-    if (!result.ok) {
-        return formatAgentError(result);
-    }
-
-    const output = result.data.output || "";
-    const error = result.data.error || "";
-
-    if (result.data.success) {
-        return output || "Command executed successfully.";
-    } else {
-        return error || "Command failed.";
-    }
 }
 
 function formatAgentError(result) {

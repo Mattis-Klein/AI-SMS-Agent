@@ -90,7 +90,7 @@ def run_service_smoke() -> int:
     service.start()
     try:
         client = AgentClient(base_url=service.base_url, api_key=service.api_key)
-        result = client.execute_nl("check my inbox", sender="desktop-service-smoke")
+        result = client.execute_nl("check my inbox", sender="desktop-service-smoke", owner_unlocked=True)
         print(result.get("success"), result.get("tool_name"), (result.get("trace") or {}).get("execution_status"))
         return 0 if result.get("tool_name") else 1
     finally:
@@ -116,8 +116,6 @@ def main() -> None:
 
     os.environ.setdefault("AGENT_API_KEY", service.api_key)
     local_app_pin = _resolve_setting("LOCAL_APP_PIN", default="5421")
-    openai_api_key = _resolve_setting("OPENAI_API_KEY")
-    openai_model = os.getenv("OPENAI_MODEL") or _load_env_value(AGENT_DIR / ".env", "OPENAI_MODEL") or "gpt-4.1-mini"
 
     runtime = create_runtime(AGENT_DIR)
     client = AgentClient(base_url=service.base_url, api_key=service.api_key)
@@ -128,8 +126,6 @@ def main() -> None:
         client,
         runtime.summary(),
         local_app_pin=local_app_pin,
-        openai_api_key=openai_api_key,
-        openai_model=openai_model,
     )
     root.after(15000, schedule_refresh, app)
     try:

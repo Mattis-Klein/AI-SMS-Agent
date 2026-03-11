@@ -11,6 +11,7 @@ class ParsedRequest:
     tool: Optional[str]
     args: dict
     confidence: float
+    mode: str
 
 
 class NaturalLanguageInterpreter:
@@ -19,6 +20,13 @@ class NaturalLanguageInterpreter:
     def __init__(self):
         # Map patterns to (tool_name, args_extractor_fn)
         self.patterns = [
+            # Email
+            (r"(?:do i have|any|show|list|check).*(?:new|recent|latest|unread).*(?:emails?|mail|messages?)", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True}),
+            (r"(?:summari[sz]e|summary).*(?:emails?|mail|inbox)", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True}),
+            (r"(?:list|show|check).*(?:emails?|mail|messages?)", "list_recent_emails", lambda m: {"limit": 5}),
+            (r"(?:search|find).*(?:emails?|mail).*(?:for|about|with)\s+(.+)", "search_emails", lambda m: {"query": m.group(1).strip(), "limit": 5}),
+            (r"(?:read|open|show).*(?:thread|email).*(?:id|uid)?\s*([0-9]+)", "read_email_thread", lambda m: {"email_id": m.group(1).strip()}),
+
             # Inbox/outbox commands
             (r"(?:check|list|show).*inbox", "dir_inbox", lambda m: {}),
             (r"(?:check|list|show).*outbox", "dir_outbox", lambda m: {}),
@@ -33,6 +41,7 @@ class NaturalLanguageInterpreter:
             
             # CPU
             (r"(?:check|show).*(?:cpu|processor)", "cpu_usage", lambda m: {}),
+            (r"how busy is my (?:computer|pc)(?: right now)?", "cpu_usage", lambda m: {}),
             
             # Disk space
             (r"(?:check|show).*(?:disk|storage|space)", "disk_space", lambda m: {}),
@@ -54,15 +63,21 @@ class NaturalLanguageInterpreter:
     def classify_intent(self, message: str) -> Optional[str]:
         """Stage 1: classify intent group from natural language."""
         msg = message.lower().strip()
+        if any(phrase in msg for phrase in ["explain", "what does", "what is", "how does"]):
+            return "explanation"
+        if any(word in msg for word in ["email", "emails", "mail", "inbox message", "unread"]):
+            return "email"
         if any(word in msg for word in ["inbox", "outbox", "files", "file", "folder", "directory"]):
             return "filesystem"
         if any(word in msg for word in ["system", "os", "cpu", "disk", "time", "network", "process", "uptime"]):
             return "system"
-        return None
+        return "conversation"
 
     def select_tool(self, message: str, intent: Optional[str]) -> tuple[Optional[str], Optional[re.Match], float]:
         """Stage 2: select tool based on message and intent."""
         message_lower = message.lower().strip()
+        if intent == "explanation":
+            return None, None, 0.35
         for pattern, tool_name, _extractor in self.patterns:
             match = re.search(pattern, message_lower)
             if match:
@@ -88,7 +103,8 @@ class NaturalLanguageInterpreter:
         intent = self.classify_intent(message)
         tool_name, match, confidence = self.select_tool(message, intent)
         args = self.extract_args(tool_name, match)
-        return ParsedRequest(intent=intent, tool=tool_name, args=args, confidence=confidence)
+        mode = "tool" if tool_name else ("explanation" if intent == "explanation" else "conversation")
+        return ParsedRequest(intent=intent, tool=tool_name, args=args, confidence=confidence, mode=mode)
 
     def parse_to_dict(self, message: str) -> dict:
         """Return structured parse in tool/args format."""
@@ -98,6 +114,7 @@ class NaturalLanguageInterpreter:
             "args": parsed.args,
             "intent": parsed.intent,
             "confidence": parsed.confidence,
+            "mode": parsed.mode,
         }
     
     def interpret(self, message: str) -> Tuple[Optional[str], dict, float]:

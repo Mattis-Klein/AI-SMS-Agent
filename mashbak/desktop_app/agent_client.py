@@ -16,14 +16,14 @@ class AgentClient:
     def list_tools(self) -> dict:
         return self._request("GET", "/tools", include_auth=True)
 
-    def execute_nl(self, message: str, sender: str = "local-desktop") -> dict:
+    def execute_nl(self, message: str, sender: str = "local-desktop", owner_unlocked: bool | None = None) -> dict:
         return self._request(
             "POST",
             "/execute-nl",
             include_auth=True,
             include_sender=True,
             sender=sender,
-            body={"message": message},
+            body={"message": message, "owner_unlocked": owner_unlocked},
         )
 
     def _request(

@@ -9,11 +9,12 @@ from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Text, Tk
 from tkinter import ttk
 
-from widgets import action_bar, add_refresh_button, labeled_scroll_text, make_scrolled_text, set_text
+from widgets import add_refresh_button, labeled_scroll_text, make_scrolled_text, set_text
 
-# ── colour palette ─────────────────────────────────────────────────────────────
 _GREEN = "#1a7f37"
-_RED   = "#b42318"
+_RED = "#b42318"
+_AMBER = "#9a6700"
+_SLATE = "#57606a"
 
 
 class DesktopControlApp:
@@ -23,8 +24,6 @@ class DesktopControlApp:
         client,
         runtime_summary: dict,
         local_app_pin: str | None = None,
-        openai_api_key: str | None = None,
-        openai_model: str = "gpt-4.1-mini",
     ):
         if not local_app_pin:
             raise RuntimeError("LOCAL_APP_PIN is required. Set it in agent/.env or the environment.")
@@ -32,18 +31,17 @@ class DesktopControlApp:
         self.root = root
         self.root.title("Mashbak Desktop")
         self.root.geometry("1380x860")
-        self.root.minsize(900, 600)
+        self.root.minsize(960, 640)
 
         self.client = client
         self.runtime_summary = runtime_summary
         self.local_app_pin = local_app_pin
-        self.openai_api_key = openai_api_key
-        self.openai_model = openai_model
         self.activity: list[str] = []
-        self.chat_history: list[tuple[str, str]] = []  # (role, text)
+        self.chat_history: list[tuple[str, str]] = []
         self.quick_buttons: list[ttk.Button] = []
         self.lock_sensitive_buttons: list[ttk.Button] = []
         self.is_unlocked = False
+        self.pending_start_index: str | None = None
 
         workspace = Path(runtime_summary["workspace"])
         self.agent_log_file = workspace / "logs" / "agent.log"
@@ -51,7 +49,8 @@ class DesktopControlApp:
 
         self._apply_styles()
         self._build_ui()
-        self._lock_ui("Desktop locked. Enter PIN to unlock.")
+        self._set_backend_status("starting", "Mashbak is starting the local assistant backend.")
+        self._lock_ui("Mashbak is locked. Enter your PIN above to unlock the assistant.")
 
     # ── theming ────────────────────────────────────────────────────────────────
 
@@ -63,11 +62,12 @@ class DesktopControlApp:
                 break
 
         style.configure("Header.TFrame", background="#1c2128")
-        style.configure("Header.TLabel", background="#1c2128", foreground="#cdd9e5",
-                        font=("Segoe UI", 10))
-        style.configure("AppTitle.TLabel", background="#1c2128", foreground="#e6edf3",
-                        font=("Segoe UI", 14, "bold"))
-        style.configure("Section.TLabel", font=("Segoe UI", 10, "bold"))
+        style.configure("Header.TLabel", background="#1c2128", foreground="#cdd9e5", font=("Segoe UI", 10))
+        style.configure("AppTitle.TLabel", background="#1c2128", foreground="#e6edf3", font=("Segoe UI", 16, "bold"))
+        style.configure("SubTitle.TLabel", background="#1c2128", foreground="#9fb0c1", font=("Segoe UI", 9))
+        style.configure("Section.TLabel", font=("Segoe UI", 10, "bold"), foreground="#1f2328")
+        style.configure("ConversationTitle.TLabel", font=("Segoe UI", 12, "bold"), foreground="#1f2328")
+        style.configure("ConversationSub.TLabel", font=("Segoe UI", 9), foreground=_SLATE)
         style.configure("StatusBar.TLabel", font=("Segoe UI", 8), foreground="#656d76")
         style.configure("Send.TButton", font=("Segoe UI", 10, "bold"))
 
@@ -103,8 +103,13 @@ class DesktopControlApp:
         header = ttk.Frame(self.root, style="Header.TFrame", padding=(14, 8))
         header.pack(fill=X)
 
-        ttk.Label(header, text="Mashbak", style="AppTitle.TLabel").pack(side=LEFT)
-        ttk.Label(header, text="Desktop", style="Header.TLabel").pack(side=LEFT, padx=(6, 0))
+        title_col = ttk.Frame(header, style="Header.TFrame")
+        title_col.pack(side=LEFT)
+        ttk.Label(title_col, text="Mashbak", style="AppTitle.TLabel").pack(anchor="w")
+        ttk.Label(title_col, text="Personal desktop assistant", style="SubTitle.TLabel").pack(anchor="w")
+
+        self.backend_status_label = ttk.Label(header, text="Starting backend", style="Header.TLabel")
+        self.backend_status_label.pack(side=LEFT, padx=(20, 0))
 
         lock_bar = ttk.Frame(header, style="Header.TFrame")
         lock_bar.pack(side=RIGHT)
@@ -121,9 +126,9 @@ class DesktopControlApp:
         self.lock_button = ttk.Button(lock_bar, text="Lock", command=self.lock_app, width=7, state="disabled")
         self.lock_button.pack(side=LEFT, padx=(0, 16))
 
-        self.bridge_badge = ttk.Label(header, text="Bridge ●", style="Header.TLabel")
+        self.bridge_badge = ttk.Label(header, text="Bridge: checking", style="Header.TLabel")
         self.bridge_badge.pack(side=RIGHT, padx=(0, 10))
-        self.agent_badge = ttk.Label(header, text="Agent ●", style="Header.TLabel")
+        self.agent_badge = ttk.Label(header, text="Agent: starting", style="Header.TLabel")
         self.agent_badge.pack(side=RIGHT, padx=(0, 10))
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
@@ -131,11 +136,11 @@ class DesktopControlApp:
             anchor="w", padx=8, pady=(8, 4)
         )
         for label, message in [
-            ("📥  Check Inbox", "check my inbox"),
-            ("💻  System Info", "system info"),
-            ("📊  CPU Usage", "cpu usage"),
-            ("⚙️   List Processes", "show running processes"),
-            ("🕐  Current Time", "what time is it"),
+            ("Inbox Summary", "Do I have any new emails?"),
+            ("System Info", "system info"),
+            ("CPU Usage", "How busy is my computer right now?"),
+            ("Running Apps", "show running processes"),
+            ("Current Time", "what time is it"),
         ]:
             btn = ttk.Button(
                 parent, text=label,
@@ -164,15 +169,34 @@ class DesktopControlApp:
         chat_frame = ttk.LabelFrame(parent, text="Chat")
         chat_frame.pack(fill=BOTH, expand=True, pady=(4, 4))
 
+        intro = ttk.Frame(chat_frame)
+        intro.pack(fill=X, padx=10, pady=(10, 0))
+        ttk.Label(intro, text="Conversation", style="ConversationTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            intro,
+            text="Mashbak replies here in natural language using the shared backend assistant.",
+            style="ConversationSub.TLabel",
+        ).pack(anchor="w", pady=(0, 8))
+
+        self.chat_state_label = ttk.Label(
+            intro,
+            text="Waiting for unlock",
+            style="ConversationSub.TLabel",
+        )
+        self.chat_state_label.pack(anchor="w")
+
         self.chat_text = make_scrolled_text(
             chat_frame, wrap="word", font=("Segoe UI", 10),
             state="disabled", relief="flat", bd=0,
             spacing1=3, spacing3=3, padx=6, pady=6,
         )
-        self.chat_text.tag_configure("you",         foreground="#0969da", font=("Segoe UI", 10, "bold"))
-        self.chat_text.tag_configure("agent",       foreground="#1c2128", font=("Segoe UI", 10))
-        self.chat_text.tag_configure("error",       foreground=_RED,      font=("Segoe UI", 10, "italic"))
-        self.chat_text.tag_configure("placeholder", foreground="#8b949e", font=("Segoe UI", 10, "italic"))
+        self.chat_text.tag_configure("user_meta", foreground=_SLATE, font=("Segoe UI", 8, "bold"), justify="right")
+        self.chat_text.tag_configure("assistant_meta", foreground=_SLATE, font=("Segoe UI", 8, "bold"), justify="left")
+        self.chat_text.tag_configure("user_bubble", foreground="#0a3069", background="#ddf4ff", font=("Segoe UI", 10), lmargin1=190, lmargin2=190, rmargin=12, spacing3=10, justify="right")
+        self.chat_text.tag_configure("assistant_bubble", foreground="#1f2328", background="#f6f8fa", font=("Segoe UI", 10), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
+        self.chat_text.tag_configure("error_bubble", foreground="#8c2f39", background="#fff1f0", font=("Segoe UI", 10), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
+        self.chat_text.tag_configure("system_bubble", foreground="#57606a", background="#f3f4f6", font=("Segoe UI", 10, "italic"), lmargin1=70, lmargin2=70, rmargin=70, spacing3=12, justify="center")
+        self.chat_text.tag_configure("pending_bubble", foreground="#57606a", background="#f6f8fa", font=("Segoe UI", 10, "italic"), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
 
         input_frame = ttk.Frame(parent)
         input_frame.pack(fill=X, pady=(0, 6))
@@ -234,19 +258,17 @@ class DesktopControlApp:
         bar.pack(fill=X, side="bottom")
         self.statusbar_label = ttk.Label(bar, text="Mashbak Desktop  •  locked", style="StatusBar.TLabel")
         self.statusbar_label.pack(side=LEFT)
-        ttk.Label(bar, text=f"Model: {self.openai_model}", style="StatusBar.TLabel").pack(side=RIGHT)
+        model_label = self.runtime_summary.get("assistant_model") or "fallback"
+        ttk.Label(bar, text=f"Assistant model: {model_label}", style="StatusBar.TLabel").pack(side=RIGHT)
 
     # ── lock / unlock ──────────────────────────────────────────────────────────
 
     def _show_chat_placeholder(self) -> None:
         self.chat_text.configure(state="normal")
         self.chat_text.delete("1.0", END)
-        self.chat_text.insert(
-            "1.0",
-            "Enter your PIN in the header bar to unlock and start chatting.",
-            "placeholder",
-        )
+        self.chat_text.insert("1.0", "Mashbak is locked.\nEnter your PIN to unlock your assistant.", "system_bubble")
         self.chat_text.configure(state="disabled")
+        self.pending_start_index = None
 
     def unlock_app(self) -> None:
         candidate = self.pin_entry.get().strip()
@@ -268,10 +290,12 @@ class DesktopControlApp:
         self.lock_button.configure(state="normal")
         self.pin_entry.configure(state="disabled")
         self.statusbar_label.configure(text="Mashbak Desktop  •  unlocked")
+        self.chat_state_label.configure(text="Unlocked and ready")
         self.chat_text.configure(state="normal")
         self.chat_text.delete("1.0", END)
         self.chat_text.configure(state="disabled")
         self._set_interaction_enabled(True)
+        self._append_message("assistant", "I'm ready. Ask me about your computer, files, or email.")
         self.refresh_status()
         self.refresh_logs()
         self.message_entry.focus_set()
@@ -284,6 +308,7 @@ class DesktopControlApp:
         self.lock_icon_label.configure(text="🔒")
         self.lock_status.configure(text="Locked", foreground="#cdd9e5")
         self.statusbar_label.configure(text="Mashbak Desktop  •  locked")
+        self.chat_state_label.configure(text="Locked until you enter your PIN")
         self.unlock_button.configure(state="normal")
         self.lock_button.configure(state="disabled")
         self.pin_entry.configure(state="normal")
@@ -333,115 +358,75 @@ class DesktopControlApp:
 
         self.send_button.configure(state="disabled")
         self.message_entry.delete(0, END)
-        self._append_chat("you", message)
-        self._append_chat("pending", "…")
-        set_text(self.details_text, "Running…")
+        self._append_message("user", message)
+        self._append_message("pending", "Mashbak is thinking…")
+        self.chat_state_label.configure(text="Waiting for Mashbak's reply")
+        set_text(self.details_text, "Mashbak is processing your message…")
 
         thread = threading.Thread(target=self._run_message, args=(message,), daemon=True)
         thread.start()
 
-    def _append_chat(self, role: str, text: str) -> None:
+    def _append_message(self, role: str, text: str) -> None:
         self.chat_text.configure(state="normal")
         if self.chat_text.get("1.0", END).strip():
             self.chat_text.insert(END, "\n\n")
-        if role == "you":
-            self.chat_text.insert(END, "You: ", "you")
-            self.chat_text.insert(END, text, "you")
-        elif role == "pending":
-            self.chat_text.insert(END, "Mashbak: ", "agent")
-            self.chat_text.insert(END, text, "agent")
+        timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
+        if role == "user":
+            self.chat_text.insert(END, f"You  •  {timestamp}\n", "user_meta")
+            self.chat_text.insert(END, text, "user_bubble")
+        elif role == "assistant":
+            self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
+            self.chat_text.insert(END, text, "assistant_bubble")
         elif role == "error":
-            self.chat_text.insert(END, "Mashbak: ", "agent")
-            self.chat_text.insert(END, text, "error")
+            self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
+            self.chat_text.insert(END, text, "error_bubble")
+        elif role == "system":
+            self.chat_text.insert(END, text, "system_bubble")
         else:
-            self.chat_text.insert(END, "Mashbak: ", "agent")
-            self.chat_text.insert(END, text, "agent")
+            self.pending_start_index = self.chat_text.index(END)
+            self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
+            self.chat_text.insert(END, text, "pending_bubble")
         self.chat_text.configure(state="disabled")
         self.chat_text.see(END)
 
-    def _replace_last_pending(self, text: str, tag: str = "agent") -> None:
-        """Replace the trailing '…' placeholder with the real response."""
+    def _replace_last_pending(self, text: str, tag: str = "assistant") -> None:
         self.chat_text.configure(state="normal")
-        content = self.chat_text.get("1.0", END)
-        idx = content.rfind("Mashbak: …")
-        if idx >= 0:
-            line = content[:idx].count("\n") + 1
-            col  = idx - content[:idx].rfind("\n") - 1
-            self.chat_text.delete(f"{line}.{col}", END)
-            self.chat_text.insert(END, "Mashbak: ", "agent")
-            self.chat_text.insert(END, text, tag)
+        if self.pending_start_index:
+            self.chat_text.delete(self.pending_start_index, END)
+            self.pending_start_index = None
+            if self.chat_text.get("1.0", END).strip():
+                self.chat_text.insert(END, "\n\n")
+            timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
+            self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
+            bubble_tag = "assistant_bubble" if tag == "assistant" else "error_bubble"
+            self.chat_text.insert(END, text, bubble_tag)
         self.chat_text.configure(state="disabled")
         self.chat_text.see(END)
 
     def _run_message(self, message: str) -> None:
         try:
-            result = self.client.execute_nl(message=message, sender="local-desktop")
-            if not result.get("success"):
-                ai_text = self._run_openai_chat(message)
-                if ai_text:
-                    ai_result = {
-                        "success": True,
-                        "tool_name": "ai_chat",
-                        "output": ai_text,
-                        "request_id": result.get("request_id"),
-                        "trace": {
-                            "raw_request": message,
-                            "intent_classification": "chat",
-                            "interpreted_intent": "ai_chat",
-                            "selected_tool": "ai_chat",
-                            "interpreted_args": {},
-                            "validation_status": "passed",
-                            "validated_arguments": {},
-                            "execution_status": "success",
-                            "execution_time_ms": None,
-                        },
-                    }
-                    self.root.after(0, lambda: self._display_result(message, ai_result))
-                    return
+            result = self.client.execute_nl(
+                message=message,
+                sender="local-desktop",
+                owner_unlocked=self.is_unlocked,
+            )
             self.root.after(0, lambda: self._display_result(message, result))
         except Exception as exc:
             self.root.after(0, lambda: self._display_error(str(exc)))
 
-    def _run_openai_chat(self, message: str) -> str | None:
-        if not self.openai_api_key:
-            return None
-
-        payload = {
-            "model": self.openai_model,
-            "messages": [
-                {"role": "system", "content": "You are Mashbak Desktop assistant. Reply clearly and concisely."},
-                {"role": "user",   "content": message},
-            ],
-            "max_tokens": 400,
-        }
-
-        data = json.dumps(payload).encode("utf-8")
-        request = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions",
-            data=data,
-            method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.openai_api_key}",
-            },
-        )
-
-        try:
-            with urllib.request.urlopen(request, timeout=25) as response:
-                parsed = json.loads(response.read().decode("utf-8", errors="replace"))
-            return parsed["choices"][0]["message"]["content"].strip()
-        except Exception:
-            return None
-
     def _display_result(self, message: str, result: dict) -> None:
         self.send_button.configure(state="normal")
+        self.chat_state_label.configure(text="Connected and ready")
 
         trace = result.get("trace") or {}
+        raw_tool_output = trace.get("tool_output")
         detail_lines = [
+            f"Assistant mode: {trace.get('assistant_mode')}",
             f"Tool:           {result.get('tool_name')}",
             f"Success:        {result.get('success')}",
             f"Request ID:     {result.get('request_id')}",
             f"Exec time (ms): {trace.get('execution_time_ms')}",
+            f"Reply source:   {trace.get('assistant_response_source')}",
             "",
             f"Intent class:   {trace.get('intent_classification')}",
             f"Interpreted:    {trace.get('interpreted_intent')}",
@@ -451,23 +436,25 @@ class DesktopControlApp:
             "",
             f"Args: {json.dumps(trace.get('interpreted_args', {}), ensure_ascii=True)}",
         ]
+        if raw_tool_output:
+            detail_lines += ["", "Raw tool output:", str(raw_tool_output)]
         set_text(self.details_text, "\n".join(detail_lines))
 
         final_text = (
-            result.get("output") or "Command executed successfully."
+            result.get("output") or "Mashbak finished that request."
             if result.get("success")
             else result.get("error") or "Request failed."
         )
-        response_tag = "agent" if result.get("success") else "error"
+        response_tag = "assistant" if result.get("success") else "error"
         self._replace_last_pending(final_text, response_tag)
 
-        self.chat_history.append(("you", message))
+        self.chat_history.append(("user", message))
         self.chat_history.append((response_tag, final_text))
         if len(self.chat_history) > 200:
             self.chat_history = self.chat_history[-200:]
 
         ts = datetime.now().strftime("%H:%M:%S")
-        tool = result.get("tool_name") or "ai_chat"
+        tool = result.get("tool_name") or trace.get("assistant_mode") or "conversation"
         self.activity.insert(0, f"{ts}  {tool}  {message[:60]}")
         self.activity = self.activity[:50]
         set_text(self.activity_list, "\n".join(self.activity))
@@ -476,10 +463,11 @@ class DesktopControlApp:
 
     def _display_error(self, error_text: str) -> None:
         self.send_button.configure(state="normal")
+        self.chat_state_label.configure(text="Connection problem")
         set_text(self.details_text, f"Error:\n{error_text}")
         self._replace_last_pending(error_text, "error")
 
-        self.chat_history.append(("you", "[message failed]"))
+        self.chat_history.append(("user", "[message failed]"))
         self.chat_history.append(("error", error_text))
 
         ts = datetime.now().strftime("%H:%M:%S")
@@ -493,14 +481,13 @@ class DesktopControlApp:
         agent_status  = self._check_agent_health()
         bridge_status = self._check_http_health("http://127.0.0.1:34567/health")
 
-        self.agent_badge.configure(
-            text=f"Agent ●",
-            foreground=(_GREEN if agent_status["running"] else _RED),
-        )
-        self.bridge_badge.configure(
-            text=f"Bridge ●",
-            foreground=(_GREEN if bridge_status["running"] else _RED),
-        )
+        self._set_service_badge(self.agent_badge, "Agent", agent_status)
+        self._set_service_badge(self.bridge_badge, "Bridge", bridge_status)
+
+        if agent_status["running"]:
+            self._set_backend_status("connected", "Mashbak is connected to the local backend.")
+        else:
+            self._set_backend_status("error", f"Mashbak cannot reach the local backend: {agent_status['detail']}")
 
         if not self.is_unlocked:
             set_text(self.status_text, "Locked")
@@ -512,8 +499,10 @@ class DesktopControlApp:
             return
 
         set_text(self.status_text, "\n".join([
-            f"Agent  : {'running' if agent_status['running']  else 'NOT RUNNING'}",
-            f"Bridge : {'running' if bridge_status['running'] else 'NOT RUNNING'}",
+            f"Agent  : {'connected' if agent_status['running']  else 'error'}",
+            f"Bridge : {'connected' if bridge_status['running'] else 'error'}",
+            f"AI     : {'enabled' if summary.get('assistant_ai_enabled') else 'fallback only'}",
+            f"Email  : {'configured' if summary.get('email_configured') else 'not configured'}",
             "",
             f"Agent  detail : {agent_status['detail']}",
             f"Bridge detail : {bridge_status['detail']}",
@@ -552,6 +541,9 @@ class DesktopControlApp:
             "",
             f"Allowed tools : {summary['allowed_tools']}",
             f"Timeout (s)   : {summary['tool_timeout_seconds']}",
+            f"AI enabled    : {summary.get('assistant_ai_enabled')}",
+            f"Model         : {summary.get('assistant_model')}",
+            f"Email ready   : {summary.get('email_configured')}",
         ]
         set_text(self.config_text, "\n".join(config_lines))
 
@@ -573,6 +565,16 @@ class DesktopControlApp:
         if health.get("status") == "ok":
             return {"running": True, "detail": json.dumps(health, ensure_ascii=True)[:200]}
         return {"running": False, "detail": health.get("error", "unavailable")}
+
+    def _set_service_badge(self, label: ttk.Label, name: str, status: dict) -> None:
+        if status["running"]:
+            label.configure(text=f"{name}: connected", foreground=_GREEN)
+        else:
+            label.configure(text=f"{name}: error", foreground=_RED)
+
+    def _set_backend_status(self, level: str, text: str) -> None:
+        colour = {"starting": _AMBER, "connected": _GREEN, "error": _RED}.get(level, "#cdd9e5")
+        self.backend_status_label.configure(text=text, foreground=colour)
 
     def _tail_file(self, path: Path, max_lines: int = 40) -> list[str]:
         if not path.exists():
@@ -600,6 +602,11 @@ class DesktopControlApp:
         self.chat_text.configure(state="normal")
         self.chat_text.delete("1.0", END)
         self.chat_text.configure(state="disabled")
+        self.pending_start_index = None
+        if self.is_unlocked:
+            self._append_message("assistant", "Chat cleared. I'm ready when you are.")
+        else:
+            self._show_chat_placeholder()
 
     def clear_activity(self) -> None:
         self.activity.clear()

@@ -38,6 +38,7 @@ class ExecuteToolRequest(BaseModel):
 class ExecuteNaturalLanguageRequest(BaseModel):
     """Request to execute a natural language message"""
     message: str
+    owner_unlocked: bool | None = None
 
 
 # ============================================================================
@@ -66,6 +67,9 @@ def health_check():
         "status": "ok",
         "workspace": str(runtime.workspace),
         "tools_loaded": len(runtime.registry.list_all()),
+        "assistant_ai_enabled": bool(runtime.openai_api_key),
+        "assistant_model": runtime.openai_model,
+        "email_configured": bool(runtime.summary().get("email_configured")),
         "version": "2.0.0",
     }
 
@@ -169,6 +173,7 @@ async def execute_natural_language(
         sender=x_sender or "unknown",
         request_id=x_request_id,
         source=x_source,
+        owner_unlocked=req.owner_unlocked,
     )
     
     # Format response
@@ -180,6 +185,7 @@ async def execute_natural_language(
         "request_id": result["request_id"],
         "sender": x_sender or "unknown",
         "source": result.get("source", x_source or "unknown"),
+        "data": result.get("data"),
         "trace": result.get("trace"),
     }
 
