@@ -37,6 +37,10 @@ try {
                 "--paths" "desktop_app" `
                 "--hidden-import" "agent.agent" `
                 "--hidden-import" "agent.runtime" `
+                "--hidden-import" "imaplib" `
+                "--hidden-import" "email" `
+                "--hidden-import" "email.policy" `
+                "--hidden-import" "email.parser" `
                 "--add-data" "agent/config.json;agent" `
                 "--add-data" "agent/.env.example;agent" `
                 "--add-data" "agent/workspace/inbox/.gitkeep;agent/workspace/inbox" `
@@ -55,6 +59,10 @@ try {
                 "--paths" "desktop_app" `
                 "--hidden-import" "agent.agent" `
                 "--hidden-import" "agent.runtime" `
+                "--hidden-import" "imaplib" `
+                "--hidden-import" "email" `
+                "--hidden-import" "email.policy" `
+                "--hidden-import" "email.parser" `
                 "--add-data" "agent/config.json;agent" `
                 "--add-data" "agent/.env.example;agent" `
                 "--add-data" "agent/workspace/inbox/.gitkeep;agent/workspace/inbox" `
