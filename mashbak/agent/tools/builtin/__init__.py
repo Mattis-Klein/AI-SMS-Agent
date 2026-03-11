@@ -11,6 +11,8 @@ from .list_processes import ListProcessesTool
 from .uptime import UptimeTool
 from .email_tools import ListRecentEmailsTool, SummarizeInboxTool, SearchEmailsTool, ReadEmailThreadTool
 from .config_tools import SetConfigVariableTool
+from .create_folder import CreateFolderTool
+from .create_file import CreateFileTool
 
 ALL_BUILTIN_TOOLS = [
     DirInboxTool(),
@@ -28,6 +30,8 @@ ALL_BUILTIN_TOOLS = [
     SearchEmailsTool(),
     ReadEmailThreadTool(),
     SetConfigVariableTool(),
+    CreateFolderTool(),
+    CreateFileTool(),
 ]
 
 __all__ = ["ALL_BUILTIN_TOOLS"]

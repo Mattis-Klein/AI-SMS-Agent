@@ -108,6 +108,7 @@ class SessionContextManager:
             context = self._ensure_session_unlocked(session_id)
             tool_name = result.get("tool_name") or parsed.get("tool")
             succeeded = bool(result.get("success"))
+            action_requested = bool((parsed.get("entities") or {}).get("action_requested"))
 
             context.last_intent = parsed.get("intent") or context.last_intent
             context.last_tool = tool_name or context.last_tool
@@ -137,11 +138,30 @@ class SessionContextManager:
             elif tool_name and not succeeded:
                 context.last_result = "failure"
 
+            # When user requested an actionable filesystem task but no tool ran,
+            # keep pending task state so follow-ups can resolve against it.
+            if action_requested and not tool_name:
+                context.pending_task = "filesystem_action"
+                context.pending_parameters = {}
+                if not context.missing_parameters:
+                    context.missing_parameters = ["path"]
+
             # Clear pending task once executed (success or failure).
             if tool_name and context.pending_task == tool_name:
                 context.pending_task = None
                 context.pending_parameters = {}
                 context.missing_parameters = []
+
+            if tool_name and tool_name in {"create_file", "create_folder"}:
+                if succeeded:
+                    context.pending_task = None
+                    context.pending_parameters = {}
+                    context.missing_parameters = []
+                else:
+                    context.pending_task = tool_name
+                    context.pending_parameters = dict(parsed.get("args") or {})
+                    if not context.missing_parameters:
+                        context.missing_parameters = ["path"]
 
             # Capture missing parameters surfaced by failed tool execution.
             tool_missing_params = result.get("missing_parameters")
@@ -223,6 +243,7 @@ class SessionContextManager:
             "missing_parameters": snap["missing_parameters"],
             "last_task": snap["last_task"],
             "last_result": snap["last_result"],
+            "last_action_status": snap["last_result"],
             "last_created_path": snap["last_created_path"],
             "recent_turns_count": len(snap["recent_turns"]),
             "recent_turns": safe_turns,

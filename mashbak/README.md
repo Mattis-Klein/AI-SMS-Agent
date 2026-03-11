@@ -61,4 +61,29 @@ Reload behavior:
 - Bridge transport and access-control values are startup-loaded and require bridge restart.
 - `AGENT_API_KEY` change requires callers to use the new key and typically restart active clients.
 
+## Filesystem Action Grounding
+
+Mashbak now enforces hard grounding for filesystem actions in backend runtime:
+
+- Action completion language is allowed only after a real successful tool execution.
+- If no tool is selected, validation is skipped, or execution fails, Mashbak will not claim changes were applied.
+- Successful filesystem mutation tools must return a resolved `created_path`.
+
+Examples that map to concrete backend tools:
+
+```text
+create a folder on my desktop called TripPack
+create a file named notes.txt
+add a file in that folder with all 50 states
+put a file in it
+```
+
+Context follow-ups are resolved from last verified action state (session memory only, reset on restart):
+
+```text
+where is it?
+did you create it?
+add states to that folder
+```
+
 See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for complete variable reference and restart details.

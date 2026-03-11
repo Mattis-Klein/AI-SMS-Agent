@@ -1,5 +1,6 @@
 """Natural language interpreter for Mashbak requests."""
 
+from pathlib import Path
 import re
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple
@@ -64,6 +65,12 @@ class NaturalLanguageInterpreter:
             (r"(?:check|list|show).*outbox", "dir_outbox", lambda m: {}),
             (r"(?:list|show|what.*files?).*(?:in|from)\s+(.+)", "list_files", self._extract_path),
             (r"files?\s+(?:in|from)\s+(.+)", "list_files", self._extract_path),
+            (r"(?:create|make)\s+(?:a\s+)?(?:folder|directory)\s+(?:on\s+my\s+desktop|in\s+my\s+desktop|on\s+desktop)\s+(?:called|named)\s+(.+)", "create_folder", self._extract_desktop_named_target),
+            (r"(?:create|make)\s+(?:a\s+)?(?:folder|directory)\s+(?:called|named)\s+(.+)", "create_folder", self._extract_named_target),
+            (r"(?:create|make)\s+(?:a\s+)?(?:folder|directory)\s+(?:in|at|under)\s+(.+)", "create_folder", self._extract_path),
+            (r"(?:create|make)\s+(?:a\s+)?file\s+(?:named|called)\s+(.+?)\s+(?:in|at|under)\s+(.+)", "create_file", self._extract_named_file_target),
+            (r"(?:create|make)\s+(?:a\s+)?file\s+(?:named|called)\s+(.+)", "create_file", self._extract_named_file_default_path),
+            (r"(?:create|make)\s+(?:a\s+)?file\s+(?:in|at|under)\s+(.+)", "create_file", self._extract_path),
             (r"(?:check|show|get).*(?:system|os|info)", "system_info", lambda m: {}),
             (r"system info", "system_info", lambda m: {}),
             (r"(?:check|show).*(?:cpu|processor)", "cpu_usage", lambda m: {}),
@@ -107,6 +114,21 @@ class NaturalLanguageInterpreter:
         if ref_result is not None:
             return ref_result
 
+        # --- 1b. Try context-aware filesystem follow-ups before generic parse ---
+        fs_tool, fs_args, fs_confidence = self._detect_contextual_filesystem_action(message, context)
+        if fs_tool:
+            fs_entities = self._extract_entities(fs_tool, fs_args)
+            return {
+                "tool": fs_tool,
+                "args": fs_args,
+                "intent": "filesystem",
+                "confidence": fs_confidence,
+                "mode": "tool",
+                "topic": "filesystem",
+                "followup_topic": None,
+                "entities": fs_entities,
+            }
+
         # --- 2. Standard parse ---
         parsed = self.parse(message)
 
@@ -133,6 +155,7 @@ class NaturalLanguageInterpreter:
             entities["missing_config_fields"] = list(context.get("missing_config_fields") or [])
         if context.get("missing_parameters"):
             entities["missing_parameters"] = list(context.get("missing_parameters") or [])
+        entities["action_requested"] = self._is_action_request(message, parsed.intent)
 
         return {
             "tool": parsed.tool,
@@ -144,6 +167,42 @@ class NaturalLanguageInterpreter:
             "followup_topic": followup_topic,
             "entities": entities,
         }
+
+    def _detect_contextual_filesystem_action(
+        self,
+        message: str,
+        context: dict[str, Any],
+    ) -> tuple[Optional[str], dict[str, Any], float]:
+        msg = message.strip().lower()
+        last_path = str(context.get("last_created_path") or "").strip()
+        if not last_path:
+            return None, {}, 0.0
+
+        target_dir = Path(last_path)
+        if target_dir.suffix:
+            target_dir = target_dir.parent
+
+        if "50 states" in msg and any(token in msg for token in ["that folder", "in it", "to it"]):
+            return "create_file", {
+                "parent_path": str(target_dir),
+                "name": "states.txt",
+                "content": self._all_states_text(),
+            }, 0.93
+
+        if any(token in msg for token in ["put a file in it", "put file in it", "add a file in it", "put a file in that folder", "add a file in that folder"]):
+            return "create_file", {
+                "parent_path": str(target_dir),
+                "name": "note.txt",
+            }, 0.9
+
+        if "add states to that folder" in msg or "add states in that folder" in msg:
+            return "create_file", {
+                "parent_path": str(target_dir),
+                "name": "states.txt",
+                "content": self._all_states_text(),
+            }, 0.92
+
+        return None, {}, 0.0
 
     # ------------------------------------------------------------------
     # Context-reference resolution
@@ -388,9 +447,14 @@ class NaturalLanguageInterpreter:
         if intent == "explanation":
             return None, None, 0.35
 
+        action_verb_present = any(token in msg for token in ["create", "make", "add", "save", "delete", "move", "put", "write"])
+
         for pattern, tool_name, _extractor in self.patterns:
             match = re.search(pattern, msg)
             if match:
+                # Action-verb requests should not be misclassified as read-only list_files.
+                if tool_name == "list_files" and action_verb_present:
+                    continue
                 return tool_name, match, (0.9 if intent else 0.8)
         return None, None, 0.0
 
@@ -463,7 +527,7 @@ class NaturalLanguageInterpreter:
         entities: dict[str, Any] = {}
         if tool_name:
             entities["tool"] = tool_name
-        for key in ("query", "path", "email_id", "limit", "variable_name"):
+        for key in ("query", "path", "parent_path", "name", "email_id", "limit", "variable_name"):
             if key in args:
                 entities[key] = args[key]
         return entities
@@ -472,3 +536,51 @@ class NaturalLanguageInterpreter:
         if match.groups() and match.group(1):
             return {"path": match.group(1).strip()}
         return {}
+
+    def _extract_desktop_named_target(self, match: re.Match[str]) -> dict[str, Any]:
+        folder_name = self._sanitize_filename(match.group(1)) if match.groups() else ""
+        return {"path": str(Path.home() / "Desktop" / folder_name)} if folder_name else {}
+
+    def _extract_named_target(self, match: re.Match[str]) -> dict[str, Any]:
+        target_name = self._sanitize_filename(match.group(1)) if match.groups() else ""
+        if not target_name:
+            return {}
+        return {"path": target_name}
+
+    def _extract_named_file_target(self, match: re.Match[str]) -> dict[str, Any]:
+        if not match.groups() or len(match.groups()) < 2:
+            return {}
+        file_name = self._sanitize_filename(match.group(1))
+        parent_path = match.group(2).strip()
+        if not file_name or not parent_path:
+            return {}
+        return {"parent_path": parent_path, "name": file_name}
+
+    def _extract_named_file_default_path(self, match: re.Match[str]) -> dict[str, Any]:
+        file_name = self._sanitize_filename(match.group(1)) if match.groups() else ""
+        if not file_name:
+            return {}
+        return {"path": file_name}
+
+    def _sanitize_filename(self, value: str) -> str:
+        cleaned = value.strip().strip("\"'` ")
+        cleaned = re.sub(r"[<>:\\|?*]", "_", cleaned)
+        return cleaned[:120]
+
+    def _is_action_request(self, message: str, intent: Optional[str]) -> bool:
+        if intent != "filesystem":
+            return False
+        msg = message.lower()
+        return any(token in msg for token in ["create", "make", "add", "save", "delete", "move", "put", "write"])
+
+    def _all_states_text(self) -> str:
+        states = [
+            "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware",
+            "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky",
+            "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi",
+            "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico",
+            "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania",
+            "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont",
+            "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming",
+        ]
+        return "\n".join(states)

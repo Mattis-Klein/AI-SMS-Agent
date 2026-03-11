@@ -22,6 +22,16 @@ Returns all registered tools and descriptions.
 
 Returns metadata for one tool.
 
+## GET /session/{session_id}
+
+Returns debug-safe session context summary (no secrets), including:
+- last_task
+- last_result
+- last_action_status
+- last_created_path
+- pending_task
+- missing_parameters
+
 ## POST /execute
 
 Direct tool execution.
@@ -71,3 +81,16 @@ Common error categories returned in payloads include:
 - denied_action
 - timeout
 - execution_failure
+- action_not_executed
+
+## Trace Grounding Fields
+
+Tool and conversation traces include grounding indicators used by debug panels:
+- selected_tool
+- validation_status
+- execution_status
+- execution_result
+- tool_execution_occurred
+
+For action requests where no tool executed, `selected_tool` is `null`,
+`execution_status` is `not_run`, and `execution_result` is `not_executed`.

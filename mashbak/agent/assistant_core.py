@@ -91,6 +91,8 @@ class AssistantCore:
         parsed = self.interpreter.parse_to_dict(message, context=context_snapshot)
         mode = parsed.get("mode") or "conversation"
 
+        is_action_request = bool((parsed.get("entities") or {}).get("action_requested"))
+
         if parsed.get("tool"):
             result = await self.runtime.execute_tool(
                 tool_name=parsed["tool"],
@@ -118,6 +120,23 @@ class AssistantCore:
             finalized["trace"] = finalized_trace
             return finalized
 
+        if is_action_request:
+            response = self._build_unexecuted_action_response(message, metadata, parsed)
+            latest_context = self.runtime.session_context.update(
+                session_id=metadata.session_id,
+                user_message=message,
+                parsed=parsed,
+                result=response,
+            )
+            self.runtime.session_context.record_assistant_reply(
+                session_id=metadata.session_id,
+                assistant_reply=response.get("assistant_reply") or response.get("output") or "",
+            )
+            response_trace = response.get("trace") or {}
+            response_trace["context"] = latest_context
+            response["trace"] = response_trace
+            return response
+
         response = await self._build_conversation_response(message, metadata, parsed, context_snapshot)
         latest_context = self.runtime.session_context.update(
             session_id=metadata.session_id,
@@ -134,6 +153,45 @@ class AssistantCore:
         response_trace["context"] = latest_context
         response["trace"] = response_trace
         return response
+
+    def _build_unexecuted_action_response(
+        self,
+        message: str,
+        metadata: AssistantMetadata,
+        parsed: dict[str, Any],
+    ) -> dict[str, Any]:
+        reply = (
+            "I have not executed a filesystem tool yet, so no filesystem change was applied. "
+            "Share an allowed target path and I can run it."
+        )
+        return {
+            "success": False,
+            "tool_name": None,
+            "output": reply,
+            "assistant_reply": reply,
+            "error": reply,
+            "error_type": "action_not_executed",
+            "request_id": metadata.request_id,
+            "source": metadata.source,
+            "data": None,
+            "trace": {
+                "raw_request": sanitize_for_logging(message),
+                "source": metadata.source,
+                "assistant_mode": parsed.get("mode") or "conversation",
+                "intent_classification": parsed.get("intent"),
+                "interpreted_intent": None,
+                "interpreted_args": sanitize_for_logging(parsed.get("args") or {}),
+                "selected_tool": None,
+                "validation_status": "skipped",
+                "execution_status": "not_run",
+                "execution_result": "not_executed",
+                "tool_execution_occurred": False,
+                "confidence": parsed.get("confidence", 0.0),
+                "assistant_response_source": "policy",
+                "followup_topic": parsed.get("followup_topic"),
+                "topic": parsed.get("topic"),
+            },
+        }
 
     def _build_locked_response(self, message: str, metadata: AssistantMetadata) -> dict[str, Any]:
         reply = "Mashbak is locked right now. Unlock the desktop app first, then send your message again."
@@ -187,7 +245,9 @@ class AssistantCore:
                 "interpreted_args": sanitize_for_logging(parsed.get("args") or {}),
                 "selected_tool": None,
                 "validation_status": "skipped",
-                "execution_status": "completed",
+                "execution_status": "not_run",
+                "execution_result": "not_executed",
+                "tool_execution_occurred": False,
                 "confidence": parsed.get("confidence", 0.0),
                 "assistant_response_source": "openai" if self.model_client.enabled else "fallback",
                 "followup_topic": parsed.get("followup_topic"),
@@ -203,6 +263,16 @@ class AssistantCore:
         result: dict[str, Any],
     ) -> dict[str, Any]:
         raw_output = result.get("output")
+
+        # Mandatory grounding: successful filesystem mutation tools must report
+        # a resolved created_path or the result is treated as failure.
+        if result.get("success") and result.get("tool_name") in {"create_folder", "create_file"}:
+            data = result.get("data") if isinstance(result.get("data"), dict) else {}
+            if not str(data.get("created_path") or "").strip():
+                result["success"] = False
+                result["error_type"] = "execution_failure"
+                result["error"] = "Filesystem action did not return a resolved path."
+                result["output"] = "I could not verify where that filesystem action was applied."
         reply = await self._generate_tool_reply(
             user_message=message,
             metadata=metadata,
@@ -215,11 +285,18 @@ class AssistantCore:
         trace["assistant_response_source"] = "openai" if self.model_client.enabled else "fallback"
         trace["tool_output"] = sanitize_for_logging(raw_output)
         trace["tool_data"] = sanitize_for_logging(result.get("data"))
+        trace["execution_result"] = "success" if result.get("success") else "failed"
+        trace["tool_execution_occurred"] = True
         if result.get("error"):
             trace["tool_error"] = sanitize_for_logging(result.get("error"))
             trace["error_type"] = result.get("error_type")
             trace["remediation"] = result.get("remediation")
             trace["missing_config_fields"] = result.get("missing_config_fields")
+
+        # Guard against completion-claim language when execution failed.
+        is_action_intent = parsed.get("intent") == "filesystem"
+        if is_action_intent and (not result.get("success")) and self._contains_completion_claim(reply):
+            reply = "I did not complete that filesystem action. No filesystem change was applied."
 
         result["assistant_reply"] = reply
         result["output"] = reply
@@ -227,6 +304,12 @@ class AssistantCore:
             result["error"] = reply
         result["trace"] = trace
         return result
+
+    def _contains_completion_claim(self, text: str | None) -> bool:
+        if not text:
+            return False
+        lower = text.lower()
+        return any(token in lower for token in ["created", "added", "saved", "deleted", "moved", "done"])
 
     async def _generate_conversation_reply(
         self,

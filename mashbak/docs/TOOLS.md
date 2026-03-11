@@ -15,6 +15,8 @@ System/File tools:
 - dir_inbox
 - dir_outbox
 - list_files
+- create_folder
+- create_file
 - system_info
 - cpu_usage
 - disk_space
@@ -32,9 +34,13 @@ Email tools:
 Config tool:
 - set_config_variable
 
+Total built-in tools: 17
+
 ## Safety Rules
 
 - Tool names must exist in registry.
 - Arguments must pass tool-level validation.
 - Allowed-tools and allowed-directories policy is enforced by backend config.
 - Bridge and desktop do not execute tools directly.
+- Filesystem action claims are grounded: backend may claim completion only when a tool executed successfully.
+- Successful `create_folder` and `create_file` responses must include `data.created_path`.
