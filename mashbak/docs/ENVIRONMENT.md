@@ -83,7 +83,7 @@ PIN required to unlock Mashbak Desktop on startup.
 
 **Example:**
 ```
-LOCAL_APP_PIN=5421
+LOCAL_APP_PIN=1234
 ```
 
 **Rules:**

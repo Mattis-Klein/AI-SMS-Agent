@@ -4,8 +4,8 @@
 .env.local
 .env.*.local
 !.env.example
-!agent/.env.example
-!sms-bridge/.env.example
+!mashbak/agent/.env.example
+!mashbak/sms-bridge/.env.example
 
 # Local configuration overrides
 config.local.json
@@ -66,6 +66,16 @@ agent/workspace/logs/*
 !agent/workspace/logs/.gitkeep
 sms-bridge/logs/*
 !sms-bridge/logs/.gitkeep
+
+# Mashbak assistant runtime data
+mashbak/agent/workspace/inbox/*
+mashbak/agent/workspace/outbox/*
+mashbak/agent/workspace/logs/*
+!mashbak/agent/workspace/inbox/.gitkeep
+!mashbak/agent/workspace/outbox/.gitkeep
+!mashbak/agent/workspace/logs/.gitkeep
+mashbak/sms-bridge/logs/*
+!mashbak/sms-bridge/logs/.gitkeep
 
 # IDE & Editor
 .vscode/settings.json

@@ -1,262 +1,85 @@
-# Mashbak
+# AI-SMS-Agent
 
-**Desktop-first Windows AI assistant with optional remote SMS access through the same shared backend.**
+This repository now supports multiple assistant applications.
 
-Mashbak is a secure Windows desktop AI assistant with a full local interface as the primary experience. SMS is a secondary remote access channel that targets the same shared assistant core.
+## Assistants
 
-Both desktop and SMS use one execution pipeline:
+- **Mashbak** (`mashbak/`): desktop-first Windows assistant with optional SMS access.
+- **Bucherim** (`bucherim/`): SMS-only visual/chat assistant (coming soon).
 
-transport/input -> interpreter -> dispatcher -> tool registry -> sandboxed tool execution -> result
-
-This keeps behavior consistent across channels while allowing source-aware response formatting (desktop full detail, SMS compact responses).
-
-## ✨ What's New in v2.0
-
-- **Tool-Based Architecture**: Clean, modular system where each capability is a defined tool
-- **Natural Language Support**: SMS messages like "check my inbox" or "show CPU" are automatically mapped to tools
-- **Tool Registry**: Extensible system for adding new tools
-- **Structured Logging**: Full request lifecycle tracking with JSON logs
-- **Improved Dispatcher**: Smart routing through tool system with input validation
-- **Cleaner API**: Separate `/execute` and `/execute-nl` endpoints
-- **Desktop Application Mode**: Packaged Windows `.exe` support with automatic local agent startup and no terminal required
-
-## 🎯 Core Concept: Tools
-
-Everything the agent does is expressed as a **tool**:
+## Repository Layout
 
 ```
-Tool = { name, description, input schema, validation, execution }
-
-Examples:
-  - dir_inbox: List files in inbox folder
-  - cpu_usage: Check current CPU usage
-  - list_files: List files in a directory (requires path argument)
-  - system_info: Get OS name, version, memory info
-  - current_time: Get current date/time
+AI-SMS-Agent/
+  mashbak/
+    agent/
+    desktop_app/
+    sms-bridge/
+    scripts/
+    docs/
+    workspace/
+  bucherim/
+    agent/
+    sms-bridge/
+    config/
+    workspace/
 ```
 
-When you send an SMS:
+## Multi-Assistant Routing (Preparation)
+
+Incoming SMS messages will eventually be routed by sender/number rules:
 
 ```
-"Check my inbox"
-  ↓
-[Natural Language Interpreter]
-  ↓
-Tool: dir_inbox
-  ↓
-[Validate & Execute]
-  ↓
-"Directory listing: file1.txt, file2.txt"
+incoming SMS
+     ↓
+router
+     ├── mashbak
+     └── bucherim
 ```
 
-## 🏗️ Architecture
+## Run Mashbak
 
-```
-SMS Request
-    ↓
-📱 SMS Bridge (Node.js)
-  - Validates Twilio signature
-  - Checks sender allowlist
-    ↓
-🤖 FastAPI Agent (Python)
-  - POST /execute-nl (natural language)
-  - POST /execute (direct tool)
-    ↓
-📋 Dispatcher
-  - Logs request
-  - Routes to interpreter or tool
-    ↓
-🔍 Interpreter (for natural language)
-  - Pattern matches message
-  - Extracts arguments
-  - Maps to tool name
-    ↓
-🛠️ Tool Registry
-  - Holds all available tools
-  - Validates inputs
-  - Executes selected tool
-    ↓
-📝 Structured Logger
-  - Records all events as JSON
-  - Tracks full request lifecycle
-  - Enables audit trail
-    ↓
-📞 Response sent via SMS
-```
+All current production functionality remains in `mashbak/`.
 
-**Full flow documentation**: See [ARCHITECTURE.md](docs/ARCHITECTURE.md)
+### Start Agent
 
-## 🔐 Security Model
-
-### Three Layers of Validation
-
-1. **Bridge Level**
-   - Twilio signature validation (prevents spoofing)
-   - Sender allowlist (only known numbers)
-
-2. **Agent Level**
-   - API key authentication
-   - Tool allowlist (optional: restrict to subset of tools)
-   - Input schema validation
-
-3. **Tool Level**
-   - Path validation (files only in allowed directories)
-   - Timeout enforcement (max 30 seconds per execution)
-   - Error encapsulation (failures are safe and logged)
-
-### What's NOT Allowed
-
-- ❌ Arbitrary command execution (no shell access)
-- ❌ Access to system files outside allowed directories
-- ❌ Execution of .exe, .bat, .cmd, .ps1, .vbs, .js files
-- ❌ File operations exceeding 10MB size limit
-- ❌ Requests from non-approved phone numbers
-
-## 📚 Available Tools
-
-10 built-in tools for system monitoring:
-
-| Tool | Args | Purpose |
-|------|------|---------|
-| `dir_inbox` | none | List files in inbox folder |
-| `dir_outbox` | none | List files in outbox folder |
-| `list_files` | path | List files in directory |
-| `system_info` | none | OS name, version, memory |
-| `cpu_usage` | none | Current CPU percentage |
-| `disk_space` | none | C: drive free/total space |
-| `current_time` | none | System date and time |
-| `network_status` | none | Network IP configuration |
-| `list_processes` | none | Top 10 running processes |
-| `uptime` | none | System uptime in hours |
-
-**Full tool documentation**: See [TOOLS.md](docs/TOOLS.md)
-
-## 📝 Local Memory Notes
-
-Use [local-memory-notes/](local-memory-notes) for personal markdown notes you want to keep between sessions.
-
-- Files in this folder are ignored by git.
-- Recommended use: troubleshooting notes, webhook URLs, deployment reminders, and test checklists.
-- Keep sensitive values out of committed documentation and store local-only details here instead.
-
-## 🚀 Quick Start
-
-### 1. Clone and Setup
-
-```bash
-git clone https://github.com/mattis-klein/AI-SMS-Agent.git
-cd Mashbak
-```
-
-### 2. Create Environment Files
-
-**agent/.env**:
-
-```
-AGENT_API_KEY=super-secret-key-12345
-AGENT_WORKSPACE=agent/workspace
-```
-
-**sms-bridge/.env**:
-
-```
-AGENT_API_KEY=super-secret-key-12345
-AGENT_URL=http://127.0.0.1:8787
-BRIDGE_PORT=34567
-TWILIO_AUTH_TOKEN=your-twilio-auth-token
-PUBLIC_BASE_URL=https://your-public-url.com
-ALLOWED_SMS_FROM=+15551234567
-```
-
-### 3. Install Dependencies
-
-**Agent** (Python 3.10+):
-
-```bash
-cd agent
-pip install fastapi uvicorn pydantic psutil python-dotenv
-```
-
-**Bridge** (Node.js 18+):
-
-```bash
-cd sms-bridge
-npm install
-```
-
-### 4. Run Both Services
-
-**Terminal 1 - Agent**:
-
-```bash
-cd agent
+```powershell
+cd mashbak/agent
 python -m uvicorn agent:app --host 127.0.0.1 --port 8787
 ```
 
-**Terminal 2 - SMS Bridge**:
-
-```bash
-cd sms-bridge
-node sms-server.js
-```
-
-### 5. Run Local Desktop Console (Optional, Recommended for Testing)
-
-**Terminal 3 - Local App**:
-
-```bash
-python desktop_app/main.py
-```
-
-The local desktop app:
-- sends requests through the same internal dispatcher/interpreter/tool pipeline as SMS
-- auto-starts the local FastAPI agent service in the background
-- shows execution trace details (intent, selected tool, validated args, status, result)
-- shows recent logs, activity, and service status in one place
-- does not send SMS replies through Twilio
-
-### 6. Build Windows Desktop Executable (.exe)
+### Start SMS Bridge
 
 ```powershell
-.\scripts\build-app.ps1 -Clean
+cd mashbak/sms-bridge
+npm start
 ```
 
-Build output:
-- `dist/Mashbak.exe` (default one-file build)
+### Start Desktop App
 
-Run by double-clicking `Mashbak.exe`.
-- No terminal is required for normal use.
-- The app starts the local agent automatically.
-
-### 7. Test via API
-
-```bash
-# Via direct tool execution
-curl -X POST http://localhost:8787/execute \
-  -H "x-api-key: super-secret-key-12345" \
-  -H "x-sender: +15551234567" \
-  -H "Content-Type: application/json" \
-  -d '{"tool_name": "system_info", "args": {}}'
-
-# Via natural language
-curl -X POST http://localhost:8787/execute-nl \
-  -H "x-api-key: super-secret-key-12345" \
-  -H "x-sender: +15551234567" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "what time is it"}'
-
-# List available tools
-curl http://localhost:8787/tools \
-  -H "x-api-key: super-secret-key-12345"
+```powershell
+python mashbak/desktop_app/main.py
 ```
 
-### 8. Configure Twilio Webhook
+### Build Desktop EXE
 
-Set your Twilio webhook URL to: `https://your-public-url.com:34567/sms`
+```powershell
+.\mashbak\scripts\build-app.ps1 -Clean
+```
 
-Then text commands to your Twilio number from an approved phone!
+Output:
 
-## 📖 Usage Examples
+- `mashbak/dist/Mashbak.exe`
+
+## Documentation
+
+- Mashbak docs: `mashbak/docs/`
+- Legacy Mashbak docs: `mashbak/docs/legacy/`
+
+## Notes
+
+- The Bucherim folder is scaffolding only right now.
+- Existing Mashbak behavior is preserved, just moved under `mashbak/`.
 
 ### Via Local Desktop App
 
