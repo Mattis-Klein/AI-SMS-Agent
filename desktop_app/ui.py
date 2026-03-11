@@ -28,8 +28,6 @@ class DesktopControlApp:
     ):
         if not local_app_pin:
             raise RuntimeError("LOCAL_APP_PIN is required. Set it in agent/.env or the environment.")
-        if not openai_api_key:
-            raise RuntimeError("OPENAI_API_KEY is required. Set it in agent/.env or the environment.")
 
         self.root = root
         self.root.title("Mashbak Desktop")

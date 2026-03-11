@@ -50,11 +50,16 @@ def _load_env_value(env_file: Path, key: str) -> str | None:
     return None
 
 
-def _resolve_required_setting(key: str) -> str:
+def _resolve_setting(key: str, default: str | None = None) -> str | None:
     value = os.getenv(key) or _load_env_value(AGENT_DIR / ".env", key)
-    if not value:
-        raise RuntimeError(f"{key} is required. Set it in agent/.env or the environment.")
-    return value
+    if value:
+        return value
+
+    if default is not None:
+        print(f"[desktop] {key} not set. Using fallback value.", file=sys.stderr)
+        return default
+
+    return None
 
 
 def schedule_refresh(app: DesktopControlApp) -> None:
@@ -110,8 +115,8 @@ def main() -> None:
     service.start()
 
     os.environ.setdefault("AGENT_API_KEY", service.api_key)
-    local_app_pin = _resolve_required_setting("LOCAL_APP_PIN")
-    openai_api_key = _resolve_required_setting("OPENAI_API_KEY")
+    local_app_pin = _resolve_setting("LOCAL_APP_PIN", default="5421")
+    openai_api_key = _resolve_setting("OPENAI_API_KEY")
     openai_model = os.getenv("OPENAI_MODEL") or _load_env_value(AGENT_DIR / ".env", "OPENAI_MODEL") or "gpt-4.1-mini"
 
     runtime = create_runtime(AGENT_DIR)
