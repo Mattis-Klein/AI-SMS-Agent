@@ -42,6 +42,7 @@ class DesktopControlApp:
         self.activity: list[str] = []
         self.chat_history: list[tuple[str, str]] = []  # (role, text)
         self.quick_buttons: list[ttk.Button] = []
+        self.lock_sensitive_buttons: list[ttk.Button] = []
         self.is_unlocked = False
 
         workspace = Path(runtime_summary["workspace"])
@@ -50,10 +51,7 @@ class DesktopControlApp:
 
         self._apply_styles()
         self._build_ui()
-        self._set_interaction_enabled(False)
-        self._show_chat_placeholder()
-        self.refresh_status()
-        self.refresh_logs()
+        self._lock_ui("Desktop locked. Enter PIN to unlock.")
 
     # ── theming ────────────────────────────────────────────────────────────────
 
@@ -119,7 +117,9 @@ class DesktopControlApp:
         self.pin_entry.pack(side=LEFT, padx=(0, 4))
         self.pin_entry.bind("<Return>", lambda _e: self.unlock_app())
         self.unlock_button = ttk.Button(lock_bar, text="Unlock", command=self.unlock_app, width=7)
-        self.unlock_button.pack(side=LEFT, padx=(0, 16))
+        self.unlock_button.pack(side=LEFT, padx=(0, 6))
+        self.lock_button = ttk.Button(lock_bar, text="Lock", command=self.lock_app, width=7, state="disabled")
+        self.lock_button.pack(side=LEFT, padx=(0, 16))
 
         self.bridge_badge = ttk.Label(header, text="Bridge ●", style="Header.TLabel")
         self.bridge_badge.pack(side=RIGHT, padx=(0, 10))
@@ -188,13 +188,23 @@ class DesktopControlApp:
     def _build_right_panel(self, parent: ttk.Frame) -> None:
         actions = ttk.Frame(parent)
         actions.pack(fill=X, pady=(4, 4))
-        add_refresh_button(actions, self.refresh_status, label="⟳ Status")
-        add_refresh_button(actions, self.refresh_logs,  label="⟳ Logs")
-        ttk.Button(actions, text="✕ Chat",     command=self.clear_chat).pack(side=LEFT, padx=(6, 0))
-        ttk.Button(actions, text="✕ Activity", command=self.clear_activity).pack(side=LEFT, padx=(4, 0))
+        self.refresh_status_button = add_refresh_button(actions, self.refresh_status, label="⟳ Status")
+        self.refresh_logs_button = add_refresh_button(actions, self.refresh_logs,  label="⟳ Logs")
+        self.clear_chat_button = ttk.Button(actions, text="✕ Chat", command=self.clear_chat)
+        self.clear_chat_button.pack(side=LEFT, padx=(6, 0))
+        self.clear_activity_button = ttk.Button(actions, text="✕ Activity", command=self.clear_activity)
+        self.clear_activity_button.pack(side=LEFT, padx=(4, 0))
+
+        self.lock_sensitive_buttons.extend([
+            self.refresh_status_button,
+            self.refresh_logs_button,
+            self.clear_chat_button,
+            self.clear_activity_button,
+        ])
 
         nb = ttk.Notebook(parent)
         nb.pack(fill=BOTH, expand=True)
+        self.info_notebook = nb
 
         def _tab(title: str) -> ttk.Frame:
             frame = ttk.Frame(nb, padding=4)
@@ -243,11 +253,9 @@ class DesktopControlApp:
         self.pin_entry.delete(0, END)
 
         if candidate != self.local_app_pin:
-            self.is_unlocked = False
-            self.lock_icon_label.configure(text="🔒")
             self.lock_status.configure(text="Wrong PIN", foreground=_RED)
             self.statusbar_label.configure(text="Mashbak Desktop  •  locked — wrong PIN")
-            self._set_interaction_enabled(False)
+            self._lock_ui("Desktop locked. Enter PIN to unlock.")
             self.root.after(2000, lambda: self.lock_status.configure(
                 text="Locked", foreground="#cdd9e5",
             ))
@@ -257,13 +265,42 @@ class DesktopControlApp:
         self.lock_icon_label.configure(text="🔓")
         self.lock_status.configure(text="Unlocked", foreground=_GREEN)
         self.unlock_button.configure(state="disabled")
+        self.lock_button.configure(state="normal")
         self.pin_entry.configure(state="disabled")
         self.statusbar_label.configure(text="Mashbak Desktop  •  unlocked")
         self.chat_text.configure(state="normal")
         self.chat_text.delete("1.0", END)
         self.chat_text.configure(state="disabled")
         self._set_interaction_enabled(True)
+        self.refresh_status()
+        self.refresh_logs()
         self.message_entry.focus_set()
+
+    def lock_app(self) -> None:
+        self._lock_ui("Desktop locked. Enter PIN to unlock.")
+
+    def _lock_ui(self, details_message: str) -> None:
+        self.is_unlocked = False
+        self.lock_icon_label.configure(text="🔒")
+        self.lock_status.configure(text="Locked", foreground="#cdd9e5")
+        self.statusbar_label.configure(text="Mashbak Desktop  •  locked")
+        self.unlock_button.configure(state="normal")
+        self.lock_button.configure(state="disabled")
+        self.pin_entry.configure(state="normal")
+        self._set_interaction_enabled(False)
+
+        self._show_chat_placeholder()
+        set_text(self.details_text, details_message)
+        set_text(self.activity_list, "Locked")
+        set_text(self.status_text, "Locked")
+        set_text(self.config_text, "Locked")
+        set_text(self.agent_logs_text, "Locked")
+        set_text(self.bridge_logs_text, "Locked")
+        self.tools_text.configure(state="normal")
+        self.tools_text.delete("1.0", END)
+        self.tools_text.insert("1.0", "Locked")
+        self.tools_text.configure(state="disabled")
+        self.pin_entry.focus_set()
 
     def _set_interaction_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
@@ -271,6 +308,12 @@ class DesktopControlApp:
         self.send_button.configure(state=state)
         for button in self.quick_buttons:
             button.configure(state=state)
+        for button in self.lock_sensitive_buttons:
+            button.configure(state=state)
+        try:
+            self.info_notebook.configure(state=state)
+        except Exception:
+            pass
 
     # ── messaging ──────────────────────────────────────────────────────────────
 
@@ -459,6 +502,15 @@ class DesktopControlApp:
             foreground=(_GREEN if bridge_status["running"] else _RED),
         )
 
+        if not self.is_unlocked:
+            set_text(self.status_text, "Locked")
+            self.tools_text.configure(state="normal")
+            self.tools_text.delete("1.0", END)
+            self.tools_text.insert("1.0", "Locked")
+            self.tools_text.configure(state="disabled")
+            set_text(self.config_text, "Locked")
+            return
+
         set_text(self.status_text, "\n".join([
             f"Agent  : {'running' if agent_status['running']  else 'NOT RUNNING'}",
             f"Bridge : {'running' if bridge_status['running'] else 'NOT RUNNING'}",
@@ -504,6 +556,11 @@ class DesktopControlApp:
         set_text(self.config_text, "\n".join(config_lines))
 
     def refresh_logs(self) -> None:
+        if not self.is_unlocked:
+            set_text(self.agent_logs_text, "Locked")
+            set_text(self.bridge_logs_text, "Locked")
+            return
+
         agent_lines  = self._tail_file(self.agent_log_file,  max_lines=40)
         bridge_lines = self._tail_file(self.bridge_log_file, max_lines=40)
         set_text(self.agent_logs_text,  "\n".join(agent_lines)  if agent_lines  else "No agent logs yet.")
