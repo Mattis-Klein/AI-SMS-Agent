@@ -51,7 +51,7 @@ class AgentClient:
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
 
         try:
-            with urllib.request.urlopen(request, timeout=3.0) as response:
+            with urllib.request.urlopen(request, timeout=30.0) as response:
                 payload = response.read().decode("utf-8", errors="replace")
                 return json.loads(payload)
         except urllib.error.HTTPError as exc:

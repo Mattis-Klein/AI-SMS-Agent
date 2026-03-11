@@ -58,6 +58,9 @@ mashbak/agent/workspace/logs/*
 mashbak/sms-bridge/logs/*
 !mashbak/sms-bridge/logs/.gitkeep
 
+# mashbak/workspace/ at project root is unused runtime artifact; ignore entirely
+mashbak/workspace/
+
 # IDE and editor files
 .vscode/settings.json
 .idea/

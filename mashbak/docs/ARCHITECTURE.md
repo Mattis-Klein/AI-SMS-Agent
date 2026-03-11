@@ -1,59 +1,80 @@
-# AI-SMS-Agent Architecture (v2.0)
+# Mashbak Architecture (v2.1)
 
 ## Overview
 
-AI-SMS-Agent is a secure, SMS-controlled local agent system built on a **tool-based architecture**. The system safely interprets SMS requests, maps them to allowed tools, executes them with validated inputs, and returns results via SMS.
+Mashbak is a **desktop-first personal AI assistant** with a shared backend reasoning core. Messages from both the desktop application and SMS are processed by the same backend — which interprets natural language, decides whether to call tools or reply conversationally, and returns a natural-language response to the transport layer.
 
 ## Core Philosophy
 
-- **Safety First**: All execution happens through a predefined whitelist of tools
-- **Simplicity**: Tools are self-contained, easy to understand, and easy to add
-- **Transparency**: Every action is logged with full context
-- **Flexibility**: Support both structured commands and natural language interpretation
+- **Single brain**: All AI reasoning lives in the backend. Transport layers (desktop, SMS) are pure clients.
+- **Safety first**: All tool execution goes through a validated whitelist; no arbitrary command execution.
+- **Transparency**: Every action is logged with full context and a shared request ID.
+- **Conversational**: Responses are natural language, not raw tool output.
 
 ## System Architecture
 
 ```
-SMS Request
-    ↓
-[SMS Bridge] - sms-server.js
-    ↓
-(Validates sender, forwards to agent)
-    ↓
-[FastAPI Agent] - agent.py
-    ├─ /execute      (direct tool execution)
-    └─ /execute-nl   (natural language interpretation)
-    ↓
-[Dispatcher] - dispatcher.py
-    ├─ Logs incoming request
-    ├─ Routes to interpreter (if NL)
-    └─ Routes to tool registry
-    ↓
-[Tool Registry] - registry.py
-    ├─ Validates tool exists
-    └─ Executes selected tool
-    ↓
-[Built-in Tools] - tools/builtin/
-    ├─ dir_inbox
-    ├─ dir_outbox
-    ├─ list_files
-    ├─ system_info
-    ├─ cpu_usage
-    ├─ disk_space
-    ├─ current_time
-    ├─ network_status
-    ├─ list_processes
-    └─ uptime
-    ↓
-[Structured Logger] - logger.py
-    └─ JSON logs with full request lifecycle
-    ↓
-Response sent back via SMS
+Desktop App (Tkinter)               SMS (Twilio)
+    │                                   │
+    │  AgentClient.execute_nl()         │  bridge: POST /execute-nl
+    │  POST /execute-nl  HTTP           │
+    └──────────────┬────────────────────┘
+                   ↓
+        [FastAPI Agent] - agent.py
+            ├─ /health
+            ├─ /tools
+            ├─ /execute       (direct tool call, structured)
+            └─ /execute-nl    (natural language entry point)
+                   ↓
+        [AssistantCore] - assistant_core.py   ← REASONING LAYER
+            ├─ Classify intent (conversation vs tool vs mixed)
+            ├─ If conversation → BackendOpenAIClient → natural reply
+            └─ If tool → Runtime.execute_tool()
+                   ↓
+        [AgentRuntime] - runtime.py
+            ├─ Source-aware routing (desktop vs sms)
+            └─ Tool execution path:
+                   ↓
+        [Dispatcher] - dispatcher.py
+            ├─ Builds RequestContext
+            ├─ Logs incoming request
+            └─ Passes to Tool Registry
+                   ↓
+        [Tool Registry] - registry.py + tools/
+            ├─ Validates tool exists and is allowed
+            └─ Executes selected tool
+                   ↓
+        [Built-in Tools] - tools/builtin/
+            ├─ dir_inbox / dir_outbox
+            ├─ list_files
+            ├─ system_info / cpu_usage / disk_space
+            ├─ current_time / uptime
+            ├─ network_status / list_processes
+            └─ email tools (list, summarize, search, read thread)
+                   ↓
+        [AssistantCore] wraps tool output in natural language
+                   ↓
+        [Structured Logger] - logger.py
+            └─ JSON log lines per request lifecycle
+                   ↓
+        Natural-language response back to transport
 ```
 
 ## Key Components
 
-### 1. Tool System (`agent/tools/`)
+### 1. AssistantCore (`agent/assistant_core.py`) — The Reasoning Layer
+
+The single reasoning brain shared by all transports. Sits between the FastAPI endpoints and the tool registry.
+
+- **Input**: natural-language message + metadata (source, sender, unlock state)
+- **Decision**: classify as conversation, tool request, or policy block (locked)
+- **If conversation**: calls `BackendOpenAIClient` → returns natural-language reply
+- **If tool**: calls `runtime.execute_tool()` → wraps raw output in natural language
+- **Output**: always a human-readable string, never raw JSON or tool output
+
+The `BackendOpenAIClient` uses the standard OpenAI REST API via `urllib` (no SDK dependency). When `OPENAI_API_KEY` is not configured, it falls back to simple canned responses.
+
+### 2. Tool System (`agent/tools/`)
 
 **Base Tool Class** (`base.py`):
 - Every tool inherits from `Tool` base class
@@ -220,24 +241,31 @@ The same runtime pipeline handles both channels; only response formatting differ
 
 ## Request Lifecycle
 
-### Example: "show my inbox"
+### Desktop path: "How busy is my computer right now?"
+
+1. **User types** message in Tkinter chat panel and presses Send
+2. **Desktop UI** calls `AgentClient.execute_nl(message, owner_unlocked=True)`
+3. **AgentClient** POSTs `{"message": "...", "owner_unlocked": true}` to `/execute-nl` with `x-source: desktop`
+4. **FastAPI** routes to `runtime.execute_nl()`
+5. **AgentRuntime** delegates to `AssistantCore.respond()`
+6. **AssistantCore** asks `NaturalLanguageInterpreter` which tool to use → `cpu_usage`
+7. **AssistantCore** calls `runtime.execute_tool("cpu_usage")`
+8. **Dispatcher** builds `RequestContext`, logs request, calls `CpuUsageTool.execute()`
+9. **CpuUsageTool** reads `psutil.cpu_percent()` and returns "CPU Usage: 22.0%"
+10. **AssistantCore** passes tool output through `BackendOpenAIClient` → natural reply: "Your CPU is at 22%, which is light usage."
+11. **Response** travels back through FastAPI → HTTP → AgentClient → UI
+12. **Desktop UI** renders the reply in the chat panel as an assistant message bubble
+
+### SMS path: "show my inbox"
 
 1. **SMS arrives** at bridge with `From: +15551234567, Body: show my inbox`
-2. **Bridge validates** sender is in allowlist
-3. **Bridge forwards** to agent's `/execute-nl` endpoint
-4. **Dispatcher** logs incoming request
-5. **Interpreter** parses "show my inbox" → maps to `dir_inbox` tool
-6. **Validation** confirms tool exists and is allowed
-7. **Tool registry** retrieves `DirInboxTool`
-8. **Tool checks** that workspace/inbox directory exists and is readable
-9. **Tool executes** `dir workspace/inbox` command
-10. **Tool returns** directory listing as output
-11. **Logger** records execution (3 log lines: request, execution, response)
-12. **Response** flows back through dispatcher
-13. **Bridge receives** tool output
-14. **Bridge formats** response (truncates if >1500 chars)
-15. **Bridge sends** SMS reply via Twilio
-16. **All events logged** with shared request_id for tracing
+2. **Bridge validates** sender is in the allowlist; denies if not
+3. **Bridge POSTs** `{"message": "show my inbox"}` to agent's `/execute-nl` with `x-source: sms`
+4. **AssistantCore** interprets → `dir_inbox` tool → executes → wraps output in natural language
+5. **Response** flows back through bridge → Twilio → SMS reply
+6. **SMS response is truncated** to ≤320 compact characters if needed
+
+Both paths use the identical `AssistantCore → Tool → NL-wrap` pipeline. Only response formatting and length limits differ between sources.
 
 ## Security Model
 
