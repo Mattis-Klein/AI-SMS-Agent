@@ -9,10 +9,12 @@ if __package__:
     from .tools import ToolRegistry
     from .interpreter import NaturalLanguageInterpreter
     from .logger import StructuredLogger
+    from .redaction import sanitize_for_logging
 else:
     from tools import ToolRegistry
     from interpreter import NaturalLanguageInterpreter
     from logger import StructuredLogger
+    from redaction import sanitize_for_logging
 
 
 class RequestContext:
@@ -69,9 +71,9 @@ class Dispatcher:
             }
         """
         trace = {
-            "raw_request": context.raw_message,
+            "raw_request": sanitize_for_logging(context.raw_message),
             "session_id": context.session_id,
-            "session_context": context.session_context,
+            "session_context": sanitize_for_logging(context.session_context),
             "intent_classification": None,
             "interpreted_intent": None,
             "interpreted_args": {},
@@ -120,7 +122,7 @@ class Dispatcher:
             self.logger.log_error(
                 request_id=context.request_id,
                 error_type="unknown_tool",
-                error_message=f"Could not interpret: {context.raw_message}",
+                error_message=f"Could not interpret: {sanitize_for_logging(context.raw_message)}",
             )
             return {
                 "success": False,
@@ -201,7 +203,7 @@ class Dispatcher:
             self.logger.log_tool_execution(
                 request_id=context.request_id,
                 tool_name=tool_name,
-                arguments=args,
+                arguments=sanitize_for_logging(args),
                 success=result.success,
                 execution_time_ms=elapsed_ms,
                 tool_runtime_ms=elapsed_ms,
@@ -246,7 +248,7 @@ class Dispatcher:
             self.logger.log_tool_execution(
                 request_id=context.request_id,
                 tool_name=tool_name,
-                arguments=args,
+                arguments=sanitize_for_logging(args),
                 success=False,
                 execution_time_ms=elapsed_ms,
                 tool_runtime_ms=elapsed_ms,

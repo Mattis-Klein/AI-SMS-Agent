@@ -11,6 +11,7 @@ const {
     normalizePhoneNumber,
     resolveSenderAction,
 } = require("./access-control-config");
+const { redactConfigAssignments, sanitize } = require("./redaction");
 
 function loadEnvFile(envPath) {
     if (!fs.existsSync(envPath)) {
@@ -58,6 +59,7 @@ const LOG_FILE = path.join(LOG_DIR, "bridge.log");
 const LOG_ARCHIVE_FILE = path.join(LOG_DIR, "bridge.log.1");
 const LOG_MAX_BYTES = Number(process.env.BRIDGE_LOG_MAX_BYTES || 1_000_000);
 const SENDER_ACCESS = loadSenderAccessConfig(process.env);
+const ACCESS_CONFIG_LOADED_AT = new Date().toISOString();
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
@@ -109,7 +111,7 @@ function rotateLogIfNeeded() {
 function logBridgeEvent(event) {
     const record = {
         time: new Date().toISOString(),
-        ...event
+        ...sanitize(event)
     };
 
     rotateLogIfNeeded();
@@ -252,11 +254,12 @@ function buildTwimlMessage(message) {
 }
 
 async function postJson(endpoint, payload, requestId, sender = null) {
+    const safePayload = sanitize(payload);
     logBridgeEvent({
         requestId,
         stage: "agent_request",
         endpoint,
-        payload: truncateText(JSON.stringify(payload), 1000),
+        payload: truncateText(JSON.stringify(safePayload), 1000),
         sender
     });
 
@@ -351,7 +354,9 @@ app.get("/health", (req, res) => {
         port: PORT,
         logFile: LOG_FILE,
         twilioValidationEnabled: Boolean(TWILIO_AUTH_TOKEN),
-        senderAccessControlEnabled: true
+        senderAccessControlEnabled: true,
+        accessControlConfigLoadedAt: ACCESS_CONFIG_LOADED_AT,
+        accessControlReloadRequiresRestart: true
     });
 });
 
@@ -362,17 +367,18 @@ app.get("/sms", (req, res) => {
 app.post("/sms", async (req, res) => {
     const requestId = createRequestId();
     const message = (req.body.Body || "").trim();
+    const safeMessage = redactConfigAssignments(message);
     const from = req.body.From || "";
     const to = req.body.To || "";
     const senderDecision = resolveSenderAction(from, SENDER_ACCESS);
 
-    console.log(`[sms] requestId=${requestId} from=${from} body=${message}`);
+    console.log(`[sms] requestId=${requestId} from=${from} body=${safeMessage}`);
     logBridgeEvent({
         requestId,
         stage: "incoming_sms",
         from,
         normalizedFrom: senderDecision.normalizedFrom,
-        message,
+        message: safeMessage,
         url: getRequestUrlCandidates(req)[0] || req.originalUrl
     });
 
@@ -383,7 +389,7 @@ app.post("/sms", async (req, res) => {
             stage: "rejected",
             reason: "invalid_twilio_signature",
             from,
-            message
+            message: safeMessage
         });
         res.status(403).send("Forbidden");
         return;
@@ -399,7 +405,7 @@ app.post("/sms", async (req, res) => {
             from,
             normalizedFrom: senderDecision.normalizedFrom,
             action: senderDecision.action,
-            message,
+            message: safeMessage,
             forwarded: false
         });
     }
@@ -416,7 +422,7 @@ app.post("/sms", async (req, res) => {
                 from,
                 normalizedFrom: senderDecision.normalizedFrom,
                 action: senderDecision.action,
-                message,
+                message: safeMessage,
                 forwarded: true
             });
             reply = await buildReply(message, requestId, from);

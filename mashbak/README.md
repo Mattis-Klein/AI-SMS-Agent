@@ -86,4 +86,8 @@ Mashbak now uses a **master-only** configuration model.
 - Runtime services (agent, desktop flow, bridge) read from `mashbak/.env.master`
 - Process environment variables can still override values when explicitly set in the shell
 
+Runtime behavior after chat-based config updates:
+- Backend/email/OpenAI settings are reloaded in-process.
+- SMS bridge transport/access-control settings are startup-loaded and require bridge restart.
+
 See [ENVIRONMENT.md](docs/ENVIRONMENT.md) for all variables and their meanings.

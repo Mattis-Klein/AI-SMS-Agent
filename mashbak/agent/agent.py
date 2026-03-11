@@ -69,6 +69,9 @@ def health_check():
         "tools_loaded": len(runtime.registry.list_all()),
         "assistant_ai_enabled": bool(runtime.openai_api_key),
         "assistant_model": runtime.openai_model,
+        "model_response_max_tokens": runtime.model_response_max_tokens,
+        "session_context_max_turns": runtime.session_context_turns,
+        "tool_timeout_seconds": runtime.default_tool_timeout_seconds,
         "email_configured": bool(runtime.summary().get("email_configured")),
         "version": "2.0.0",
     }

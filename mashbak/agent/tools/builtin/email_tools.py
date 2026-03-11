@@ -33,6 +33,16 @@ class EmailMessageSummary:
 class EmailToolBase(Tool):
     def __init__(self, name: str, description: str, requires_args: bool = False):
         super().__init__(name=name, description=description, requires_args=requires_args)
+        self.host = ""
+        self.port = 993
+        self.username = ""
+        self.password = ""
+        self.mailbox = "INBOX"
+        self.use_ssl = True
+        self._refresh_config()
+
+    def _refresh_config(self) -> None:
+        ConfigLoader.load(reload=True)
         self.host = (ConfigLoader.get("EMAIL_IMAP_HOST") or ConfigLoader.get("IMAP_SERVER") or "").strip()
         self.port = ConfigLoader.get_int("EMAIL_IMAP_PORT", ConfigLoader.get_int("IMAP_PORT", 993))
         self.username = (ConfigLoader.get("EMAIL_USERNAME") or ConfigLoader.get("EMAIL_ADDRESS") or "").strip()
@@ -53,6 +63,7 @@ class EmailToolBase(Tool):
         return len(missing) == 0, missing
 
     def _ensure_configured(self) -> tuple[bool, str, list[str]]:
+        self._refresh_config()
         if imaplib is None:
             return False, "IMAP support is unavailable in this build. Rebuild Mashbak with Python email/imap libraries included.", []
         ok, missing = self._required_config()

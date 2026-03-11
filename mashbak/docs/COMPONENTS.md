@@ -32,6 +32,10 @@ The system has 3 main components:
 7. **Notify owner on access requests** when approved request numbers send `@mashbak`
 8. **Log all events** to `logs/bridge.log`
 
+Bridge config note:
+- Access-control and Twilio settings are loaded at bridge startup from `mashbak/.env.master`
+- Changes to those bridge vars require restarting the SMS bridge process
+
 ### Key Flows
 
 #### Fixed Command Flow

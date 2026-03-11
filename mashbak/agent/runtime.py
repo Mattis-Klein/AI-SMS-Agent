@@ -15,6 +15,7 @@ if __package__:
     from .dispatcher import Dispatcher, RequestContext
     from .interpreter import NaturalLanguageInterpreter
     from .session_context import SessionContextManager
+    from .redaction import sanitize_for_logging, sanitize_trace
 else:
     from config import Config
     from config_loader import ConfigLoader
@@ -25,6 +26,7 @@ else:
     from dispatcher import Dispatcher, RequestContext
     from interpreter import NaturalLanguageInterpreter
     from session_context import SessionContextManager
+    from redaction import sanitize_for_logging, sanitize_trace
 
 
 class AgentRuntime:
@@ -45,6 +47,9 @@ class AgentRuntime:
         self.api_key = (ConfigLoader.get("AGENT_API_KEY", "") or "").strip()
         self.openai_api_key = (ConfigLoader.get("OPENAI_API_KEY", "") or "").strip()
         self.openai_model = (ConfigLoader.get("OPENAI_MODEL", "gpt-4.1-mini") or "gpt-4.1-mini").strip()
+        self.model_response_max_tokens = max(64, ConfigLoader.get_int("MODEL_RESPONSE_MAX_TOKENS", 250))
+        self.session_context_turns = max(1, ConfigLoader.get_int("SESSION_CONTEXT_MAX_TURNS", 4))
+        timeout_override = ConfigLoader.get("TOOL_EXECUTION_TIMEOUT", "").strip()
 
         if not self.api_key:
             raise RuntimeError("AGENT_API_KEY is required. Set it in mashbak/.env.master or environment.")
@@ -66,8 +71,42 @@ class AgentRuntime:
 
         self.interpreter = NaturalLanguageInterpreter()
         self.dispatcher = Dispatcher(self.registry, self.interpreter, self.logger)
-        self.session_context = SessionContextManager(max_recent_turns=4)
+        self.session_context = SessionContextManager(max_recent_turns=self.session_context_turns)
+        self.default_tool_timeout_seconds = self.config.get_tool_timeout_seconds()
+        if timeout_override:
+            try:
+                self.default_tool_timeout_seconds = max(1.0, float(timeout_override))
+            except ValueError:
+                pass
         self.assistant = AssistantCore(self)
+
+    def reload_dynamic_config(self) -> dict:
+        """Reload dynamic config values used at runtime without restarting the process."""
+        ConfigLoader.load(reload=True)
+        self.openai_api_key = (ConfigLoader.get("OPENAI_API_KEY", "") or "").strip()
+        self.openai_model = (ConfigLoader.get("OPENAI_MODEL", "gpt-4.1-mini") or "gpt-4.1-mini").strip()
+        self.model_response_max_tokens = max(64, ConfigLoader.get_int("MODEL_RESPONSE_MAX_TOKENS", 250))
+        self.session_context_turns = max(1, ConfigLoader.get_int("SESSION_CONTEXT_MAX_TURNS", self.session_context.max_recent_turns))
+        self.session_context.max_recent_turns = self.session_context_turns
+
+        timeout_override = (ConfigLoader.get("TOOL_EXECUTION_TIMEOUT", "") or "").strip()
+        self.default_tool_timeout_seconds = self.config.get_tool_timeout_seconds()
+        if timeout_override:
+            try:
+                self.default_tool_timeout_seconds = max(1.0, float(timeout_override))
+            except ValueError:
+                pass
+
+        self.assistant.model_client.api_key = self.openai_api_key
+        self.assistant.model_client.model = self.openai_model
+
+        return {
+            "assistant_ai_enabled": bool(self.openai_api_key),
+            "assistant_model": self.openai_model,
+            "session_context_max_turns": self.session_context_turns,
+            "tool_timeout_seconds": self.default_tool_timeout_seconds,
+            "model_response_max_tokens": self.model_response_max_tokens,
+        }
 
     def _resolve_source(self, sender: str, source: Optional[str]) -> str:
         if source:
@@ -108,6 +147,7 @@ class AgentRuntime:
     ) -> dict:
         """Execute a natural-language request through Mashbak's shared assistant core."""
         request_source = self._resolve_source(sender, source)
+        self.reload_dynamic_config()
         result = await self.assistant.respond(
             message,
             AssistantMetadata(
@@ -122,6 +162,7 @@ class AgentRuntime:
         result["error"] = self._format_output_for_source(result.get("error"), request_source)
         result["source"] = request_source
         trace = result.get("trace") or {}
+        trace = sanitize_trace(trace)
         trace["source"] = request_source
         result["trace"] = trace
         return result
@@ -137,6 +178,9 @@ class AgentRuntime:
         """Execute a specific tool through the same validation/execution path used by the API."""
         args = args or {}
         request_source = self._resolve_source(sender, source)
+        self.reload_dynamic_config()
+        safe_args = sanitize_for_logging(args)
+        safe_raw_request = sanitize_for_logging(f"execute: {tool_name}")
 
         context = RequestContext(
             sender=sender,
@@ -152,6 +196,8 @@ class AgentRuntime:
         if request_id:
             context.request_id = request_id
 
+        context.tool_timeout_seconds = self.default_tool_timeout_seconds
+
         if not self.registry.exists(tool_name):
             self.logger.log_error(
                 request_id=context.request_id,
@@ -166,16 +212,16 @@ class AgentRuntime:
                 "error_type": "unavailable_tool",
                 "request_id": context.request_id,
                 "trace": {
-                    "raw_request": context.raw_message,
+                    "raw_request": safe_raw_request,
                     "session_id": context.session_id,
-                    "session_context": context.session_context,
+                    "session_context": sanitize_for_logging(context.session_context),
                     "source": request_source,
                     "interpreted_intent": tool_name,
-                    "interpreted_args": args,
+                    "interpreted_args": safe_args,
                     "confidence": 1.0,
                     "selected_tool": tool_name,
                     "validation_status": "failed",
-                    "validated_arguments": args,
+                    "validated_arguments": safe_args,
                     "execution_status": "failed",
                 },
             }
@@ -195,16 +241,16 @@ class AgentRuntime:
                 "error_type": "denied_action",
                 "request_id": context.request_id,
                 "trace": {
-                    "raw_request": context.raw_message,
+                    "raw_request": safe_raw_request,
                     "session_id": context.session_id,
-                    "session_context": context.session_context,
+                    "session_context": sanitize_for_logging(context.session_context),
                     "source": request_source,
                     "interpreted_intent": tool_name,
-                    "interpreted_args": args,
+                    "interpreted_args": safe_args,
                     "confidence": 1.0,
                     "selected_tool": tool_name,
                     "validation_status": "failed",
-                    "validated_arguments": args,
+                    "validated_arguments": safe_args,
                     "execution_status": "failed",
                 },
             }
@@ -226,16 +272,16 @@ class AgentRuntime:
                 "error_type": "validation_failure",
                 "request_id": context.request_id,
                 "trace": {
-                    "raw_request": context.raw_message,
+                    "raw_request": safe_raw_request,
                     "session_id": context.session_id,
-                    "session_context": context.session_context,
+                    "session_context": sanitize_for_logging(context.session_context),
                     "source": request_source,
                     "interpreted_intent": tool_name,
-                    "interpreted_args": args,
+                    "interpreted_args": safe_args,
                     "confidence": 1.0,
                     "selected_tool": tool_name,
                     "validation_status": "failed",
-                    "validated_arguments": args,
+                    "validated_arguments": safe_args,
                     "execution_status": "failed",
                 },
             }
@@ -259,7 +305,7 @@ class AgentRuntime:
             self.logger.log_tool_execution(
                 request_id=context.request_id,
                 tool_name=tool_name,
-                arguments=args,
+                arguments=safe_args,
                 success=False,
                 execution_time_ms=elapsed_ms,
                 tool_runtime_ms=elapsed_ms,
@@ -274,16 +320,16 @@ class AgentRuntime:
                 "error_type": "timeout",
                 "request_id": context.request_id,
                 "trace": {
-                    "raw_request": context.raw_message,
+                    "raw_request": safe_raw_request,
                     "session_id": context.session_id,
-                    "session_context": context.session_context,
+                    "session_context": sanitize_for_logging(context.session_context),
                     "source": request_source,
                     "interpreted_intent": tool_name,
-                    "interpreted_args": args,
+                    "interpreted_args": safe_args,
                     "confidence": 1.0,
                     "selected_tool": tool_name,
                     "validation_status": "passed",
-                    "validated_arguments": args,
+                    "validated_arguments": safe_args,
                     "execution_status": "failed",
                     "execution_time_ms": elapsed_ms,
                 },
@@ -294,7 +340,7 @@ class AgentRuntime:
         self.logger.log_tool_execution(
             request_id=context.request_id,
             tool_name=tool_name,
-            arguments=args,
+            arguments=safe_args,
             success=result.success,
             execution_time_ms=elapsed_ms,
             tool_runtime_ms=elapsed_ms,
@@ -315,16 +361,16 @@ class AgentRuntime:
             "source": request_source,
             "data": result.data,
             "trace": {
-                "raw_request": context.raw_message,
+                "raw_request": safe_raw_request,
                 "session_id": context.session_id,
-                "session_context": context.session_context,
+                "session_context": sanitize_for_logging(context.session_context),
                 "source": request_source,
                 "interpreted_intent": tool_name,
-                "interpreted_args": args,
+                "interpreted_args": safe_args,
                 "confidence": 1.0,
                 "selected_tool": tool_name,
                 "validation_status": "passed",
-                "validated_arguments": args,
+                "validated_arguments": safe_args,
                 "execution_status": "success" if result.success else "failed",
                 "execution_time_ms": elapsed_ms,
             },
@@ -336,10 +382,14 @@ class AgentRuntime:
             "workspace": str(self.workspace),
             "allowed_directories": [str(p) for p in self.config.get_allowed_directories()],
             "allowed_tools": self.config.get_allowed_tools(),
-            "tool_timeout_seconds": self.config.get_tool_timeout_seconds(),
+            "tool_timeout_seconds": self.default_tool_timeout_seconds,
             "registered_tools": self.registry.list_all(),
             "assistant_ai_enabled": bool(self.openai_api_key),
             "assistant_model": self.openai_model,
+            "model_response_max_tokens": self.model_response_max_tokens,
+            "session_context_max_turns": self.session_context_turns,
+            "log_level": (ConfigLoader.get("LOG_LEVEL", "INFO") or "INFO").upper(),
+            "debug_mode": ConfigLoader.get_bool("DEBUG_MODE", False),
             "email_configured": bool(
                 (ConfigLoader.get("EMAIL_IMAP_HOST") or ConfigLoader.get("IMAP_SERVER"))
                 and (ConfigLoader.get("EMAIL_USERNAME") or ConfigLoader.get("EMAIL_ADDRESS"))

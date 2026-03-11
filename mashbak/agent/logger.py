@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any
 
+from .redaction import sanitize_for_logging
+
 
 class StructuredLogger:
     """Structured JSON logger for agent"""
@@ -21,7 +23,7 @@ class StructuredLogger:
         event = {
             "time": datetime.now().isoformat(timespec="seconds"),
             "hostname": self.hostname,
-            **kwargs,
+            **sanitize_for_logging(kwargs),
         }
         
         try:

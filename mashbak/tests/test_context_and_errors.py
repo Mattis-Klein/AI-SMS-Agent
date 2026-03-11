@@ -22,8 +22,8 @@ def test_followup_uses_session_topic_for_ambiguous_config_question():
     context = manager.get_snapshot("desktop:local")
     parsed_followup = interpreter.parse_to_dict("How do I configure it?", context=context)
 
-    assert parsed_followup.get("followup_topic") == "email"
-    assert parsed_followup.get("topic") == "email"
+    assert parsed_followup.get("followup_topic") == "email_access"
+    assert parsed_followup.get("topic") == "email_access"
 
 
 def test_session_context_isolated_between_sessions():

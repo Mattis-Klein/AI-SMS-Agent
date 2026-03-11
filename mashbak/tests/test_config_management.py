@@ -22,7 +22,7 @@ def test_interpreter_detects_config_assignment():
     assert parsed.tool == "set_config_variable"
     assert parsed.args["variable_name"] == "EMAIL_ADDRESS"
     assert parsed.args["variable_value"] == "myemail@example.com"
-    assert parsed.intent == "configuration"
+    assert parsed.intent == "config_update"
     assert parsed.confidence > 0.9
     print("✓ Detected EMAIL_ADDRESS = value pattern")
     

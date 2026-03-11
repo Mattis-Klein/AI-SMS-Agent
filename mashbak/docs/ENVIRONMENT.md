@@ -14,6 +14,12 @@ Mashbak uses a single master configuration file for all services.
 
 Process-level environment variables can still override values when explicitly set in the current shell.
 
+## Runtime Reload Behavior
+
+- Agent runtime config updates from chat are reloaded in-process for backend/email/OpenAI behavior.
+- SMS bridge access-control and Twilio transport settings are startup-loaded; changing those requires an SMS bridge restart.
+- AGENT_API_KEY changes require coordinated restart/re-auth for callers using the previous key.
+
 ## Setup
 
 1. Copy the template.
@@ -82,6 +88,7 @@ At minimum, configure host/server, port, username/address, and password.
 - DEBUG_MODE
 - SESSION_CONTEXT_MAX_TURNS
 - TOOL_EXECUTION_TIMEOUT
+- MODEL_RESPONSE_MAX_TOKENS
 
 ## Validation Checklist
 
@@ -99,6 +106,7 @@ At minimum, configure host/server, port, username/address, and password.
 - Agent auth failures: verify AGENT_API_KEY is correct in mashbak/.env.master
 - Twilio signature failures: verify TWILIO_AUTH_TOKEN and PUBLIC_BASE_URL
 - Email tool not configured: set EMAIL_IMAP_HOST or IMAP_SERVER, EMAIL_IMAP_PORT or IMAP_PORT, EMAIL_USERNAME or EMAIL_ADDRESS, and EMAIL_PASSWORD
+- Config changed but SMS behavior unchanged: restart sms-bridge because access-control/Twilio config is loaded at startup
 
 ## Security Notes
 

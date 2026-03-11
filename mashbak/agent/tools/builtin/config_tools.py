@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from ...config_loader import ConfigLoader
 from ..base import Tool, ToolResult
 
 
@@ -62,16 +63,47 @@ class SetConfigVariableTool(Tool):
         # Desktop/Local Configuration
         "LOCAL_APP_PIN",
         "AGENT_WORKSPACE",
+
+        # Logging/runtime behavior
+        "LOG_LEVEL",
+        "DEBUG_MODE",
+        "SESSION_CONTEXT_MAX_TURNS",
+        "TOOL_EXECUTION_TIMEOUT",
+        "MODEL_RESPONSE_MAX_TOKENS",
     }
 
     # Sensitive variables that should not be echoed in logs/responses
     SENSITIVE_VARIABLES = {
         "OPENAI_API_KEY",
         "EMAIL_PASSWORD",
+        "EMAIL_PASS",
         "AGENT_API_KEY",
         "TWILIO_ACCOUNT_SID",
         "TWILIO_AUTH_TOKEN",
         "LOCAL_APP_PIN",
+    }
+
+    BRIDGE_RESTART_VARIABLES = {
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_FROM_NUMBER",
+        "BRIDGE_PORT",
+        "PUBLIC_BASE_URL",
+        "AGENT_URL",
+        "SMS_OWNER_NUMBER",
+        "SMS_ACCESS_REQUEST_NUMBERS",
+        "SMS_ACCESS_REQUEST_RESPONSE",
+        "SMS_ACCESS_REQUEST_KEYWORD",
+        "HERSHY_NUMBER",
+        "HERSHY_RESPONSE",
+        "REJECTED_NUMBERS",
+        "REJECTED_RESPONSE",
+        "SMS_DENIAL_RESPONSE",
+        "SMS_PHONE_NORMALIZATION_DIGITS",
+    }
+
+    AGENT_RESTART_VARIABLES = {
+        "AGENT_API_KEY",
     }
 
     # Validators: variable_name -> (validation_fn, description)
@@ -119,6 +151,34 @@ class SetConfigVariableTool(Tool):
         "OPENAI_MODEL": (
             lambda v: bool(v.strip()),
             "Model name cannot be empty"
+        ),
+        "SMS_PHONE_NORMALIZATION_DIGITS": (
+            lambda v: str(v).strip().isdigit() and 4 <= int(str(v).strip()) <= 15,
+            "Must be an integer between 4 and 15"
+        ),
+        "SESSION_CONTEXT_MAX_TURNS": (
+            lambda v: str(v).strip().isdigit() and int(str(v).strip()) >= 1,
+            "Must be an integer >= 1"
+        ),
+        "TOOL_EXECUTION_TIMEOUT": (
+            lambda v: _validate_positive_number(v),
+            "Must be a positive number"
+        ),
+        "MODEL_RESPONSE_MAX_TOKENS": (
+            lambda v: str(v).strip().isdigit() and int(str(v).strip()) >= 64,
+            "Must be an integer >= 64"
+        ),
+        "BRIDGE_PORT": (
+            lambda v: _validate_port(v),
+            "Port must be a number between 1 and 65535"
+        ),
+        "LOG_LEVEL": (
+            lambda v: str(v).strip().upper() in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"},
+            "Must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL"
+        ),
+        "DEBUG_MODE": (
+            lambda v: str(v).strip().lower() in {"true", "false", "1", "0", "yes", "no"},
+            "Must be true/false"
         ),
     }
 
@@ -208,18 +268,36 @@ class SetConfigVariableTool(Tool):
         # Try to update .env.master file
         try:
             self._update_env_file(var_name, var_value)
+            ConfigLoader.load(reload=True)
+
+            restart_required: list[str] = []
+            if var_name in self.BRIDGE_RESTART_VARIABLES:
+                restart_required.append("sms_bridge")
+            if var_name in self.AGENT_RESTART_VARIABLES:
+                restart_required.append("agent_auth")
+            pending_restart = bool(restart_required)
             
             # Build output message (don't echo sensitive values)
             if var_name in self.SENSITIVE_VARIABLES:
-                output = f"✓ Configuration updated: {var_name} has been set.\n\nThe variable will take effect when the agent service restarts."
+                output = f"✓ Configuration updated: {var_name} has been set."
             else:
-                output = f"✓ Configuration updated: {var_name} = {var_value}\n\nThe variable will take effect when the agent service restarts."
+                output = f"✓ Configuration updated: {var_name} = {var_value}"
+
+            if pending_restart:
+                output += f"\n\nPending restart required for: {', '.join(restart_required)}."
+            else:
+                output += "\n\nApplied to the backend runtime now."
             
             return ToolResult(
                 success=True,
                 output=output,
                 tool_name=self.name,
                 arguments={"variable_name": var_name},  # Don't include value in result
+                data={
+                    "variable_name": var_name,
+                    "applied_live": not pending_restart,
+                    "restart_required": restart_required,
+                },
             )
         
         except Exception as e:
@@ -243,7 +321,7 @@ class SetConfigVariableTool(Tool):
         # Create .env if it doesn't exist
         if not env_path.exists():
             env_path.parent.mkdir(parents=True, exist_ok=True)
-            env_path.write_text(f"{var_name}={var_value}\n", encoding="utf-8")
+            env_path.write_text(f"{var_name}={_format_env_value(var_value)}\n", encoding="utf-8")
             return
         
         # Read existing content
@@ -259,9 +337,9 @@ class SetConfigVariableTool(Tool):
         # Look for existing variable and update it
         for line in lines:
             # Check if this line defines our variable
-            match = re.match(rf"^{re.escape(var_name)}\s*=", line)
+            match = re.match(rf"^\s*(?:export\s+)?{re.escape(var_name)}\s*=", line)
             if match:
-                new_lines.append(f"{var_name}={var_value}")
+                new_lines.append(f"{var_name}={_format_env_value(var_value)}")
                 updated = True
             else:
                 new_lines.append(line)
@@ -274,7 +352,7 @@ class SetConfigVariableTool(Tool):
             # Add blank line if content exists
             if new_lines:
                 new_lines.append("")
-            new_lines.append(f"{var_name}={var_value}")
+            new_lines.append(f"{var_name}={_format_env_value(var_value)}")
         
         # Write back
         new_content = "\n".join(new_lines)
@@ -299,3 +377,31 @@ def _validate_port(value: str) -> bool:
 def _validate_pin(value: str) -> bool:
     """Validate PIN (4-8 digits)."""
     return bool(re.match(r"^\d{4,8}$", value.strip()))
+
+
+def _validate_positive_number(value: str) -> bool:
+    try:
+        return float(str(value).strip()) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _format_env_value(value: str) -> str:
+    """Quote dotenv values only when needed to preserve characters safely."""
+    text = str(value)
+    if text == "":
+        return '""'
+
+    needs_quotes = (
+        text != text.strip()
+        or "#" in text
+        or "\n" in text
+        or "\r" in text
+        or any(ch.isspace() for ch in text)
+        or text.startswith(('"', "'"))
+    )
+    if not needs_quotes:
+        return text
+
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'

@@ -11,6 +11,11 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
 
+if __package__:
+    from .redaction import sanitize_for_logging, sanitize_trace
+else:
+    from redaction import sanitize_for_logging, sanitize_trace
+
 
 @dataclass
 class AssistantMetadata:
@@ -106,7 +111,7 @@ class AssistantCore:
             finalized["trace"] = finalized_trace
             return finalized
 
-        response = await self._build_conversation_response(message, metadata, parsed)
+        response = await self._build_conversation_response(message, metadata, parsed, context_snapshot)
         latest_context = self.runtime.session_context.update(
             session_id=metadata.session_id,
             user_message=message,
@@ -130,7 +135,7 @@ class AssistantCore:
             "source": metadata.source,
             "data": None,
             "trace": {
-                "raw_request": message,
+                "raw_request": sanitize_for_logging(message),
                 "source": metadata.source,
                 "assistant_mode": "locked",
                 "intent_classification": "locked",
@@ -144,8 +149,14 @@ class AssistantCore:
             },
         }
 
-    async def _build_conversation_response(self, message: str, metadata: AssistantMetadata, parsed: dict[str, Any]) -> dict[str, Any]:
-        reply = await self._generate_conversation_reply(message, metadata, parsed)
+    async def _build_conversation_response(
+        self,
+        message: str,
+        metadata: AssistantMetadata,
+        parsed: dict[str, Any],
+        context_snapshot: dict[str, Any],
+    ) -> dict[str, Any]:
+        reply = await self._generate_conversation_reply(message, metadata, parsed, context_snapshot)
         return {
             "success": True,
             "tool_name": None,
@@ -156,12 +167,12 @@ class AssistantCore:
             "source": metadata.source,
             "data": None,
             "trace": {
-                "raw_request": message,
+                "raw_request": sanitize_for_logging(message),
                 "source": metadata.source,
                 "assistant_mode": parsed.get("mode") or "conversation",
                 "intent_classification": parsed.get("intent"),
                 "interpreted_intent": None,
-                "interpreted_args": parsed.get("args") or {},
+                "interpreted_args": sanitize_for_logging(parsed.get("args") or {}),
                 "selected_tool": None,
                 "validation_status": "skipped",
                 "execution_status": "completed",
@@ -187,13 +198,13 @@ class AssistantCore:
             result=result,
         )
 
-        trace = result.get("trace") or {}
+        trace = sanitize_trace(result.get("trace") or {})
         trace["assistant_mode"] = parsed.get("mode") or "tool"
         trace["assistant_response_source"] = "openai" if self.model_client.enabled else "fallback"
-        trace["tool_output"] = raw_output
-        trace["tool_data"] = result.get("data")
+        trace["tool_output"] = sanitize_for_logging(raw_output)
+        trace["tool_data"] = sanitize_for_logging(result.get("data"))
         if result.get("error"):
-            trace["tool_error"] = result.get("error")
+            trace["tool_error"] = sanitize_for_logging(result.get("error"))
             trace["error_type"] = result.get("error_type")
             trace["remediation"] = result.get("remediation")
             trace["missing_config_fields"] = result.get("missing_config_fields")
@@ -205,23 +216,39 @@ class AssistantCore:
         result["trace"] = trace
         return result
 
-    async def _generate_conversation_reply(self, message: str, metadata: AssistantMetadata, parsed: dict[str, Any]) -> str:
+    async def _generate_conversation_reply(
+        self,
+        message: str,
+        metadata: AssistantMetadata,
+        parsed: dict[str, Any],
+        context_snapshot: dict[str, Any],
+    ) -> str:
         followup_topic = parsed.get("followup_topic")
-        if followup_topic == "email" and any(token in message.lower() for token in ["configure", "set up", "setup"]):
+        if followup_topic == "email_setup" and any(token in message.lower() for token in ["configure", "set up", "setup"]):
             return self._email_setup_guidance()
+
+        if followup_topic in {"email_setup", "email_access", "config_update"}:
+            missing_fields = context_snapshot.get("missing_config_fields") or []
+            if any(token in message.lower() for token in ["password", "need", "still need", "what else", "and now", "so?", "did that fix", "what now"]):
+                if missing_fields:
+                    return f"You're still missing: {', '.join(missing_fields)}."
+                pending_restart = context_snapshot.get("pending_restart_components") or []
+                if pending_restart:
+                    return f"Configuration is complete, but pending restart for: {', '.join(pending_restart)}."
+                return "That configuration thread looks complete right now."
 
         system_prompt = self._build_system_prompt(metadata)
         if self.model_client.enabled:
             prompt = (
                 f"Request type: {parsed.get('mode') or 'conversation'}\n"
-                f"User message: {message}\n"
+                f"User message: {sanitize_for_logging(message)}\n"
                 f"Context topic: {parsed.get('topic') or 'none'}\n"
                 "Reply naturally. Do not mention internal tools unless the user asked for technical detail."
             )
             ai_reply = await self.model_client.complete(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
-                max_tokens=220 if metadata.source == "sms" else 320,
+                max_tokens=min(self.runtime.model_response_max_tokens, 220 if metadata.source == "sms" else self.runtime.model_response_max_tokens),
             )
             if ai_reply:
                 return ai_reply
@@ -236,6 +263,9 @@ class AssistantCore:
         parsed: dict[str, Any],
         result: dict[str, Any],
     ) -> str:
+        if result.get("tool_name") == "set_config_variable":
+            return result.get("output") or "Configuration updated."
+
         if not result.get("success"):
             return self._fallback_error_reply(
                 error=result.get("error"),
@@ -259,7 +289,7 @@ class AssistantCore:
             ai_reply = await self.model_client.complete(
                 system_prompt=system_prompt,
                 user_prompt=prompt,
-                max_tokens=180 if metadata.source == "sms" else 260,
+                max_tokens=min(self.runtime.model_response_max_tokens, 180 if metadata.source == "sms" else self.runtime.model_response_max_tokens),
             )
             if ai_reply:
                 return ai_reply

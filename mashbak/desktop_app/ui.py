@@ -11,6 +11,12 @@ from tkinter import ttk
 
 from widgets import add_refresh_button, labeled_scroll_text, make_scrolled_text, set_text
 
+try:
+    from agent.redaction import sanitize_for_logging
+except Exception:  # pragma: no cover - desktop fallback if import path changes
+    def sanitize_for_logging(value, key=None):
+        return value
+
 _GREEN = "#1a7f37"
 _RED = "#b42318"
 _AMBER = "#9a6700"
@@ -421,6 +427,9 @@ class DesktopControlApp:
         trace = result.get("trace") or {}
         context = trace.get("context") or {}
         raw_tool_output = trace.get("tool_output")
+        safe_trace_args = sanitize_for_logging(trace.get("interpreted_args", {}))
+        safe_raw_tool_output = sanitize_for_logging(raw_tool_output)
+        safe_message = sanitize_for_logging(message)
         detail_lines = [
             f"Assistant mode: {trace.get('assistant_mode')}",
             f"Tool:           {result.get('tool_name')}",
@@ -438,11 +447,15 @@ class DesktopControlApp:
             f"Ctx topic:      {context.get('last_topic')}",
             f"Ctx intent:     {context.get('last_intent')}",
             f"Ctx tool:       {context.get('last_tool')}",
+            f"Ctx failure:    {context.get('last_failure_type')}",
+            f"Cfg progress:   {context.get('config_progress_state')}",
+            f"Cfg missing:    {', '.join(context.get('missing_config_fields') or []) or 'none'}",
+            f"Cfg restart:    {', '.join(context.get('pending_restart_components') or []) or 'none'}",
             "",
-            f"Args: {json.dumps(trace.get('interpreted_args', {}), ensure_ascii=True)}",
+            f"Args: {json.dumps(safe_trace_args, ensure_ascii=True)}",
         ]
-        if raw_tool_output:
-            detail_lines += ["", "Raw tool output:", str(raw_tool_output)]
+        if safe_raw_tool_output:
+            detail_lines += ["", "Raw tool output:", str(safe_raw_tool_output)]
         set_text(self.details_text, "\n".join(detail_lines))
 
         final_text = (
@@ -460,7 +473,7 @@ class DesktopControlApp:
 
         ts = datetime.now().strftime("%H:%M:%S")
         tool = result.get("tool_name") or trace.get("assistant_mode") or "conversation"
-        self.activity.insert(0, f"{ts}  {tool}  {message[:60]}")
+        self.activity.insert(0, f"{ts}  {tool}  {str(safe_message)[:60]}")
         self.activity = self.activity[:50]
         set_text(self.activity_list, "\n".join(self.activity))
 
@@ -548,6 +561,10 @@ class DesktopControlApp:
             f"Timeout (s)   : {summary['tool_timeout_seconds']}",
             f"AI enabled    : {summary.get('assistant_ai_enabled')}",
             f"Model         : {summary.get('assistant_model')}",
+            f"Max tokens    : {summary.get('model_response_max_tokens')}",
+            f"Ctx turns     : {summary.get('session_context_max_turns')}",
+            f"Log level     : {summary.get('log_level')}",
+            f"Debug mode    : {summary.get('debug_mode')}",
             f"Email ready   : {summary.get('email_configured')}",
         ]
         set_text(self.config_text, "\n".join(config_lines))
