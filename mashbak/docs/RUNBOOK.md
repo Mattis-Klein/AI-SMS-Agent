@@ -224,6 +224,35 @@ Clear-Content agent\workspace\logs\agent.log
 
 ## Testing & Verification
 
+## Troubleshooting - Frozen Desktop Startup
+
+### Error: `Unable to configure formatter 'default'`
+
+Symptom in packaged executable:
+
+```
+Failed to execute script 'main' due to unhandled exception:
+Unable to configure formatter 'default'
+AttributeError: 'NoneType' object has no attribute 'isatty'
+```
+
+Root cause:
+- In frozen GUI startup, `sys.stderr`/`sys.stdout` may be unavailable.
+- Uvicorn's default logging formatter path probes `isatty()` and crashes when stream objects are `None`.
+
+Stabilized fix in code:
+- File: `mashbak/desktop_app/agent_service.py`
+- Change: in `_start_in_process`, set `uvicorn.Config(..., log_config=None, access_log=False)`.
+- Result: packaged app no longer executes Uvicorn's formatter dictConfig path that triggers this crash.
+
+Operator check:
+1. Rebuild executable: `./mashbak/scripts/build-app.ps1 -Clean`
+2. Launch `mashbak/dist/Mashbak.exe`
+3. Confirm desktop opens and embedded agent starts without formatter errors.
+
+Prevention note:
+- Keep packaged GUI startup on `log_config=None` unless a custom stream-safe logging config is introduced and tested in frozen mode.
+
 ### Test Local SMS Endpoint (No Twilio)
 
 Simulate an SMS locally:
