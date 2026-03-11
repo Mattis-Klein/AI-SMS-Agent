@@ -17,26 +17,8 @@ function parseCsvNumbers(rawValue, digits = 10) {
         .filter(Boolean);
 }
 
-function parseSpecialResponses(rawJson, digits = 10) {
-    if (!rawJson) {
-        return {};
-    }
-    try {
-        const parsed = JSON.parse(rawJson);
-        if (!parsed || typeof parsed !== "object") {
-            return {};
-        }
-        const normalized = {};
-        for (const [key, value] of Object.entries(parsed)) {
-            const normalizedKey = normalizePhoneNumber(key, digits);
-            if (normalizedKey) {
-                normalized[normalizedKey] = String(value);
-            }
-        }
-        return normalized;
-    } catch {
-        return {};
-    }
+function parseRejectedNumbers(rawValue, digits = 10) {
+    return new Set(parseCsvNumbers(rawValue, digits));
 }
 
 function loadConfigFile(configPath) {
@@ -81,15 +63,23 @@ function loadSenderAccessConfig(env) {
         )
     );
 
-    const specialResponses = parseSpecialResponses(
-        env.SMS_SPECIAL_RESPONSES_JSON || JSON.stringify(fileConfig.special_responses || {}),
+    const hershyNumber = normalizePhoneNumber(
+        env.HERSHY_NUMBER || fileConfig.hershy_number || "",
+        normalizationDigits
+    );
+
+    const rejectedNumbers = parseRejectedNumbers(
+        env.REJECTED_NUMBERS || fileConfig.rejected_numbers || "",
         normalizationDigits
     );
 
     return {
         ownerNumber,
         accessRequestNumbers,
-        specialResponses,
+        hershyNumber,
+        hershyResponse: env.HERSHY_RESPONSE || fileConfig.hershy_response || "",
+        rejectedNumbers,
+        rejectedResponse: env.REJECTED_RESPONSE || fileConfig.rejected_response || "you are not authorized to use this system",
         denialResponse: env.SMS_DENIAL_RESPONSE || fileConfig.denial_response || "This number is not allowed.",
         accessRequestResponse:
             env.SMS_ACCESS_REQUEST_RESPONSE
@@ -118,12 +108,21 @@ function resolveSenderAction(from, config) {
         };
     }
 
-    if (config.specialResponses[normalizedFrom]) {
+    if (config.hershyNumber && normalizedFrom === config.hershyNumber) {
         return {
             action: "special_response",
             normalizedFrom,
             shouldForward: false,
-            reply: config.specialResponses[normalizedFrom],
+            reply: config.hershyResponse,
+        };
+    }
+
+    if (config.rejectedNumbers.has(normalizedFrom)) {
+        return {
+            action: "rejected",
+            normalizedFrom,
+            shouldForward: false,
+            reply: config.rejectedResponse,
         };
     }
 

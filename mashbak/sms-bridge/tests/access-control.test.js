@@ -35,15 +35,32 @@ test("access request number is not forwarded", () => {
     assert.equal(decision.shouldForward, false);
 });
 
-test("special response can be configured", () => {
+test("Hershy number gets special response", () => {
     const config = loadSenderAccessConfig({
         SMS_OWNER_NUMBER: "8483291230",
-        SMS_SPECIAL_RESPONSES_JSON: JSON.stringify({ "8457017405": "custom" }),
+        HERSHY_NUMBER: "8457017405",
+        HERSHY_RESPONSE: "custom response",
     });
 
     const decision = resolveSenderAction("8457017405", config);
     assert.equal(decision.action, "special_response");
-    assert.equal(decision.reply, "custom");
+    assert.equal(decision.reply, "custom response");
+});
+
+test("rejected numbers get rejection response", () => {
+    const config = loadSenderAccessConfig({
+        SMS_OWNER_NUMBER: "8483291230",
+        REJECTED_NUMBERS: "4155988428,3475988428",
+        REJECTED_RESPONSE: "rejected message",
+    });
+
+    const decision1 = resolveSenderAction("4155988428", config);
+    assert.equal(decision1.action, "rejected");
+    assert.equal(decision1.reply, "rejected message");
+
+    const decision2 = resolveSenderAction("3475988428", config);
+    assert.equal(decision2.action, "rejected");
+    assert.equal(decision2.reply, "rejected message");
 });
 
 test("access request keyword is configurable", () => {

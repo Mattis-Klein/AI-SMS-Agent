@@ -29,8 +29,8 @@ C:\AI-SMS-Agent\
 ## Environment Files Policy
 
 - Tracked in repo: `mashbak/agent/.env.example`, `mashbak/sms-bridge/.env.example`
-- Not tracked in repo: real `.env` files with secrets
-- Create local `.env` files by copying from the tracked `.env.example` files
+- Not tracked in repo: `mashbak/.env.master` with real secrets
+- Do not create per-component `.env` files; runtime configuration is centralized in `mashbak/.env.master`
 
 ## Runtime Clutter Policy
 

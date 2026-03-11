@@ -25,7 +25,7 @@ The system has 3 main components:
 
 1. **Receive Twilio webhooks** at `/sms` endpoint
 2. **Validate request signature** using `TWILIO_AUTH_TOKEN`
-3. **Apply sender access control** (owner forward, special responses, denied senders)
+3. **Apply sender access control** (owner forward, Hershy override, rejected list, access-request list, default deny)
 4. **Route request** to fixed command handler or AI
 5. **Call agent API** to execute operations
 6. **Format TwiML response** back to Twilio

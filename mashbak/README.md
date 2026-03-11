@@ -74,7 +74,7 @@ notepad mashbak/.env.master
 
 The master config is loaded by:
 - **Python backend** via `ConfigLoader` at startup
-- **SMS bridge** (Node.js) via dotenv at startup
+- **SMS bridge** (Node.js) via its master env loader at startup
 - **Desktop** indirectly through backend API calls
 
 ### Configuration Policy

@@ -39,6 +39,18 @@ def test_interpreter_detects_config_assignment():
     assert parsed.args["variable_name"] == "EMAIL_IMAP_PORT"
     assert parsed.args["variable_value"] == "993"
     print("✓ Detected EMAIL_IMAP_PORT=993 pattern")
+
+    parsed = interpreter.parse("SMS_OWNER_NUMBER=8483291230")
+    assert parsed.tool == "set_config_variable"
+    assert parsed.args["variable_name"] == "SMS_OWNER_NUMBER"
+    assert parsed.args["variable_value"] == "8483291230"
+    print("✓ Detected SMS_OWNER_NUMBER=8483291230 pattern")
+
+    parsed = interpreter.parse("TWILIO_FROM_NUMBER=+15551234567")
+    assert parsed.tool == "set_config_variable"
+    assert parsed.args["variable_name"] == "TWILIO_FROM_NUMBER"
+    assert parsed.args["variable_value"] == "+15551234567"
+    print("✓ Detected TWILIO_FROM_NUMBER assignment")
     
     # Test unknown variable (should not match)
     parsed = interpreter.parse("UNKNOWN_VAR = somevalue")
@@ -62,6 +74,20 @@ def test_config_tool_validation():
     })
     assert is_valid, msg
     print("✓ Accepted EMAIL_ADDRESS with valid format")
+
+    is_valid, msg = tool.validate_args({
+        "variable_name": "SMS_OWNER_NUMBER",
+        "variable_value": "8483291230"
+    })
+    assert is_valid, msg
+    print("✓ Accepted SMS_OWNER_NUMBER")
+
+    is_valid, msg = tool.validate_args({
+        "variable_name": "TWILIO_FROM_NUMBER",
+        "variable_value": "+15551234567"
+    })
+    assert is_valid, msg
+    print("✓ Accepted TWILIO_FROM_NUMBER")
     
     # Invalid: unknown variable
     is_valid, msg = tool.validate_args({
@@ -90,33 +116,22 @@ def test_config_tool_validation():
 
 
 def test_config_tool_persistence():
-    """Test that config tool persists values to .env file."""
-    # Simplify: just test the core _update_env_file functionality directly
+    """Test that config tool writes to the configured env path rather than the real file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        test_env_path = Path(tmpdir) / ".env"
-        
-        # Create a tool instance and test file writing
         tool = SetConfigVariableTool()
-        
-        # Manually test _update_env_file since mocking is tricky
-        tool._update_env_file("EMAIL_ADDRESS", "test@example.com")
-        # But this will write to the real .env, so skip for now
-        # Instead, just test that the tool validates correctly
-        
+        tool.env_path = Path(tmpdir) / ".env.master"
+
         async def test_async():
-            # Create a simpler in-memory test
-            tool = SetConfigVariableTool()
-            
-            # Test that configuration is validated properly
             result = await tool.execute({
                 "variable_name": "EMAIL_ADDRESS",
                 "variable_value": "test@example.com"
             })
-            # We can't easily test persistence in unit tests due to file system
-            # Instead, verify the logic path works without errors
-            # The actual persistence is tested by integration tests
-            print("✓ Config tool executes without errors")
-            
+            assert result.success, result.error
+            assert tool.env_path.exists()
+            content = tool.env_path.read_text(encoding="utf-8")
+            assert "EMAIL_ADDRESS=test@example.com" in content
+            print("✓ Config tool persists to configured env path")
+
         asyncio.run(test_async())
 
 
@@ -157,7 +172,7 @@ if __name__ == "__main__":
     test_config_tool_validation()
     
     print("\n=== Testing Config Tool Persistence ===")
-    asyncio.run(test_config_tool_persistence())
+    test_config_tool_persistence()
     
     print("\n=== Testing Config Tool Value Validation ===")
     test_config_tool_value_validation()

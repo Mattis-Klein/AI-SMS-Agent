@@ -57,13 +57,16 @@ At minimum, configure host/server, port, username/address, and password.
 
 ## SMS Access Control Variables
 
-- SMS_OWNER_NUMBER
-- SMS_ACCESS_REQUEST_NUMBERS
-- SMS_ACCESS_REQUEST_KEYWORD
-- SMS_ACCESS_REQUEST_RESPONSE
-- SMS_DENIAL_RESPONSE
-- SMS_SPECIAL_RESPONSES_JSON
-- SMS_PHONE_NORMALIZATION_DIGITS
+- SMS_OWNER_NUMBER: Phone number of the system owner (receives forwarded messages)
+- SMS_ACCESS_REQUEST_NUMBERS: Comma-separated numbers that receive access-request instructions
+- SMS_ACCESS_REQUEST_RESPONSE: Message sent to access-request numbers
+- SMS_ACCESS_REQUEST_KEYWORD: Keyword that triggers access request when sent by an access-request number
+- HERSHY_NUMBER: Single phone number that receives a custom special response
+- HERSHY_RESPONSE: Custom response text for the Hershy number
+- REJECTED_NUMBERS: Comma-separated numbers that receive the rejection response
+- REJECTED_RESPONSE: Message sent to rejected numbers
+- SMS_DENIAL_RESPONSE: Message sent to numbers not in any other category (default deny)
+- SMS_PHONE_NORMALIZATION_DIGITS: Number of digits to keep when normalizing phone numbers (default: 10)
 
 ## Twilio Variables
 

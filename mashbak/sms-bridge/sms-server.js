@@ -469,7 +469,8 @@ app.listen(PORT, () => {
         twilioValidationEnabled: Boolean(TWILIO_AUTH_TOKEN),
         senderAccessControlEnabled: true,
         ownerNumber: SENDER_ACCESS.ownerNumber,
-        specialNumbers: Object.keys(SENDER_ACCESS.specialResponses),
+        hershyNumber: SENDER_ACCESS.hershyNumber || null,
+        rejectedNumbers: Array.from(SENDER_ACCESS.rejectedNumbers),
         accessRequestNumbers: Array.from(SENDER_ACCESS.accessRequestNumbers),
     });
     console.log(`SMS server running on port ${PORT}`);

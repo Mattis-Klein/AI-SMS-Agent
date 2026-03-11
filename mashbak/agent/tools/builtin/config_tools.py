@@ -38,11 +38,26 @@ class SetConfigVariableTool(Tool):
         "IMAP_PORT",
         "EMAIL_ADDRESS",
         
+        # SMS Access Control
+        "SMS_OWNER_NUMBER",
+        "SMS_ACCESS_REQUEST_NUMBERS",
+        "SMS_ACCESS_REQUEST_RESPONSE",
+        "SMS_ACCESS_REQUEST_KEYWORD",
+        "HERSHY_NUMBER",
+        "HERSHY_RESPONSE",
+        "REJECTED_NUMBERS",
+        "REJECTED_RESPONSE",
+        "SMS_DENIAL_RESPONSE",
+        "SMS_PHONE_NORMALIZATION_DIGITS",
+
         # SMS/Bridge Configuration
         "AGENT_API_KEY",
         "TWILIO_ACCOUNT_SID",
         "TWILIO_AUTH_TOKEN",
-        "TWILIO_PHONE_NUMBER",
+        "TWILIO_FROM_NUMBER",
+        "BRIDGE_PORT",
+        "PUBLIC_BASE_URL",
+        "AGENT_URL",
         
         # Desktop/Local Configuration
         "LOCAL_APP_PIN",
@@ -111,7 +126,7 @@ class SetConfigVariableTool(Tool):
         super().__init__(
             name="set_config_variable",
             description="Set environment configuration variables through chat. "
-                       "Supports EMAIL_* variables, API keys, ports, and other config settings. "
+                       "Supports EMAIL_*, SMS_*, Twilio, URLs, ports, and other config settings. "
                        "Values are validated and safely persisted to mashbak/.env.master.",
             requires_args=True
         )

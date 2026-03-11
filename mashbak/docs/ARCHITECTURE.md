@@ -215,7 +215,8 @@ Node.js Express server that stays transport-only:
 
 Sender access control (bridge):
 - Owner number is forwarded to the agent
-- Special numbers get fixed responses without agent forwarding
+- Hershy number gets its fixed response without agent forwarding
+- Rejected numbers get the shared rejection response without agent forwarding
 - Access-request numbers get a fixed response; if they text `@mashbak`, bridge sends owner notification SMS
 - All other senders are denied in bridge
 - Access rules are configuration-driven (environment/config file) instead of hardcoded in bridge logic.
