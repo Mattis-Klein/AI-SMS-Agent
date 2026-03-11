@@ -1,7 +1,17 @@
 """Reusable Tkinter widget helpers for the local desktop console."""
 
 from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Text
-from tkinter import scrolledtext, ttk
+from tkinter import ttk
+
+
+def make_scrolled_text(parent, wrap="word", font=("Segoe UI", 10), padx=0, pady=0, **kwargs) -> Text:
+    """Create a Text widget with a vertical scrollbar packed into *parent*."""
+    scrollbar = ttk.Scrollbar(parent, orient="vertical")
+    scrollbar.pack(side=RIGHT, fill=Y, padx=(0, padx), pady=pady)
+    text = Text(parent, wrap=wrap, font=font, yscrollcommand=scrollbar.set, **kwargs)
+    text.pack(side=LEFT, fill=BOTH, expand=True, padx=(padx, 0), pady=pady)
+    scrollbar.configure(command=text.yview)
+    return text
 
 
 def labeled_text_area(parent: ttk.Frame, title: str, height: int = 10, wrap: str = "word") -> Text:
@@ -17,15 +27,19 @@ def labeled_scroll_text(
     height: int = 10,
     font: tuple = ("Consolas", 9),
     wrap: str = "word",
-) -> scrolledtext.ScrolledText:
-    """Fill the parent frame with a ScrolledText widget (no LabelFrame wrapper)."""
-    widget = scrolledtext.ScrolledText(
+) -> Text:
+    """Fill the parent frame with a scrollable Text widget (no LabelFrame wrapper)."""
+    scrollbar = ttk.Scrollbar(parent, orient="vertical")
+    scrollbar.pack(side=RIGHT, fill=Y)
+    text = Text(
         parent, wrap=wrap, font=font,
         relief="flat", bd=0,
         height=height if height > 0 else 1,
+        yscrollcommand=scrollbar.set,
     )
-    widget.pack(fill=BOTH, expand=True)
-    return widget
+    text.pack(side=LEFT, fill=BOTH, expand=True)
+    scrollbar.configure(command=text.yview)
+    return text
 
 
 def action_bar(parent: ttk.Frame) -> ttk.Frame:

@@ -7,9 +7,9 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Text, Tk
-from tkinter import scrolledtext, ttk
+from tkinter import ttk
 
-from widgets import action_bar, add_refresh_button, labeled_scroll_text, set_text
+from widgets import action_bar, add_refresh_button, labeled_scroll_text, make_scrolled_text, set_text
 
 # ── colour palette ─────────────────────────────────────────────────────────────
 _GREEN = "#1a7f37"
@@ -166,15 +166,14 @@ class DesktopControlApp:
         chat_frame = ttk.LabelFrame(parent, text="Chat")
         chat_frame.pack(fill=BOTH, expand=True, pady=(4, 4))
 
-        self.chat_text = scrolledtext.ScrolledText(
+        self.chat_text = make_scrolled_text(
             chat_frame, wrap="word", font=("Segoe UI", 10),
             state="disabled", relief="flat", bd=0,
-            spacing1=3, spacing3=3,
+            spacing1=3, spacing3=3, padx=6, pady=6,
         )
-        self.chat_text.pack(fill=BOTH, expand=True, padx=6, pady=6)
-        self.chat_text.tag_configure("you",   foreground="#0969da", font=("Segoe UI", 10, "bold"))
-        self.chat_text.tag_configure("agent", foreground="#1c2128", font=("Segoe UI", 10))
-        self.chat_text.tag_configure("error", foreground=_RED,      font=("Segoe UI", 10, "italic"))
+        self.chat_text.tag_configure("you",         foreground="#0969da", font=("Segoe UI", 10, "bold"))
+        self.chat_text.tag_configure("agent",       foreground="#1c2128", font=("Segoe UI", 10))
+        self.chat_text.tag_configure("error",       foreground=_RED,      font=("Segoe UI", 10, "italic"))
         self.chat_text.tag_configure("placeholder", foreground="#8b949e", font=("Segoe UI", 10, "italic"))
 
         input_frame = ttk.Frame(parent)
