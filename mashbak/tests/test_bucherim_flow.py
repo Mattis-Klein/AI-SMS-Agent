@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from agent.bucherim import BucherimService, BucherimSmsRequest
+from assistants.bucherim.service import BucherimService, BucherimSmsRequest
 
 
 def make_service(tmp_path: Path, allowlist: list[str] | None = None) -> BucherimService:
@@ -30,7 +30,7 @@ def make_service(tmp_path: Path, allowlist: list[str] | None = None) -> Bucherim
             "image_generation_unavailable": "I can discuss images, but outbound image generation is not enabled yet.",
         },
     }
-    config_path = tmp_path / "agent" / "bucherim_config.json"
+    config_path = tmp_path / "assistants" / "bucherim" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
     return service
@@ -72,7 +72,7 @@ def test_allowlisted_number_join_command_becomes_active():
         assert result["status"] == "active"
         assert "connected" in result["reply"].lower()
 
-        user_dir = root / "bucherim" / "data" / "users" / "p12125550101"
+        user_dir = root / "data" / "users" / "bucherim" / "p12125550101"
         membership = load_json(user_dir / "membership.json")
         assert membership["status"] == "active"
         assert membership["source"] == "allowlist"
@@ -97,7 +97,7 @@ def test_non_allowlisted_join_request_logged_and_acknowledged():
         assert result["status"] == "pending_request"
         assert "received" in result["reply"].lower()
 
-        user_dir = root / "bucherim" / "data" / "users" / "p17185550303"
+        user_dir = root / "data" / "users" / "bucherim" / "p17185550303"
         membership = load_json(user_dir / "membership.json")
         assert membership["status"] == "pending_request"
 
@@ -105,7 +105,7 @@ def test_non_allowlisted_join_request_logged_and_acknowledged():
         assert request_rows
         assert request_rows[-1]["review_state"] == "pending"
 
-        pending_rows = load_jsonl(root / "bucherim" / "data" / "pending_requests.jsonl")
+        pending_rows = load_jsonl(root / "data" / "users" / "bucherim" / "pending_requests.jsonl")
         assert pending_rows
         assert pending_rows[-1]["phone_number"] == "+17185550303"
 
@@ -122,7 +122,7 @@ def test_active_member_normal_message_is_processed_and_appended():
         assert message_result["status"] == "active"
         assert message_result["response_mode"] == "text"
 
-        user_dir = root / "bucherim" / "data" / "users" / "p12125550404"
+        user_dir = root / "data" / "users" / "bucherim" / "p12125550404"
         rows = load_jsonl(user_dir / "conversation.jsonl")
         assert len(rows) >= 4
         assert rows[-2]["direction"] == "inbound"
@@ -156,11 +156,11 @@ def test_user_files_created_and_conversation_appends():
         run_request(service, "+1 718-555-0606", "first message")
         run_request(service, "+1 718-555-0606", "second message")
 
-        user_dir = root / "bucherim" / "data" / "users" / "p17185550606"
+        user_dir = root / "data" / "users" / "bucherim" / "p17185550606"
         assert (user_dir / "profile.json").exists()
         assert (user_dir / "membership.json").exists()
         assert (user_dir / "conversation.jsonl").exists()
-        assert (user_dir / "media").exists()
+        assert (root / "data" / "media" / "bucherim" / "p17185550606").exists()
 
         rows = load_jsonl(user_dir / "conversation.jsonl")
         assert len(rows) >= 6
@@ -180,8 +180,8 @@ def test_media_references_are_logged_when_present():
         )
 
         assert result["response_mode"] == "image_analysis_unavailable"
-        user_dir = root / "bucherim" / "data" / "users" / "p16465550707"
-        media_rows = load_jsonl(user_dir / "media" / "index.jsonl")
+        user_dir = root / "data" / "users" / "bucherim" / "p16465550707"
+        media_rows = load_jsonl(root / "data" / "media" / "bucherim" / "p16465550707" / "index.jsonl")
         assert media_rows
         assert media_rows[-1]["media_url"] == "https://example.com/image.jpg"
         assert media_rows[-1]["download_status"] == "referenced_only"

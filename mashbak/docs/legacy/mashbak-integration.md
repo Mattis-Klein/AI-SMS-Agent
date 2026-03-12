@@ -70,7 +70,7 @@ The built system only operates when the PC and local agent are running. This is 
 ### Security Layers Implemented
 
 1. **Authentication:** API key shared between bridge and agent
-2. **Path Isolation:** All file ops limited to `agent/workspace/`
+2. **Path Isolation:** All file ops limited to `data/workspace/`
 3. **Command Allowlist:** Only pre-approved commands can run
 4. **Twilio Validation:** Webhook signature verification
 5. **Sender Filtering:** Only accept SMS from configured number

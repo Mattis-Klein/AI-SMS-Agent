@@ -14,11 +14,11 @@ from pathlib import Path
 from typing import Any
 
 if __package__:
-    from .assistant_core import BackendOpenAIClient
-    from .session_context import SessionContextManager
+    from agent.assistant_core import BackendOpenAIClient
+    from agent.session_context import SessionContextManager
 else:
-    from assistant_core import BackendOpenAIClient
-    from session_context import SessionContextManager
+    from agent.assistant_core import BackendOpenAIClient
+    from agent.session_context import SessionContextManager
 
 
 ACTIVE_STATUS = "active"
@@ -52,12 +52,14 @@ class BucherimService:
         session_turns: int = 4,
     ):
         self.base_dir = base_dir.resolve()
-        self.config_path = self.base_dir / "agent" / "bucherim_config.json"
-        self.data_root = self.base_dir / "bucherim" / "data"
-        self.users_root = self.data_root / "users"
-        self.pending_requests_file = self.data_root / "pending_requests.jsonl"
+        self.config_path = self.base_dir / "assistants" / "bucherim" / "config.json"
+        self.data_root = self.base_dir / "data"
+        self.users_root = self.data_root / "users" / "bucherim"
+        self.media_root = self.data_root / "media" / "bucherim"
+        self.pending_requests_file = self.users_root / "pending_requests.jsonl"
 
         self.users_root.mkdir(parents=True, exist_ok=True)
+        self.media_root.mkdir(parents=True, exist_ok=True)
         self.pending_requests_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.model_client = BackendOpenAIClient(openai_api_key or "", openai_model or "gpt-4.1-mini")
@@ -170,7 +172,7 @@ class BucherimService:
     def _user_paths(self, normalized_sender: str) -> dict[str, Path]:
         user_key = self.phone_to_user_key(normalized_sender)
         user_dir = self.users_root / user_key
-        media_dir = user_dir / "media"
+        media_dir = self.media_root / user_key
         media_index = media_dir / "index.jsonl"
 
         return {

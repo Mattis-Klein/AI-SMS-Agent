@@ -15,7 +15,7 @@ Mashbak preserves these strict architecture rules:
 ```text
 Desktop UI (desktop_app/) ----\
                                \--> FastAPI backend (agent/agent.py)
-SMS bridge (sms-bridge/) -----/
+SMS bridge (sms_bridge/) -----/
 
 FastAPI backend request path:
 /execute-nl or /execute
@@ -29,7 +29,7 @@ FastAPI backend request path:
 
 Bucherim SMS path:
 Twilio inbound to +18772683048
-  -> sms-bridge transport parsing
+  -> sms_bridge transport parsing
   -> POST /bucherim/sms
   -> AgentRuntime.execute_bucherim_sms
   -> BucherimService (membership + conversation + logging)
@@ -110,7 +110,7 @@ Bridge does not perform reasoning and does not execute backend tools directly.
 
 Redaction is centralized and applied to traces/logs:
 - Backend: agent/redaction.py
-- Bridge: sms-bridge/redaction.js
+- Bridge: sms_bridge/redaction.js
 
 Sensitive assignment values and sensitive keys are masked before persistence to logs.
 

@@ -11,6 +11,6 @@ Current implementation highlights:
 - Media-aware inbound/outbound logging (image analysis/generation placeholders)
 
 Data root:
-- mashbak/bucherim/data/users/<normalized_user_key>/
+- mashbak/data/users/bucherim/<normalized_user_key>/
 
 See mashbak/docs/BUCHERIM.md for full behavior and operations.

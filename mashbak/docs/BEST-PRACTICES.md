@@ -3,7 +3,7 @@
 ## Runtime Operations
 
 - Keep mashbak/.env.master as single runtime config source.
-- Restart sms-bridge after changing bridge or sender access-control variables.
+- Restart sms_bridge after changing bridge or sender access-control variables.
 - Keep backend and bridge logs under periodic review.
 
 ## Security
@@ -22,7 +22,7 @@
 ## Validation Workflow
 
 - python -m pytest -q
-- cd mashbak/sms-bridge; npm test
+- cd mashbak/sms_bridge; npm test
 - python -m py_compile sweep for changed Python files
 - smoke check: backend /health, bridge /health, desktop --ui-smoke
 

@@ -57,25 +57,25 @@ if ($requirements -match "psutil") {
 }
 
 Write-Host ""
-Write-Host "[Test 4] Checking sms-bridge updates..." -ForegroundColor Yellow
-if (Test-Path "sms-bridge\sms-server.js") {
-    $bridgeContent = Get-Content "sms-bridge\sms-server.js" -Raw
+Write-Host "[Test 4] Checking sms_bridge updates..." -ForegroundColor Yellow
+if (Test-Path "sms_bridge\sms-server.js") {
+    $bridgeContent = Get-Content "sms_bridge\sms-server.js" -Raw
     if ($bridgeContent -match "express" -and $bridgeContent -match "app.post") {
         Pass "bridge has Express endpoints"
     } else {
         Fail "bridge missing expected endpoint structure"
     }
 } else {
-    Fail "sms-bridge/sms-server.js not found"
+    Fail "sms_bridge/sms-server.js not found"
 }
 
 Write-Host ""
 Write-Host "[Test 5] Checking workspace structure..." -ForegroundColor Yellow
 $directories = @(
-    "agent\workspace\inbox",
-    "agent\workspace\outbox",
-    "agent\workspace\logs",
-    "sms-bridge\logs"
+    "data\workspace\inbox",
+    "data\workspace\outbox",
+    "data\workspace\logs",
+    "data\logs"
 )
 foreach ($dir in $directories) {
     if (Test-Path $dir) {

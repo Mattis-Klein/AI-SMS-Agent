@@ -26,7 +26,7 @@ python -m uvicorn agent.agent:app --app-dir mashbak --host 127.0.0.1 --port 8787
 In a second terminal:
 
 ```powershell
-cd mashbak/sms-bridge
+cd mashbak/sms_bridge
 npm start
 ```
 

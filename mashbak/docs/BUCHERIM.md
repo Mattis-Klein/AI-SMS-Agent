@@ -10,7 +10,7 @@ Twilio destination for Bucherim:
 Bucherim follows the same core architecture principles as Mashbak:
 - SMS bridge is transport-only and does routing plus payload extraction.
 - Backend is the intelligence layer and owns membership state, conversation handling, and logging.
-- Assistant behavior is implemented in backend module: mashbak/agent/bucherim.py.
+- Assistant behavior is implemented in backend module: mashbak/assistants/bucherim/service.py.
 
 ## Routing Rules
 
@@ -77,7 +77,7 @@ Transitions:
 ## Configuration
 
 Config file:
-- mashbak/agent/bucherim_config.json
+- mashbak/assistants/bucherim/config.json
 
 Key fields:
 - assistant_number: E.164 destination number for Bucherim route
@@ -92,18 +92,19 @@ Number handling:
 ## Data Storage And Logs
 
 Per-user storage path:
-- mashbak/bucherim/data/users/<normalized_user_key>/
+- mashbak/data/users/bucherim/<normalized_user_key>/
 
 Current files:
 - profile.json
 - membership.json
 - conversation.jsonl
 - requests.jsonl
-- media/index.jsonl
-- media/ (folder for future downloaded files)
+
+Media storage path:
+- mashbak/data/media/bucherim/<normalized_user_key>/index.jsonl
 
 Global pending list:
-- mashbak/bucherim/data/pending_requests.jsonl
+- mashbak/data/users/bucherim/pending_requests.jsonl
 
 Logged artifacts include:
 - inbound/outbound text
@@ -139,14 +140,18 @@ Planned expansion points:
 ## Operations
 
 To add/remove allowlisted users:
-1. Edit mashbak/agent/bucherim_config.json
+1. Edit mashbak/assistants/bucherim/config.json
 2. Update allowlist with E.164 numbers
 3. Save file (backend reloads config on request)
 
 To review join requests:
-- inspect mashbak/bucherim/data/pending_requests.jsonl
+- inspect mashbak/data/users/bucherim/pending_requests.jsonl
 - inspect per-user requests.jsonl files
 
 To review a specific user:
-- open user folder under mashbak/bucherim/data/users/
-- inspect profile, membership, conversation, and media index files
+- open user folder under mashbak/data/users/bucherim/
+- inspect profile, membership, conversation, and requests files
+
+To approve a pending member:
+- run mashbak/scripts/approve-bucherim-member.ps1 -Phone "+1XXXXXXXXXX"
+- add -ActivateNow to mark approved users immediately active

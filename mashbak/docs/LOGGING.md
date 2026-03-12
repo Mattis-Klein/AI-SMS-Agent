@@ -3,7 +3,7 @@
 ## Backend Log
 
 Path:
-- mashbak/agent/workspace/logs/agent.log
+- mashbak/data/logs/agent.log
 
 Backend writes structured JSON line events for:
 - request lifecycle
@@ -14,7 +14,7 @@ Backend writes structured JSON line events for:
 ## Bridge Log
 
 Path:
-- mashbak/sms-bridge/logs/bridge.log
+- mashbak/data/logs/bridge.log
 
 Bridge logs transport/access-control events and backend forwarding stages.
 
@@ -26,24 +26,24 @@ Backend redaction:
 - agent/redaction.py
 
 Bridge redaction:
-- sms-bridge/redaction.js
+- sms_bridge/redaction.js
 
 ## Quick Checks
 
 Tail backend log:
 
 ```powershell
-Get-Content mashbak/agent/workspace/logs/agent.log -Tail 50
+Get-Content mashbak/data/logs/agent.log -Tail 50
 ```
 
 Tail bridge log:
 
 ```powershell
-Get-Content mashbak/sms-bridge/logs/bridge.log -Tail 50
+Get-Content mashbak/data/logs/bridge.log -Tail 50
 ```
 
 Search for accidental secret leak marker:
 
 ```powershell
-Select-String -Path mashbak/agent/workspace/logs/agent.log -Pattern "hunter2" -SimpleMatch
+Select-String -Path mashbak/data/logs/agent.log -Pattern "hunter2" -SimpleMatch
 ```

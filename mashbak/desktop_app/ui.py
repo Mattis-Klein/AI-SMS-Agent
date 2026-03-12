@@ -50,8 +50,9 @@ class DesktopControlApp:
         self.pending_start_index: str | None = None
 
         workspace = Path(runtime_summary["workspace"])
-        self.agent_log_file = workspace / "logs" / "agent.log"
-        self.bridge_log_file = workspace.parent.parent / "sms-bridge" / "logs" / "bridge.log"
+        platform_root = workspace.parent.parent
+        self.agent_log_file = platform_root / "data" / "logs" / "agent.log"
+        self.bridge_log_file = platform_root / "data" / "logs" / "bridge.log"
 
         self._apply_styles()
         self._build_ui()

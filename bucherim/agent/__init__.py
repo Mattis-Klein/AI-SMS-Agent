@@ -1,1 +1,0 @@
-"""Bucherim assistant package scaffold."""

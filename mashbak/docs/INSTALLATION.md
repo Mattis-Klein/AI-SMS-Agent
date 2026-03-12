@@ -17,7 +17,7 @@ python -m pip install -r agent/requirements.txt
 ## 2. Node Dependencies
 
 ```powershell
-cd mashbak/sms-bridge
+cd mashbak/sms_bridge
 npm install
 ```
 
@@ -46,7 +46,7 @@ python -m uvicorn agent.agent:app --app-dir mashbak --host 127.0.0.1 --port 8787
 Bridge:
 
 ```powershell
-cd mashbak/sms-bridge
+cd mashbak/sms_bridge
 npm start
 ```
 

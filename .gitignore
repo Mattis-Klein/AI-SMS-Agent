@@ -7,7 +7,7 @@
 !.env.master.example
 !mashbak/.env.master.example
 !mashbak/agent/.env.example
-!mashbak/sms-bridge/.env.example
+!mashbak/sms_bridge/.env.example
 *.secrets
 
 # Local configuration overrides
@@ -52,14 +52,18 @@ yarn-error.log*
 logs/*
 
 # Mashbak runtime data
-mashbak/agent/workspace/inbox/*
-mashbak/agent/workspace/outbox/*
-mashbak/agent/workspace/logs/*
-!mashbak/agent/workspace/inbox/.gitkeep
-!mashbak/agent/workspace/outbox/.gitkeep
-!mashbak/agent/workspace/logs/.gitkeep
-mashbak/sms-bridge/logs/*
-!mashbak/sms-bridge/logs/.gitkeep
+mashbak/data/workspace/inbox/*
+mashbak/data/workspace/outbox/*
+mashbak/data/workspace/logs/*
+!mashbak/data/workspace/inbox/.gitkeep
+!mashbak/data/workspace/outbox/.gitkeep
+!mashbak/data/workspace/logs/.gitkeep
+mashbak/data/users/bucherim/*
+!mashbak/data/users/.gitkeep
+mashbak/data/logs/*
+!mashbak/data/logs/.gitkeep
+mashbak/data/media/*
+!mashbak/data/media/.gitkeep
 
 # mashbak/workspace/ at project root is unused runtime artifact; ignore entirely
 mashbak/workspace/

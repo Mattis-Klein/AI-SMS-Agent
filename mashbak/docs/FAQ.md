@@ -6,7 +6,7 @@ x-api-key must match AGENT_API_KEY from mashbak/.env.master.
 
 ## Why did config update succeed but SMS behavior did not change?
 
-Bridge transport and sender access-control values are startup-loaded. Restart sms-bridge after those changes.
+Bridge transport and sender access-control values are startup-loaded. Restart sms_bridge after those changes.
 
 ## Why does desktop run without SMS?
 

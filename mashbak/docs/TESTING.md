@@ -13,7 +13,7 @@ python -m pytest -q
 Bridge:
 
 ```powershell
-cd sms-bridge
+cd sms_bridge
 npm test
 ```
 
@@ -78,7 +78,7 @@ Expected:
 Start bridge:
 
 ```powershell
-cd sms-bridge
+cd sms_bridge
 npm start
 ```
 
@@ -102,8 +102,8 @@ Expected health fields include:
 After sending a message with a secret-like assignment, verify logs do not contain raw values:
 
 ```powershell
-Select-String -Path agent/workspace/logs/agent.log -Pattern "hunter2" -SimpleMatch
-Select-String -Path sms-bridge/logs/bridge.log -Pattern "hunter2" -SimpleMatch
+Select-String -Path data/logs/agent.log -Pattern "hunter2" -SimpleMatch
+Select-String -Path data/logs/bridge.log -Pattern "hunter2" -SimpleMatch
 ```
 
 Expected: no raw secret hits.

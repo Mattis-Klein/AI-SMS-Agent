@@ -9,7 +9,7 @@ if __package__:
     from .config import Config
     from .config_loader import ConfigLoader
     from .assistant_core import AssistantCore, AssistantMetadata
-    from .bucherim import BucherimService, BucherimSmsRequest
+    from assistants.bucherim.service import BucherimService, BucherimSmsRequest
     from .logger import StructuredLogger
     from .tools import ToolRegistry
     from .tools.builtin import ALL_BUILTIN_TOOLS
@@ -21,7 +21,7 @@ else:
     from config import Config
     from config_loader import ConfigLoader
     from assistant_core import AssistantCore, AssistantMetadata
-    from bucherim import BucherimService, BucherimSmsRequest
+    from assistants.bucherim.service import BucherimService, BucherimSmsRequest
     from logger import StructuredLogger
     from tools import ToolRegistry
     from tools.builtin import ALL_BUILTIN_TOOLS
@@ -43,9 +43,12 @@ class AgentRuntime:
         # Always refresh config from master file on runtime init.
         ConfigLoader.load(reload=True)
 
-        self.workspace = Path(
-            ConfigLoader.get("AGENT_WORKSPACE", str(self.base_dir / "workspace"))
-        ).resolve()
+        workspace_override = (ConfigLoader.get("AGENT_WORKSPACE", "") or "").strip()
+        if workspace_override:
+            self.workspace = Path(workspace_override).resolve()
+        else:
+            self.workspace = (self.base_dir / "data" / "workspace").resolve()
+        self.logs_dir = (self.base_dir / "data" / "logs").resolve()
         self.api_key = (ConfigLoader.get("AGENT_API_KEY", "") or "").strip()
         self.openai_api_key = (ConfigLoader.get("OPENAI_API_KEY", "") or "").strip()
         self.openai_model = (ConfigLoader.get("OPENAI_MODEL", "gpt-4.1-mini") or "gpt-4.1-mini").strip()
@@ -61,11 +64,12 @@ class AgentRuntime:
             self.workspace / "inbox",
             self.workspace / "outbox",
             self.workspace / "logs",
+            self.logs_dir,
         ):
             required_dir.mkdir(parents=True, exist_ok=True)
 
-        self.config = Config(self.base_dir / "config.json")
-        self.logger = StructuredLogger(self.workspace / "logs" / "agent.log")
+        self.config = Config(self.base_dir / "agent" / "config.json")
+        self.logger = StructuredLogger(self.logs_dir / "agent.log")
 
         self.registry = ToolRegistry()
         for tool in ALL_BUILTIN_TOOLS:
@@ -439,5 +443,5 @@ class AgentRuntime:
 
 def create_runtime(base_dir: Optional[Path] = None) -> AgentRuntime:
     """Factory function for creating shared agent runtime."""
-    root = base_dir or Path(__file__).resolve().parent
+    root = base_dir or Path(__file__).resolve().parent.parent
     return AgentRuntime(root)

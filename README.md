@@ -1,77 +1,44 @@
 # AI-SMS-Agent
 
-This repository hosts multiple assistant applications.
+This repository is organized around one canonical platform root: mashbak/.
 
-## Assistants
+## Platform Overview
 
-- Mashbak: current production assistant in [mashbak/README.md](mashbak/README.md)
-- Bucherim: SMS-first assistant subsystem now implemented inside `mashbak/` (see [mashbak/docs/BUCHERIM.md](mashbak/docs/BUCHERIM.md))
+- Shared backend reasoning engine: mashbak/agent
+- Assistant-specific modules: mashbak/assistants
+- SMS transport-only bridge: mashbak/sms_bridge
+- Desktop UI client: mashbak/desktop_app
+- Runtime data root: mashbak/data
 
-## Repository Layout
+## Current Assistants
 
-```text
-AI-SMS-Agent/
-├── mashbak/
-│   ├── agent/
-│   ├── desktop_app/
-│   ├── sms-bridge/
-│   ├── scripts/
-│   ├── docs/
-│   └── workspace/
-└── bucherim/
-    ├── agent/
-    ├── sms-bridge/
-    ├── config/
-    └── workspace/
-```
+- Mashbak profile: mashbak/assistants/mashbak
+- Bucherim SMS assistant: mashbak/assistants/bucherim
 
-## Current Status
-
-- Mashbak is the active app and retains the current desktop, agent, and SMS functionality.
-- Bucherim membership-gated SMS flow is live in Mashbak runtime and bridge routing.
-- Repo-level docs are now an index; assistant-specific operational details live inside each assistant folder.
-
-## Run Mashbak
+## Quick Run
 
 ```powershell
-# Agent
-cd mashbak/agent
-python -m uvicorn agent:app --host 127.0.0.1 --port 8787
+# Backend
+python -m uvicorn agent.agent:app --app-dir mashbak --host 127.0.0.1 --port 8787
 
 # SMS bridge
-cd mashbak/sms-bridge
+cd mashbak/sms_bridge
 npm start
 
 # Desktop UI
-python mashbak/desktop_app/main.py
+cd ..
+python desktop_app/main.py
 ```
 
-Build the Windows executable with:
+## Runtime Data Paths
 
-```powershell
-.\mashbak\scripts\build-app.ps1 -Clean
-```
+- Workspace data: mashbak/data/workspace/
+- User records: mashbak/data/users/
+- Logs: mashbak/data/logs/
+- Media: mashbak/data/media/
 
-Output: `mashbak/dist/Mashbak.exe`
+## Docs
 
-## Routing Direction
-
-Incoming SMS routing now supports explicit assistant destination routing:
-
-```text
-incoming SMS
-  -> mashbak/sms-bridge transport
-     -> Mashbak sender-access route (existing number behavior)
-     -> Bucherim route when inbound To is +18772683048
-```
-
-## Documentation
-
-- Root structure guide: [PROJECT-ORGANIZATION.md](PROJECT-ORGANIZATION.md)
-- Mashbak overview: [mashbak/README.md](mashbak/README.md)
-- Mashbak docs index: [mashbak/docs/INDEX.md](mashbak/docs/INDEX.md)
-
-## Notes
-
-- Real `.env` files are local-only and must remain untracked.
-- Mashbak runtime data lives under `mashbak/agent/workspace/` and `mashbak/sms-bridge/logs/`.
+- Organization guide: PROJECT-ORGANIZATION.md
+- Platform README: mashbak/README.md
+- Docs index: mashbak/docs/INDEX.md

@@ -39,7 +39,7 @@ Expected: `HTTP/1.1 200 OK`
 Open:
 
 ```text
-sms-bridge/logs/bridge.log
+data/logs/bridge.log
 ```
 
 Look for these stages:
@@ -63,7 +63,7 @@ Common outcomes:
 Open:
 
 ```text
-agent/workspace/logs/agent.log
+data/logs/agent.log
 ```
 
 Match the `requestId` from the bridge log to `request_id` in the agent log.

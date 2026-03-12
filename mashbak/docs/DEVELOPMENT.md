@@ -6,7 +6,7 @@ Do not violate these boundaries:
 - desktop_app stays UI-only
 - agent stays the single reasoning engine
 - tools execute through interpreter + dispatcher + registry
-- sms-bridge stays transport and access-control only
+- sms_bridge stays transport and access-control only
 
 ## Local Dev Loop
 
@@ -14,7 +14,7 @@ From mashbak root:
 
 ```powershell
 python -m pytest -q
-cd sms-bridge
+cd sms_bridge
 npm test
 ```
 
@@ -33,7 +33,7 @@ python desktop_app/main.py
 Run bridge:
 
 ```powershell
-cd sms-bridge
+cd sms_bridge
 npm start
 ```
 
@@ -54,7 +54,7 @@ npm start
 ## Logging And Redaction
 
 - Use agent/redaction.py for backend trace/log sanitization.
-- Use sms-bridge/redaction.js for bridge sanitization.
+- Use sms_bridge/redaction.js for bridge sanitization.
 - Never add raw secret values to logs or debug surfaces.
 
 ## Compatibility Behavior

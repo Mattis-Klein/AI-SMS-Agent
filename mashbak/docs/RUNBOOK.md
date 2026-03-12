@@ -11,7 +11,7 @@ python -m uvicorn agent.agent:app --app-dir mashbak --host 127.0.0.1 --port 8787
 Bridge:
 
 ```powershell
-cd mashbak/sms-bridge
+cd mashbak/sms_bridge
 npm start
 ```
 
@@ -44,8 +44,8 @@ Invoke-RestMethod -Method Get -Uri http://127.0.0.1:34567/health
 
 1. Verify backend health.
 2. Verify bridge health.
-3. Check agent log at mashbak/agent/workspace/logs/agent.log.
-4. Check bridge log at mashbak/sms-bridge/logs/bridge.log.
+3. Check agent log at mashbak/data/logs/agent.log.
+4. Check bridge log at mashbak/data/logs/bridge.log.
 5. Confirm .env.master values and restart requirements.
 
 ## Restart Rules

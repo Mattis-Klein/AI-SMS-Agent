@@ -118,7 +118,7 @@ TWILIO_AUTH_TOKEN=
 **Verify it's working:**
 ```powershell
 # Check bridge logs for "signature_validated"
-Get-Content sms-bridge\logs\bridge.log | Select-String "signature_validated"
+Get-Content data\logs\bridge.log | Select-String "signature_validated"
 ```
 
 ---
@@ -205,14 +205,14 @@ New-NetFirewallRule -DisplayName "Agent - Localhost Only" `
 
 ### Current State
 
-Agent only accesses `agent/workspace/`. Outside paths are rejected.
+Agent only accesses `data/workspace/`. Outside paths are rejected.
 
 ### Hardening: Restrict Workspace Access
 
 Make workspace read-only to others:
 
 ```powershell
-$path = "C:\AI-SMS-Agent\agent\workspace"
+$path = "C:\AI-SMS-Agent\mashbak\data\workspace"
 
 # Remove inherited permissions
 $acl = Get-Acl $path
@@ -237,7 +237,7 @@ Set-Acl -Path $path -AclObject $acl
 
 ```powershell
 # Don't put passwords or keys in workspace!
-Get-ChildItem "C:\AI-SMS-Agent\agent\workspace\" -Recurse |
+Get-ChildItem "C:\AI-SMS-Agent\mashbak\data\workspace\" -Recurse |
   Select-String "password|apikey|secret|token" -List
 
 # Better: Use separate "safe" folder for agent data
@@ -253,7 +253,7 @@ For highly sensitive files:
 ```powershell
 # Enable BitLocker (Windows Pro/Enterprise/Education)
 # Or use folder-level encryption:
-cipher /e /s:"C:\AI-SMS-Agent\agent\workspace"
+cipher /e /s:"C:\AI-SMS-Agent\mashbak\data\workspace"
 ```
 
 ---
@@ -270,13 +270,13 @@ Make logs readable only by you:
 
 ```powershell
 # Secure bridge logs
-$path = "C:\AI-SMS-Agent\sms-bridge\logs"
+$path = "C:\AI-SMS-Agent\mashbak\data\logs"
 $acl = Get-Acl $path
 $acl.SetAccessRuleProtection($true, $false)
 Set-Acl $path $acl
 
 # Secure agent logs
-$path = "C:\AI-SMS-Agent\agent\workspace\logs"
+$path = "C:\AI-SMS-Agent\mashbak\data\workspace\logs"
 $acl = Get-Acl $path
 $acl.SetAccessRuleProtection($true, $false)
 Set-Acl $path $acl
@@ -295,7 +295,7 @@ Set a calendar reminder:
 
 ```powershell
 # Check for suspicious activity
-Get-Content sms-bridge\logs\bridge.log | 
+Get-Content data\logs\bridge.log | 
   ConvertFrom-Json | 
   Where-Object event_type -match "error|rejected|failed"
 ```
@@ -308,15 +308,15 @@ Prevent logs from growing indefinitely:
 
 ```powershell
 # Archive logs older than 30 days
-$archiveDir = "C:\AI-SMS-Agent\sms-bridge\logs\archive"
+$archiveDir = "C:\AI-SMS-Agent\mashbak\data\logs\archive"
 mkdir $archiveDir -ErrorAction SilentlyContinue
 
-Get-ChildItem "C:\AI-SMS-Agent\sms-bridge\logs\*.log" |
+Get-ChildItem "C:\AI-SMS-Agent\mashbak\data\logs\*.log" |
   Where-Object {$_.LastWriteTime -lt (Get-Date).AddDays(-30)} |
   Move-Item -Destination $archiveDir
 
 # Clear current logs
-Clear-Content "C:\AI-SMS-Agent\sms-bridge\logs\bridge.log"
+Clear-Content "C:\AI-SMS-Agent\mashbak\data\logs\bridge.log"
 ```
 
 ---
@@ -350,7 +350,7 @@ Not yet implemented in bridge, but you can:
 ```powershell
 # Manually limit: Don't send more than 10 messages/day
 # Monitor bridge logs for "ai_request" entries
-Get-Content sms-bridge\logs\bridge.log | 
+Get-Content data\logs\bridge.log | 
   Select-String "ai_request" | 
   Measure-Object
 ```
@@ -362,7 +362,7 @@ Get-Content sms-bridge\logs\bridge.log |
 AI logs what tools it calls:
 
 ```powershell
-Get-Content sms-bridge\logs\bridge.log | 
+Get-Content data\logs\bridge.log | 
   ConvertFrom-Json | 
   Where-Object event_type -eq "ai_response"
 ```
@@ -554,7 +554,7 @@ curl.exe -X POST http://127.0.0.1:8787/read `
 ```powershell
 # Send SMS from non-allowlisted number
 # Should see "sender_not_allowed" in bridge logs
-Get-Content sms-bridge\logs\bridge.log | Select-String "sender_not_allowed"
+Get-Content data\logs\bridge.log | Select-String "sender_not_allowed"
 ```
 
 ---
@@ -565,7 +565,7 @@ Get-Content sms-bridge\logs\bridge.log | Select-String "sender_not_allowed"
 # This is hard to test without modifying Twilio request
 # But you can verify validation is enabled by checking logs
 
-Get-Content sms-bridge\logs\bridge.log | Select-String "signature_validated"
+Get-Content data\logs\bridge.log | Select-String "signature_validated"
 ```
 
 ---

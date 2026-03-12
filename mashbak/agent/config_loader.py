@@ -26,9 +26,9 @@ class ConfigLoader:
         if cls._master_env_path:
             return cls._master_env_path
         
-        # Start from this file's directory, go up to agent, then up to mashbak
-        agent_dir = Path(__file__).parent.parent  # agent/
-        master_path = agent_dir.parent / ".env.master"  # mashbak/.env.master
+        # Start from this file's directory and resolve mashbak platform root.
+        platform_root = Path(__file__).resolve().parent.parent  # mashbak/
+        master_path = platform_root / ".env.master"  # mashbak/.env.master
         
         return master_path
     

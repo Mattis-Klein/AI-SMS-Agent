@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $agentDir = Join-Path $root "agent"
-$bridgeDir = Join-Path $root "sms-bridge"
+$bridgeDir = Join-Path $root "sms_bridge"
 
 $cloudflaredCmd = "cloudflared"
 $cloudflaredArgs = "tunnel --url http://localhost:34567"

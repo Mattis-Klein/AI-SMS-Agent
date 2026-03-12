@@ -64,7 +64,7 @@ Compatibility aliases accepted by validation and checks:
 ## Bucherim Backend Variables
 
 Bucherim membership and behavior are configured via:
-- mashbak/agent/bucherim_config.json
+- mashbak/assistants/bucherim/config.json
 
 Main keys:
 - assistant_number
@@ -111,7 +111,7 @@ Bridge restart required after change:
 - SMS_PHONE_NORMALIZATION_DIGITS
 
 Backend reload on request (no restart required):
-- mashbak/agent/bucherim_config.json allowlist and response text changes
+- mashbak/assistants/bucherim/config.json allowlist and response text changes
 
 Coordinated restart/re-auth required:
 - AGENT_API_KEY
@@ -141,7 +141,7 @@ notepad .env.master
 ## Troubleshooting
 
 - Missing configuration error: set reported fields in .env.master
-- Config changed but bridge behavior unchanged: restart sms-bridge
+- Config changed but bridge behavior unchanged: restart sms_bridge
 - Config changed but desktop/backend unchanged: verify value, then retry request (backend reloads on execution)
 - Auth failures after key change: update callers with new AGENT_API_KEY
 

@@ -41,7 +41,7 @@ Each command in `config.json` has this structure:
 
 Commands can use these placeholders:
 
-- `{workspace}` - Replaced with `agent/workspace` absolute path
+- `{workspace}` - Replaced with `data/workspace` absolute path
 - `{path}` - Replaced with user-provided path (validated if `validate_path: true`)
 
 **Example:**
@@ -64,7 +64,7 @@ When user sends `list C:\Projects`, the system:
 **Rules:**
 1. Paths are always validated before use
 2. Only these locations are allowed:
-   - Agent workspace (`agent/workspace/`)
+   - Agent workspace (`data/workspace/`)
    - Directories listed in `allowed_directories`
 3. Directory traversal is blocked (`.`, `..`, etc.)
 4. Symbolic links are resolved before validation
@@ -156,8 +156,8 @@ Every action is logged in JSON format for easy parsing and auditing.
 
 ### Log Locations
 
-- **Agent logs:** `agent/workspace/logs/agent.log`
-- **Bridge logs:** `sms-bridge/logs/bridge.log`
+- **Agent logs:** `data/logs/agent.log`
+- **Bridge logs:** `data/logs/bridge.log`
 
 ### Log Entry Structure
 
@@ -223,23 +223,23 @@ Each log entry is a single JSON object per line:
 **View recent activity:**
 ```powershell
 # Last 10 entries
-Get-Content agent\workspace\logs\agent.log -Tail 10 | ConvertFrom-Json | Format-Table
+Get-Content data\logs\agent.log -Tail 10 | ConvertFrom-Json | Format-Table
 ```
 
 **Find blocked commands:**
 ```powershell
-Get-Content agent\workspace\logs\agent.log | ConvertFrom-Json | Where-Object { $_.status -eq "blocked" }
+Get-Content data\logs\agent.log | ConvertFrom-Json | Where-Object { $_.status -eq "blocked" }
 ```
 
 **Track a specific request:**
 ```powershell
 $requestId = "550e8400-e29b-41d4-a716-446655440000"
-Get-Content agent\workspace\logs\agent.log | ConvertFrom-Json | Where-Object { $_.request_id -eq $requestId }
+Get-Content data\logs\agent.log | ConvertFrom-Json | Where-Object { $_.request_id -eq $requestId }
 ```
 
 **Count commands by sender:**
 ```powershell
-Get-Content agent\workspace\logs\agent.log | ConvertFrom-Json | Where-Object { $_.sender } | Group-Object sender | Select-Object Count, Name
+Get-Content data\logs\agent.log | ConvertFrom-Json | Where-Object { $_.sender } | Group-Object sender | Select-Object Count, Name
 ```
 
 ### Log Rotation
@@ -352,13 +352,13 @@ Even if one layer fails, others provide protection.
 **Investigation commands:**
 ```powershell
 # Find all blocked attempts
-Get-Content agent\workspace\logs\agent.log | ConvertFrom-Json | Where-Object { $_.status -eq "blocked" } | Format-Table
+Get-Content data\logs\agent.log | ConvertFrom-Json | Where-Object { $_.status -eq "blocked" } | Format-Table
 
 # Find unknown senders
-Get-Content sms-bridge\logs\bridge.log | ConvertFrom-Json | Where-Object { $_.reason -eq "sender_not_allowed" } | Format-Table
+Get-Content data\logs\bridge.log | ConvertFrom-Json | Where-Object { $_.reason -eq "sender_not_allowed" } | Format-Table
 
 # Check recent file operations
-Get-Content agent\workspace\logs\agent.log | ConvertFrom-Json | Where-Object { $_.action -match "read|write" } | Format-Table
+Get-Content data\logs\agent.log | ConvertFrom-Json | Where-Object { $_.action -match "read|write" } | Format-Table
 ```
 
 ## 🔧 Troubleshooting
@@ -367,7 +367,7 @@ Get-Content agent\workspace\logs\agent.log | ConvertFrom-Json | Where-Object { $
 
 **Solution:**
 1. Check if command is in `config.json` whitelist
-2. Check logs for exact error: `Get-Content agent\workspace\logs\agent.log -Tail 20`
+2. Check logs for exact error: `Get-Content data\logs\agent.log -Tail 20`
 3. Verify sender is in `SMS_ACCESS_REQUEST_NUMBERS`
 4. Confirm path is in `allowed_directories` (for path-based commands)
 
@@ -375,7 +375,7 @@ Get-Content agent\workspace\logs\agent.log | ConvertFrom-Json | Where-Object { $
 
 **Solution:**
 1. Implement log rotation for agent logs
-2. Archive old logs: `Move-Item agent\workspace\logs\agent.log agent\workspace\logs\agent.log.old`
+2. Archive old logs: `Move-Item data\logs\agent.log data\logs\agent.log.old`
 3. Reduce logging verbosity (requires code changes)
 
 **Problem:** Suspicious activity in logs

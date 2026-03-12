@@ -22,7 +22,7 @@ This document describes the **baseline security** implemented in the system. For
 
 ### Path Isolation
 
-- **Workspace Restriction:** All file operations limited to `agent/workspace/`
+- **Workspace Restriction:** All file operations limited to `data/workspace/`
   - No directory traversal attacks (e.g., `../../etc/passwd` is blocked)
   - Cannot read/write outside the workspace
 

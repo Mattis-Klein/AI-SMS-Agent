@@ -43,9 +43,9 @@ try {
                 "--hidden-import" "email.parser" `
                 "--add-data" "agent/config.json;agent" `
                 "--add-data" "agent/.env.example;agent" `
-                "--add-data" "agent/workspace/inbox/.gitkeep;agent/workspace/inbox" `
-                "--add-data" "agent/workspace/outbox/.gitkeep;agent/workspace/outbox" `
-                "--add-data" "agent/workspace/logs/.gitkeep;agent/workspace/logs" `
+                "--add-data" "data/workspace/inbox/.gitkeep;data/workspace/inbox" `
+                "--add-data" "data/workspace/outbox/.gitkeep;data/workspace/outbox" `
+                "--add-data" "data/workspace/logs/.gitkeep;data/workspace/logs" `
                 "--onefile" `
                 $entry
         }
@@ -65,9 +65,9 @@ try {
                 "--hidden-import" "email.parser" `
                 "--add-data" "agent/config.json;agent" `
                 "--add-data" "agent/.env.example;agent" `
-                "--add-data" "agent/workspace/inbox/.gitkeep;agent/workspace/inbox" `
-                "--add-data" "agent/workspace/outbox/.gitkeep;agent/workspace/outbox" `
-                "--add-data" "agent/workspace/logs/.gitkeep;agent/workspace/logs" `
+                "--add-data" "data/workspace/inbox/.gitkeep;data/workspace/inbox" `
+                "--add-data" "data/workspace/outbox/.gitkeep;data/workspace/outbox" `
+                "--add-data" "data/workspace/logs/.gitkeep;data/workspace/logs" `
                 $entry
         }
     }

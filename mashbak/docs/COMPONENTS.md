@@ -20,7 +20,7 @@ Desktop responsibilities:
 
 Desktop does not run local reasoning and does not execute backend tools directly.
 
-## SMS Bridge (sms-bridge/)
+## SMS Bridge (sms_bridge/)
 
 Bridge responsibilities:
 - Receive Twilio webhook
