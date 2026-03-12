@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from tkinter import BOTH, END, LEFT, RIGHT, X, Y, BooleanVar, Listbox, StringVar, Text, Tk
+from tkinter import BOTH, END, LEFT, RIGHT, X, Y, BooleanVar, Canvas, Listbox, StringVar, Text, Tk
 from tkinter import ttk
 
 from widgets import add_refresh_button, labeled_scroll_text, make_scrolled_text, set_text
@@ -24,8 +24,12 @@ _GREEN = "#1a7f37"
 _RED = "#b42318"
 _AMBER = "#9a6700"
 _SLATE = "#57606a"
+_YELLOW = "#b98900"
+_UNKNOWN = "#6b7280"
 _BG = "#f6f8fa"
 _CARD = "#ffffff"
+_NAV_BG = "#0f172a"
+_SURFACE = "#eef2f7"
 
 
 class DesktopControlApp:
@@ -64,6 +68,7 @@ class DesktopControlApp:
 
         self.section_frames: dict[str, ttk.Frame] = {}
         self.section_buttons: dict[str, ttk.Button] = {}
+        self.status_cards: dict[str, dict] = {}
 
         self._apply_styles()
         self._build_ui()
@@ -75,35 +80,57 @@ class DesktopControlApp:
     # ------------------------------------------------------------------
 
     def _apply_styles(self) -> None:
+        self.root.configure(background=_BG)
         style = ttk.Style(self.root)
         for theme in ("vista", "clam", "default"):
             if theme in style.theme_names():
                 style.theme_use(theme)
                 break
 
+        style.configure("App.TFrame", background=_BG)
+        style.configure("Surface.TFrame", background=_SURFACE)
+        style.configure("SectionSurface.TFrame", background=_SURFACE)
+        style.configure("Card.TFrame", background=_CARD)
+        style.configure("Card.TLabelframe", background=_CARD, borderwidth=1, relief="solid")
+        style.configure("Card.TLabelframe.Label", background=_CARD, foreground="#111827", font=("Segoe UI", 10, "bold"))
+
         style.configure("Header.TFrame", background="#111827")
         style.configure("Header.TLabel", background="#111827", foreground="#d1d5db", font=("Segoe UI", 10))
-        style.configure("AppTitle.TLabel", background="#111827", foreground="#f9fafb", font=("Segoe UI", 16, "bold"))
+        style.configure("HeaderBadge.TLabel", background="#1f2937", foreground="#dbe2ea", font=("Segoe UI", 9, "bold"), padding=(8, 4))
+        style.configure("AppTitle.TLabel", background="#111827", foreground="#f9fafb", font=("Segoe UI", 17, "bold"))
         style.configure("SubTitle.TLabel", background="#111827", foreground="#9ca3af", font=("Segoe UI", 9))
-        style.configure("Section.TLabel", font=("Segoe UI", 11, "bold"), foreground="#111827")
+        style.configure("Section.TLabel", background=_SURFACE, font=("Segoe UI", 12, "bold"), foreground="#111827")
+        style.configure("Muted.TLabel", background=_SURFACE, foreground=_SLATE, font=("Segoe UI", 9))
+        style.configure("CardTitle.TLabel", background=_CARD, foreground="#111827", font=("Segoe UI", 10, "bold"))
+        style.configure("CardBody.TLabel", background=_CARD, foreground="#374151", font=("Segoe UI", 9))
         style.configure("StatusBar.TLabel", font=("Segoe UI", 8), foreground="#6b7280")
-        style.configure("Nav.TButton", font=("Segoe UI", 10), padding=(10, 8), anchor="w")
-        style.configure("NavActive.TButton", font=("Segoe UI", 10, "bold"), padding=(10, 8), anchor="w")
+        style.configure("StatusDot.TLabel", font=("Segoe UI", 8, "bold"))
+
+        style.configure("NavPane.TFrame", background=_NAV_BG)
+        style.configure("NavTitle.TLabel", background=_NAV_BG, foreground="#e5e7eb", font=("Segoe UI", 11, "bold"))
+        style.configure("NavSub.TLabel", background=_NAV_BG, foreground="#94a3b8", font=("Segoe UI", 9))
+        style.configure("Nav.TButton", font=("Segoe UI", 10), padding=(12, 10), anchor="w")
+        style.map("Nav.TButton", background=[("active", "#1e293b")], foreground=[("active", "#e2e8f0")])
+        style.configure("NavActive.TButton", font=("Segoe UI", 10, "bold"), padding=(12, 10), anchor="w")
+        style.map("NavActive.TButton", background=[("!disabled", "#1d4ed8")], foreground=[("!disabled", "#eff6ff")])
+
+        style.configure("Ops.Treeview", rowheight=24, font=("Segoe UI", 9), background="#ffffff", fieldbackground="#ffffff")
+        style.configure("Ops.Treeview.Heading", font=("Segoe UI", 9, "bold"))
 
     def _build_ui(self) -> None:
         self._build_header()
 
-        shell = ttk.Frame(self.root)
-        shell.pack(fill=BOTH, expand=True, padx=8, pady=(6, 0))
+        shell = ttk.Frame(self.root, style="App.TFrame")
+        shell.pack(fill=BOTH, expand=True, padx=10, pady=(8, 0))
 
-        nav = ttk.Frame(shell, width=230)
+        nav = ttk.Frame(shell, style="NavPane.TFrame", width=250)
         nav.pack(side=LEFT, fill=Y)
         nav.pack_propagate(False)
         self._build_sidebar(nav)
 
-        ttk.Separator(shell, orient="vertical").pack(side=LEFT, fill=Y, padx=8)
+        ttk.Separator(shell, orient="vertical").pack(side=LEFT, fill=Y, padx=10)
 
-        self.content_root = ttk.Frame(shell)
+        self.content_root = ttk.Frame(shell, style="Surface.TFrame")
         self.content_root.pack(side=LEFT, fill=BOTH, expand=True)
 
         self._build_sections(self.content_root)
@@ -112,7 +139,7 @@ class DesktopControlApp:
         self._build_statusbar()
 
     def _build_header(self) -> None:
-        header = ttk.Frame(self.root, style="Header.TFrame", padding=(14, 8))
+        header = ttk.Frame(self.root, style="Header.TFrame", padding=(14, 10))
         header.pack(fill=X)
 
         title_col = ttk.Frame(header, style="Header.TFrame")
@@ -121,9 +148,16 @@ class DesktopControlApp:
         ttk.Label(title_col, text="AI-driven operations console for Mashbak platform", style="SubTitle.TLabel").pack(anchor="w")
 
         self.backend_status_label = ttk.Label(header, text="Starting backend", style="Header.TLabel")
-        self.backend_status_label.pack(side=LEFT, padx=(20, 0))
+        self.backend_status_label.pack(side=LEFT, padx=(22, 0))
 
-        lock_bar = ttk.Frame(header, style="Header.TFrame")
+        badges = ttk.Frame(header, style="Header.TFrame")
+        badges.pack(side=RIGHT, padx=(0, 14))
+        self.agent_badge = ttk.Label(badges, text="Backend: starting", style="HeaderBadge.TLabel")
+        self.agent_badge.pack(side=LEFT, padx=(0, 8))
+        self.bridge_badge = ttk.Label(badges, text="Bridge: checking", style="HeaderBadge.TLabel")
+        self.bridge_badge.pack(side=LEFT, padx=(0, 8))
+
+        lock_bar = ttk.Frame(badges, style="Header.TFrame")
         lock_bar.pack(side=RIGHT)
 
         self.lock_icon_label = ttk.Label(lock_bar, text="LOCK", style="Header.TLabel")
@@ -138,46 +172,45 @@ class DesktopControlApp:
         self.lock_button = ttk.Button(lock_bar, text="Lock", command=self.lock_app, width=7, state="disabled")
         self.lock_button.pack(side=LEFT, padx=(0, 16))
 
-        self.bridge_badge = ttk.Label(header, text="Bridge: checking", style="Header.TLabel")
-        self.bridge_badge.pack(side=RIGHT, padx=(0, 10))
-        self.agent_badge = ttk.Label(header, text="Backend: starting", style="Header.TLabel")
-        self.agent_badge.pack(side=RIGHT, padx=(0, 10))
+        
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Navigation", style="Section.TLabel").pack(anchor="w", padx=8, pady=(10, 6))
+        ttk.Label(parent, text="CONTROL BOARD", style="NavTitle.TLabel").pack(anchor="w", padx=12, pady=(14, 2))
+        ttk.Label(parent, text="Mashbak Operations", style="NavSub.TLabel").pack(anchor="w", padx=12, pady=(0, 10))
 
         sections = [
-            "Dashboard",
-            "Chat / Console",
-            "Assistants",
-            "Communications",
-            "Files & Permissions",
-            "Projects / Files",
-            "Activity / Audit",
+            ("[DB]  Dashboard", "Dashboard"),
+            ("[CC]  Chat / Console", "Chat / Console"),
+            ("[AS]  Assistants", "Assistants"),
+            ("[CM]  Communications", "Communications"),
+            ("[FP]  Files & Permissions", "Files & Permissions"),
+            ("[PF]  Projects / Files", "Projects / Files"),
+            ("[AA]  Activity / Audit", "Activity / Audit"),
         ]
 
-        for section in sections:
+        for label, section in sections:
             btn = ttk.Button(
                 parent,
-                text=section,
+                text=label,
                 style="Nav.TButton",
                 command=lambda s=section: self._show_section(s),
             )
-            btn.pack(fill=X, padx=8, pady=2)
+            btn.pack(fill=X, padx=10, pady=3)
             self.section_buttons[section] = btn
             self.lock_sensitive_buttons.append(btn)
 
-        ttk.Separator(parent, orient="horizontal").pack(fill=X, padx=8, pady=10)
+        ttk.Separator(parent, orient="horizontal").pack(fill=X, padx=10, pady=12)
 
-        ttk.Label(parent, text="Quick Commands", style="Section.TLabel").pack(anchor="w", padx=8, pady=(0, 4))
+        quick_panel = ttk.LabelFrame(parent, text="Quick Commands", style="Card.TLabelframe")
+        quick_panel.pack(fill=X, padx=10, pady=(0, 10))
         for label, message in [
             ("System Info", "system info"),
             ("CPU Usage", "How busy is my computer right now?"),
             ("Recent Emails", "Do I have any new emails?"),
             ("Current Time", "what time is it"),
         ]:
-            btn = ttk.Button(parent, text=label, command=lambda m=message: self._send_quick_command(m))
-            btn.pack(fill=X, padx=8, pady=2)
+            btn = ttk.Button(quick_panel, text=label, command=lambda m=message: self._send_quick_command(m), width=24)
+            btn.pack(fill=X, padx=8, pady=3)
             self.quick_buttons.append(btn)
 
     def _build_sections(self, parent: ttk.Frame) -> None:
@@ -190,7 +223,7 @@ class DesktopControlApp:
         self.section_frames["Activity / Audit"] = self._build_activity_section(parent)
 
     def _new_section_frame(self, parent: ttk.Frame) -> ttk.Frame:
-        frame = ttk.Frame(parent)
+        frame = ttk.Frame(parent, style="SectionSurface.TFrame", padding=(12, 10))
         frame.pack(fill=BOTH, expand=True)
         return frame
 
@@ -220,60 +253,122 @@ class DesktopControlApp:
     def _build_dashboard_section(self, parent: ttk.Frame) -> ttk.Frame:
         frame = self._new_section_frame(parent)
 
-        head = ttk.Frame(frame)
-        head.pack(fill=X, pady=(2, 8))
+        head = ttk.Frame(frame, style="SectionSurface.TFrame")
+        head.pack(fill=X, pady=(2, 10))
         ttk.Label(head, text="Dashboard", style="Section.TLabel").pack(side=LEFT)
         self.dashboard_refresh_btn = add_refresh_button(head, self.refresh_status, label="Refresh Dashboard")
         self.lock_sensitive_buttons.append(self.dashboard_refresh_btn)
 
-        cards = ttk.Frame(frame)
-        cards.pack(fill=X)
+        cards = ttk.Frame(frame, style="SectionSurface.TFrame")
+        cards.pack(fill=X, pady=(0, 12))
 
-        self.backend_card = ttk.LabelFrame(cards, text="Backend")
-        self.backend_card.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
-        self.backend_card_value = ttk.Label(self.backend_card, text="Unknown", foreground=_SLATE)
-        self.backend_card_value.pack(anchor="w", padx=8, pady=8)
+        self._create_status_card(cards, key="backend", title="Backend", subtitle="Connection status", icon="[BE]", padx=(0, 6))
+        self._create_status_card(cards, key="bridge", title="Bridge", subtitle="SMS transport status", icon="[BR]", padx=6)
+        self._create_status_card(cards, key="email", title="Email", subtitle="Configuration health", icon="[EM]", padx=6)
+        self._create_status_card(cards, key="assistant", title="Active Assistant", subtitle="Current primary assistant", icon="[AS]", padx=(6, 0))
 
-        self.bridge_card = ttk.LabelFrame(cards, text="Bridge")
-        self.bridge_card.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
-        self.bridge_card_value = ttk.Label(self.bridge_card, text="Unknown", foreground=_SLATE)
-        self.bridge_card_value.pack(anchor="w", padx=8, pady=8)
-
-        self.email_card = ttk.LabelFrame(cards, text="Email")
-        self.email_card.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
-        self.email_card_value = ttk.Label(self.email_card, text="Unknown", foreground=_SLATE)
-        self.email_card_value.pack(anchor="w", padx=8, pady=8)
-
-        self.assistant_card = ttk.LabelFrame(cards, text="Active Assistant")
-        self.assistant_card.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
-        self.assistant_card_value = ttk.Label(self.assistant_card, text="Mashbak", foreground=_SLATE)
-        self.assistant_card_value.pack(anchor="w", padx=8, pady=8)
-
-        lower = ttk.Frame(frame)
+        lower = ttk.Frame(frame, style="SectionSurface.TFrame")
         lower.pack(fill=BOTH, expand=True, pady=(10, 0))
 
-        recent_actions = ttk.LabelFrame(lower, text="Recent Actions")
+        recent_actions = ttk.LabelFrame(lower, text="Recent Actions", style="Card.TLabelframe")
         recent_actions.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
-        self.dashboard_actions_text = labeled_scroll_text(recent_actions, height=12, font=("Consolas", 9), wrap="none")
+        self.dashboard_actions_tree = ttk.Treeview(
+            recent_actions,
+            columns=("timestamp", "assistant", "action", "result", "status"),
+            show="headings",
+            style="Ops.Treeview",
+            height=11,
+        )
+        for col, width in [
+            ("timestamp", 130),
+            ("assistant", 100),
+            ("action", 170),
+            ("result", 110),
+            ("status", 90),
+        ]:
+            self.dashboard_actions_tree.heading(col, text=col.title())
+            self.dashboard_actions_tree.column(col, width=width, anchor="w")
+        self.dashboard_actions_tree.tag_configure("odd", background="#f8fafc")
+        self.dashboard_actions_tree.tag_configure("even", background="#ffffff")
+        self.dashboard_actions_tree.pack(fill=BOTH, expand=True, padx=8, pady=8)
 
-        recent_failures = ttk.LabelFrame(lower, text="Recent Failures")
+        recent_failures = ttk.LabelFrame(lower, text="Recent Failures", style="Card.TLabelframe")
         recent_failures.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
-        self.dashboard_failures_text = labeled_scroll_text(recent_failures, height=12, font=("Consolas", 9), wrap="none")
+        self.dashboard_failures_tree = ttk.Treeview(
+            recent_failures,
+            columns=("timestamp", "assistant", "action", "result", "status"),
+            show="headings",
+            style="Ops.Treeview",
+            height=11,
+        )
+        for col, width in [
+            ("timestamp", 130),
+            ("assistant", 100),
+            ("action", 160),
+            ("result", 120),
+            ("status", 90),
+        ]:
+            self.dashboard_failures_tree.heading(col, text=col.title())
+            self.dashboard_failures_tree.column(col, width=width, anchor="w")
+        self.dashboard_failures_tree.tag_configure("odd", background="#fff7ed")
+        self.dashboard_failures_tree.tag_configure("even", background="#ffffff")
+        self.dashboard_failures_tree.pack(fill=BOTH, expand=True, padx=8, pady=8)
 
-        quick_actions = ttk.LabelFrame(lower, text="Quick Actions")
+        quick_actions = ttk.LabelFrame(lower, text="Quick Actions", style="Card.TLabelframe")
         quick_actions.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
         qa = ttk.Frame(quick_actions)
-        qa.pack(fill=BOTH, expand=True, padx=8, pady=8)
+        qa.pack(fill=BOTH, expand=True, padx=10, pady=10)
         for label, msg in [
             ("Check System", "system info"),
             ("Check Emails", "list recent emails"),
             ("Show Processes", "show running processes"),
         ]:
-            btn = ttk.Button(qa, text=label, command=lambda m=msg: self._send_quick_command(m))
-            btn.pack(fill=X, pady=2)
+            btn = ttk.Button(qa, text=label, command=lambda m=msg: self._send_quick_command(m), width=22)
+            btn.pack(fill=X, pady=4)
             self.quick_buttons.append(btn)
 
         return frame
+
+    def _create_status_card(self, parent: ttk.Frame, *, key: str, title: str, subtitle: str, icon: str, padx=(0, 0)) -> None:
+        card = ttk.Frame(parent, style="Card.TFrame", padding=(10, 10))
+        card.pack(side=LEFT, fill=BOTH, expand=True, padx=padx)
+
+        top = ttk.Frame(card, style="Card.TFrame")
+        top.pack(fill=X)
+        ttk.Label(top, text=f"{icon}  {title}", style="CardTitle.TLabel").pack(side=LEFT)
+
+        indicator = Canvas(top, width=10, height=10, highlightthickness=0, bd=0, bg=_CARD)
+        indicator.pack(side=RIGHT)
+        dot_id = indicator.create_oval(1, 1, 9, 9, fill=_UNKNOWN, outline=_UNKNOWN)
+
+        subtitle_label = ttk.Label(card, text=subtitle, style="CardBody.TLabel")
+        subtitle_label.pack(anchor="w", pady=(6, 0))
+        status_label = ttk.Label(card, text="Unknown", style="CardBody.TLabel")
+        status_label.pack(anchor="w", pady=(4, 0))
+
+        self.status_cards[key] = {
+            "indicator": indicator,
+            "dot": dot_id,
+            "status": status_label,
+            "subtitle": subtitle_label,
+        }
+
+    def _set_status_card(self, key: str, status: str, detail: str) -> None:
+        card = self.status_cards.get(key)
+        if not card:
+            return
+        state = (status or "unknown").lower()
+        if state in {"healthy", "connected", "configured", "active", "success"}:
+            color = _GREEN
+        elif state in {"warning", "warn", "degraded", "not configured"}:
+            color = _YELLOW
+        elif state in {"error", "failed", "disconnected", "failure", "blocked"}:
+            color = _RED
+        else:
+            color = _UNKNOWN
+        canvas: Canvas = card["indicator"]
+        canvas.itemconfigure(card["dot"], fill=color, outline=color)
+        card["status"].configure(text=detail)
 
     def _build_chat_section(self, parent: ttk.Frame) -> ttk.Frame:
         frame = self._new_section_frame(parent)
@@ -554,7 +649,7 @@ class DesktopControlApp:
         self.lock_sensitive_buttons.append(self.refresh_activity_button)
 
         columns = ("timestamp", "assistant", "action", "tool", "state", "target")
-        self.activity_tree = ttk.Treeview(frame, columns=columns, show="headings", height=18)
+        self.activity_tree = ttk.Treeview(frame, columns=columns, show="headings", height=18, style="Ops.Treeview")
         for col, width in [
             ("timestamp", 140),
             ("assistant", 120),
@@ -565,6 +660,8 @@ class DesktopControlApp:
         ]:
             self.activity_tree.heading(col, text=col.title())
             self.activity_tree.column(col, width=width, anchor="w")
+        self.activity_tree.tag_configure("odd", background="#f8fafc")
+        self.activity_tree.tag_configure("even", background="#ffffff")
         self.activity_tree.pack(fill=BOTH, expand=True)
 
         self.activity_detail = labeled_scroll_text(frame, height=7, font=("Consolas", 9), wrap="word")
@@ -818,17 +915,20 @@ class DesktopControlApp:
         self._set_service_badge(self.agent_badge, "Backend", agent_status)
         self._set_service_badge(self.bridge_badge, "Bridge", bridge_status)
 
-        self.backend_card_value.configure(
-            text=("Connected" if agent_status["running"] else "Disconnected") + f"\n{agent_status['detail'][:120]}",
-            foreground=(_GREEN if agent_status["running"] else _RED),
+        self._set_status_card(
+            "backend",
+            "connected" if agent_status["running"] else "error",
+            ("Connected" if agent_status["running"] else "Disconnected") + f" | {agent_status['detail'][:80]}",
         )
-        self.bridge_card_value.configure(
-            text=("Connected" if bridge_status["running"] else "Disconnected") + f"\n{bridge_status['detail'][:120]}",
-            foreground=(_GREEN if bridge_status["running"] else _RED),
+        self._set_status_card(
+            "bridge",
+            "connected" if bridge_status["running"] else "error",
+            ("Connected" if bridge_status["running"] else "Disconnected") + f" | {bridge_status['detail'][:80]}",
         )
-        self.email_card_value.configure(
-            text=("Configured" if summary.get("email_configured") else "Not configured"),
-            foreground=(_GREEN if summary.get("email_configured") else _AMBER),
+        self._set_status_card(
+            "email",
+            "configured" if summary.get("email_configured") else "warning",
+            "Configured" if summary.get("email_configured") else "Not configured",
         )
 
         if agent_status["running"]:
@@ -852,31 +952,49 @@ class DesktopControlApp:
         bridge = overview.get("bridge") or {}
         email = overview.get("email") or {}
 
-        self.assistant_card_value.configure(text=(overview.get("active_assistant") or "mashbak").title(), foreground=_SLATE)
-        self.backend_card_value.configure(
-            text=("Connected" if backend.get("connected") else "Disconnected") + f"\nModel: {backend.get('model')}",
-            foreground=(_GREEN if backend.get("connected") else _RED),
+        self._set_status_card(
+            "assistant",
+            "active",
+            (overview.get("active_assistant") or "mashbak").title(),
         )
-        self.bridge_card_value.configure(
-            text=("Connected" if bridge.get("connected") else "Disconnected"),
-            foreground=(_GREEN if bridge.get("connected") else _RED),
+        self._set_status_card(
+            "backend",
+            "connected" if backend.get("connected") else "error",
+            ("Connected" if backend.get("connected") else "Disconnected") + f" | model {backend.get('model')}",
         )
-        self.email_card_value.configure(
-            text=("Configured" if email.get("configured") else "Not configured"),
-            foreground=(_GREEN if email.get("configured") else _AMBER),
+        self._set_status_card(
+            "bridge",
+            "connected" if bridge.get("connected") else "error",
+            "Connected" if bridge.get("connected") else "Disconnected",
+        )
+        self._set_status_card(
+            "email",
+            "configured" if email.get("configured") else "warning",
+            "Configured" if email.get("configured") else "Not configured",
         )
 
-        action_lines = []
-        for row in overview.get("recent_actions") or []:
-            action_lines.append(
-                f"{row.get('timestamp')} | {row.get('selected_tool')} | {row.get('state')} | {row.get('target') or '-'}"
-            )
-        set_text(self.dashboard_actions_text, "\n".join(action_lines) if action_lines else "No recent actions.")
+        for item in self.dashboard_actions_tree.get_children():
+            self.dashboard_actions_tree.delete(item)
+        for idx, row in enumerate(overview.get("recent_actions") or []):
+            assistant = row.get("assistant") or "desktop"
+            action = row.get("requested_action") or row.get("selected_tool") or "-"
+            result = row.get("result") or "-"
+            status = row.get("state") or "-"
+            values = (row.get("timestamp") or "", assistant, action, result, status)
+            tag = "even" if idx % 2 == 0 else "odd"
+            self.dashboard_actions_tree.insert("", END, values=values, tags=(tag,))
 
-        failure_lines = []
-        for row in overview.get("recent_failures") or []:
-            failure_lines.append(f"{row.get('timestamp')} | {row.get('tool') or '-'} | {row.get('error') or '-'}")
-        set_text(self.dashboard_failures_text, "\n".join(failure_lines) if failure_lines else "No recent failures.")
+        for item in self.dashboard_failures_tree.get_children():
+            self.dashboard_failures_tree.delete(item)
+        failures = overview.get("recent_failures") or []
+        for idx, row in enumerate(failures):
+            ts = row.get("timestamp") or ""
+            assistant = "backend"
+            action = row.get("tool") or "-"
+            result = row.get("error") or "failure"
+            values = (ts, assistant, action, result[:80], "failure")
+            tag = "even" if idx % 2 == 0 else "odd"
+            self.dashboard_failures_tree.insert("", END, values=values, tags=(tag,))
 
     def refresh_assistants(self) -> None:
         if not self.is_unlocked:
@@ -1008,7 +1126,7 @@ class DesktopControlApp:
         for item in self.activity_tree.get_children():
             self.activity_tree.delete(item)
 
-        for row in payload.get("items") or []:
+        for idx, row in enumerate(payload.get("items") or []):
             values = (
                 row.get("timestamp") or "",
                 row.get("assistant") or "",
@@ -1017,7 +1135,8 @@ class DesktopControlApp:
                 row.get("state") or "",
                 row.get("target") or "",
             )
-            self.activity_tree.insert("", END, values=values)
+            tag = "even" if idx % 2 == 0 else "odd"
+            self.activity_tree.insert("", END, values=values, tags=(tag,))
 
         sample = (payload.get("items") or [])[:12]
         lines = []
