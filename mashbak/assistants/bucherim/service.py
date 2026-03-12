@@ -23,9 +23,10 @@ else:
 
 ACTIVE_STATUS = "active"
 PENDING_STATUS = "pending_request"
-ALLOWED_NOT_JOINED_STATUS = "allowed_not_joined"
+ALLOWLISTED_STATUS = "allowlisted"
 REJECTED_STATUS = "rejected"
-NOT_KNOWN_STATUS = "not_known"
+BLOCKED_STATUS = "blocked"
+UNKNOWN_STATUS = "unknown"
 
 
 @dataclass
@@ -56,10 +57,13 @@ class BucherimService:
         self.data_root = self.base_dir / "data"
         self.users_root = self.data_root / "users" / "bucherim"
         self.media_root = self.data_root / "media" / "bucherim"
+        self.audit_root = self.data_root / "logs" / "bucherim"
+        self.audit_log_file = self.audit_root / "events.jsonl"
         self.pending_requests_file = self.users_root / "pending_requests.jsonl"
 
         self.users_root.mkdir(parents=True, exist_ok=True)
         self.media_root.mkdir(parents=True, exist_ok=True)
+        self.audit_root.mkdir(parents=True, exist_ok=True)
         self.pending_requests_file.parent.mkdir(parents=True, exist_ok=True)
 
         self.model_client = BackendOpenAIClient(openai_api_key or "", openai_model or "gpt-4.1-mini")
@@ -134,6 +138,7 @@ class BucherimService:
                 "join_ack": "Your request to join Bucherim has been received and will be reviewed.",
                 "already_active": "You are already connected to Bucherim. Ask me anything.",
                 "not_member": "You are not currently a Bucherim member. Text @bucherim if approved, or join@bucherim to request access.",
+                "blocked": "Your access to Bucherim is currently blocked. Text join@bucherim to request a review.",
                 "media_unavailable": "I received your media, but image analysis is not enabled yet. Please describe what you need in text.",
                 "image_generation_unavailable": "I can discuss images, but outbound image generation is not enabled yet.",
             },
@@ -182,6 +187,7 @@ class BucherimService:
             "membership": user_dir / "membership.json",
             "conversation": user_dir / "conversation.jsonl",
             "requests": user_dir / "requests.jsonl",
+            "user_media_dir": user_dir / "media",
             "media_dir": media_dir,
             "media_index": media_index,
         }
@@ -189,9 +195,11 @@ class BucherimService:
     def _ensure_user_files(self, normalized_sender: str, config: dict[str, Any]) -> dict[str, Any]:
         paths = self._user_paths(normalized_sender)
         user_dir = paths["user_dir"]
+        user_media_dir = paths["user_media_dir"]
         media_dir = paths["media_dir"]
 
         user_dir.mkdir(parents=True, exist_ok=True)
+        user_media_dir.mkdir(parents=True, exist_ok=True)
         media_dir.mkdir(parents=True, exist_ok=True)
 
         profile_path = paths["profile"]
@@ -207,16 +215,16 @@ class BucherimService:
         membership_path = paths["membership"]
         membership = self._load_json(membership_path, {})
         if not isinstance(membership, dict) or not membership:
-            initial_status = NOT_KNOWN_STATUS
+            initial_status = UNKNOWN_STATUS
             if normalized_sender in config["blocked_numbers"]:
-                initial_status = REJECTED_STATUS
+                initial_status = BLOCKED_STATUS
             elif normalized_sender in config["allowlist"]:
-                initial_status = ALLOWED_NOT_JOINED_STATUS
+                initial_status = ALLOWLISTED_STATUS
 
             membership = {
                 "phone_number": normalized_sender,
                 "status": initial_status,
-                "source": "allowlist" if initial_status == ALLOWED_NOT_JOINED_STATUS else "none",
+                "source": "allowlist" if initial_status == ALLOWLISTED_STATUS else ("blocked_list" if initial_status == BLOCKED_STATUS else "none"),
                 "joined_at": None,
                 "updated_at": self._iso_now(),
                 "history": [],
@@ -267,6 +275,17 @@ class BucherimService:
             "details": details or {},
         })
 
+        self._append_jsonl(self.audit_log_file, {
+            "timestamp": payload["timestamp"],
+            "event_type": "membership",
+            "event": event,
+            "phone_number": membership.get("phone_number"),
+            "status": membership.get("status"),
+            "request_id": request.request_id,
+            "message_sid": request.message_sid,
+            "details": details or {},
+        })
+
     def _record_inbound(
         self,
         *,
@@ -288,10 +307,23 @@ class BucherimService:
             "contains_media": bool(media),
             "media_count": len(media),
             "media": media,
+            "media_processing": "logged_only" if media else "none",
             "response_mode": None,
             "assistant_response": None,
         }
         self._append_jsonl(paths["conversation"], payload)
+
+        self._append_jsonl(self.audit_log_file, {
+            "timestamp": payload["timestamp"],
+            "event_type": "inbound_message",
+            "phone_number": membership.get("phone_number"),
+            "status": membership.get("status"),
+            "request_id": request.request_id,
+            "message_sid": request.message_sid,
+            "contains_media": bool(media),
+            "media_count": len(media),
+            "media_processing": payload["media_processing"],
+        })
 
         if media:
             for index, item in enumerate(media):
@@ -305,6 +337,7 @@ class BucherimService:
                     "content_type": item.get("content_type"),
                     "download_status": "referenced_only",
                     "stored_filename": None,
+                    "processed_by_assistant": False,
                 })
 
     def _record_outbound(
@@ -335,6 +368,18 @@ class BucherimService:
         }
         self._append_jsonl(paths["conversation"], payload)
 
+        self._append_jsonl(self.audit_log_file, {
+            "timestamp": payload["timestamp"],
+            "event_type": "outbound_message",
+            "phone_number": membership.get("phone_number"),
+            "status": membership.get("status"),
+            "request_id": request.request_id,
+            "message_sid": request.message_sid,
+            "response_mode": response_mode,
+            "contains_media": bool(response_media),
+            "media_count": len(response_media or []),
+        })
+
     def _append_join_request(
         self,
         *,
@@ -364,6 +409,55 @@ class BucherimService:
         text = self._command(body)
         return any(token in text for token in ("image", "picture", "photo", "draw", "generate"))
 
+    def _session_id_for_sender(self, normalized_sender: str) -> str:
+        return f"bucherim:{re.sub(r'\D', '', normalized_sender)}"
+
+    def _update_session_context(
+        self,
+        *,
+        normalized_sender: str,
+        user_message: str,
+        assistant_reply: str,
+        membership_status: str,
+        intent: str,
+        response_mode: str,
+        has_media: bool,
+        topic: str,
+    ) -> None:
+        session_id = self._session_id_for_sender(normalized_sender)
+        parsed = {
+            "mode": "bucherim",
+            "intent": intent,
+            "topic": topic,
+            "entities": {
+                "has_media": has_media,
+                "membership_status": membership_status,
+                "last_response_type": response_mode,
+                "last_media_presence": has_media,
+            },
+            "args": {},
+            "confidence": 0.9,
+        }
+        result = {
+            "success": True,
+            "tool_name": None,
+            "output": assistant_reply,
+            "error": None,
+            "data": {
+                "response_mode": response_mode,
+                "membership_status": membership_status,
+                "last_media_presence": has_media,
+                "last_response_type": response_mode,
+            },
+        }
+        self.session_context.update(
+            session_id=session_id,
+            user_message=user_message,
+            parsed=parsed,
+            result=result,
+        )
+        self.session_context.record_assistant_reply(session_id=session_id, assistant_reply=assistant_reply)
+
     def _format_recent_turns(self, session_snapshot: dict[str, Any]) -> str:
         turns = session_snapshot.get("recent_turns") or []
         lines: list[str] = []
@@ -381,6 +475,7 @@ class BucherimService:
         *,
         normalized_sender: str,
         body: str,
+        membership_status: str,
         has_media: bool,
         config: dict[str, Any],
     ) -> tuple[str, str, str]:
@@ -388,13 +483,33 @@ class BucherimService:
 
         if has_media:
             full_reply = responses["media_unavailable"]
+            self._update_session_context(
+                normalized_sender=normalized_sender,
+                user_message=body,
+                assistant_reply=full_reply,
+                membership_status=membership_status,
+                intent="media_request",
+                response_mode="image_analysis_unavailable",
+                has_media=True,
+                topic="media",
+            )
             return self._shorten_for_sms(full_reply), full_reply, "image_analysis_unavailable"
 
         if self._is_image_request(body):
             full_reply = responses["image_generation_unavailable"]
+            self._update_session_context(
+                normalized_sender=normalized_sender,
+                user_message=body,
+                assistant_reply=full_reply,
+                membership_status=membership_status,
+                intent="image_generation_request",
+                response_mode="image_generation_unavailable",
+                has_media=False,
+                topic="media",
+            )
             return self._shorten_for_sms(full_reply), full_reply, "image_generation_unavailable"
 
-        session_id = f"bucherim:{re.sub(r'\D', '', normalized_sender)}"
+        session_id = self._session_id_for_sender(normalized_sender)
         context_snapshot = self.session_context.get_snapshot(session_id)
         recent_turns = self._format_recent_turns(context_snapshot)
 
@@ -424,28 +539,16 @@ class BucherimService:
 
         sms_reply = self._shorten_for_sms(full_reply)
 
-        parsed = {
-            "mode": "conversation",
-            "intent": "conversation",
-            "topic": context_snapshot.get("last_topic") or "general",
-            "entities": {"has_media": has_media},
-            "args": {},
-            "confidence": 0.9,
-        }
-        result = {
-            "success": True,
-            "tool_name": None,
-            "output": full_reply,
-            "error": None,
-            "data": {"response_mode": "text"},
-        }
-        latest_context = self.session_context.update(
-            session_id=session_id,
+        self._update_session_context(
+            normalized_sender=normalized_sender,
             user_message=body,
-            parsed=parsed,
-            result=result,
+            assistant_reply=full_reply,
+            membership_status=membership_status,
+            intent="conversation",
+            response_mode="text",
+            has_media=has_media,
+            topic=context_snapshot.get("last_topic") or "general",
         )
-        self.session_context.record_assistant_reply(session_id=session_id, assistant_reply=full_reply)
 
         return sms_reply, full_reply, "text"
 
@@ -471,11 +574,11 @@ class BucherimService:
 
         responses = config["responses"]
         command = self._command(request.body)
-        status = membership.get("status") or NOT_KNOWN_STATUS
+        status = membership.get("status") or UNKNOWN_STATUS
 
         # Keep allowlist state fresh if config changed.
-        if normalized_sender in config["allowlist"] and status == NOT_KNOWN_STATUS:
-            membership["status"] = ALLOWED_NOT_JOINED_STATUS
+        if normalized_sender in config["allowlist"] and status == UNKNOWN_STATUS:
+            membership["status"] = ALLOWLISTED_STATUS
             membership["source"] = "allowlist"
             status = membership["status"]
             self._record_membership_event(
@@ -487,11 +590,23 @@ class BucherimService:
             )
 
         if normalized_sender in config["blocked_numbers"]:
-            membership["status"] = REJECTED_STATUS
-            status = REJECTED_STATUS
+            membership["status"] = BLOCKED_STATUS
+            membership["source"] = "blocked_list"
+            status = BLOCKED_STATUS
 
         if command == "@bucherim":
-            if normalized_sender in config["allowlist"]:
+            if membership.get("status") == BLOCKED_STATUS:
+                full_reply = responses["blocked"]
+                reply = self._shorten_for_sms(full_reply)
+                response_mode = "membership_blocked"
+                self._record_membership_event(
+                    paths=paths,
+                    membership=membership,
+                    event="admission_blocked",
+                    request=request,
+                    details={"reason": "blocked_number"},
+                )
+            elif normalized_sender in config["allowlist"]:
                 if membership.get("status") != ACTIVE_STATUS:
                     membership["status"] = ACTIVE_STATUS
                     membership["source"] = "allowlist"
@@ -519,6 +634,17 @@ class BucherimService:
                 reply = self._shorten_for_sms(full_reply)
                 response_mode = "membership_rejected"
 
+            self._update_session_context(
+                normalized_sender=normalized_sender,
+                user_message=request.body,
+                assistant_reply=full_reply,
+                membership_status=str(membership.get("status") or UNKNOWN_STATUS),
+                intent="membership_command",
+                response_mode=response_mode,
+                has_media=bool(media),
+                topic="membership",
+            )
+
             self._save_membership(paths["membership"], membership)
             self._record_outbound(
                 paths=paths,
@@ -545,12 +671,16 @@ class BucherimService:
                 full_reply = responses["already_active"]
                 reply = self._shorten_for_sms(full_reply)
                 response_mode = "already_active"
+            elif membership.get("status") == BLOCKED_STATUS:
+                full_reply = responses["blocked"]
+                reply = self._shorten_for_sms(full_reply)
+                response_mode = "membership_blocked"
             elif normalized_sender in config["allowlist"]:
                 # Keep deterministic flow: allowlisted users should send @bucherim to activate.
-                membership["status"] = ALLOWED_NOT_JOINED_STATUS
+                membership["status"] = ALLOWLISTED_STATUS
                 full_reply = "You are pre-approved. Text @bucherim to activate your Bucherim membership."
                 reply = self._shorten_for_sms(full_reply)
-                response_mode = "allowlisted_not_joined"
+                response_mode = "allowlisted_not_active"
             else:
                 membership["status"] = PENDING_STATUS
                 membership["source"] = "request"
@@ -565,6 +695,17 @@ class BucherimService:
                 full_reply = responses["join_ack"]
                 reply = self._shorten_for_sms(full_reply)
                 response_mode = "join_request_ack"
+
+            self._update_session_context(
+                normalized_sender=normalized_sender,
+                user_message=request.body,
+                assistant_reply=full_reply,
+                membership_status=str(membership.get("status") or UNKNOWN_STATUS),
+                intent="join_request",
+                response_mode=response_mode,
+                has_media=bool(media),
+                topic="membership",
+            )
 
             self._save_membership(paths["membership"], membership)
             self._record_outbound(
@@ -588,7 +729,7 @@ class BucherimService:
             }
 
         if membership.get("status") != ACTIVE_STATUS:
-            full_reply = responses["not_member"]
+            full_reply = responses["blocked"] if membership.get("status") == BLOCKED_STATUS else responses["not_member"]
             reply = self._shorten_for_sms(full_reply)
             response_mode = "not_authorized"
 
@@ -598,6 +739,16 @@ class BucherimService:
                 event="non_member_message_blocked",
                 request=request,
                 details={"status": membership.get("status")},
+            )
+            self._update_session_context(
+                normalized_sender=normalized_sender,
+                user_message=request.body,
+                assistant_reply=full_reply,
+                membership_status=str(membership.get("status") or UNKNOWN_STATUS),
+                intent="non_member_message",
+                response_mode=response_mode,
+                has_media=bool(media),
+                topic="membership",
             )
             self._save_membership(paths["membership"], membership)
             self._record_outbound(
@@ -623,6 +774,7 @@ class BucherimService:
         reply, full_reply, response_mode = await self._generate_member_reply(
             normalized_sender=normalized_sender,
             body=request.body,
+            membership_status=str(membership.get("status") or ACTIVE_STATUS),
             has_media=bool(media),
             config=config,
         )

@@ -26,6 +26,7 @@ def make_service(tmp_path: Path, allowlist: list[str] | None = None) -> Bucherim
             "join_ack": "Your request to join Bucherim has been received and will be reviewed.",
             "already_active": "You are already connected to Bucherim. Ask me anything.",
             "not_member": "You are not currently a Bucherim member. Text @bucherim if approved, or join@bucherim to request access.",
+            "blocked": "Your access to Bucherim is currently blocked. Text join@bucherim to request a review.",
             "media_unavailable": "I received your media, but image analysis is not enabled yet. Please describe what you need in text.",
             "image_generation_unavailable": "I can discuss images, but outbound image generation is not enabled yet.",
         },
@@ -135,9 +136,27 @@ def test_non_member_normal_message_is_blocked():
         service = make_service(root, allowlist=[])
 
         result = run_request(service, "+1 332-555-0505", "what is quantum mechanics")
-        assert result["status"] in {"not_known", "rejected", "pending_request", "allowed_not_joined"}
+        assert result["status"] in {"unknown", "rejected", "pending_request", "allowlisted", "blocked"}
         assert result["response_mode"] == "not_authorized"
         assert "join@bucherim" in result["reply"].lower()
+
+
+def test_context_preserved_with_membership_and_response_metadata():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        service = make_service(root, allowlist=["+12125550808"])
+
+        run_request(service, "+1 212-555-0808", "@bucherim")
+        run_request(service, "+1 212-555-0808", "hello")
+        run_request(service, "+1 212-555-0808", "and what about tomorrow?")
+
+        snapshot = service.session_context.get_snapshot("bucherim:12125550808")
+        assert snapshot["last_intent"] == "conversation"
+        assert snapshot["last_topic"] is not None
+        assert snapshot["last_entities"]["membership_status"] == "active"
+        assert snapshot["last_entities"]["last_response_type"] == "text"
+        assert snapshot["last_entities"]["last_media_presence"] is False
+        assert len(snapshot["recent_turns"]) >= 2
 
 
 def test_phone_normalization_to_e164_and_user_key():

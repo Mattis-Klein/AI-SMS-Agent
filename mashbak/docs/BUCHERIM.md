@@ -57,17 +57,18 @@ Deterministic behavior:
 ## Membership State Model
 
 States:
-- not_known
+- unknown
 - pending_request
-- allowed_not_joined
+- allowlisted
 - active
 - rejected
+- blocked
 
 Transitions:
 - initial new sender:
-- allowlisted -> allowed_not_joined
-- blocked list -> rejected
-- otherwise -> not_known
+- allowlisted -> allowlisted
+- blocked list -> blocked
+- otherwise -> unknown
 
 - allowlisted sender sends @bucherim -> active
 - non-allowlisted sender sends @bucherim -> rejected
@@ -123,6 +124,12 @@ Session tracking includes:
 - topic continuity
 - intent continuity markers
 - assistant reply history for follow-up coherence
+- membership status
+- last response type
+- last media presence
+
+Assistant-wide audit log:
+- mashbak/data/logs/bucherim/events.jsonl
 
 ## MMS And Image Support Status
 

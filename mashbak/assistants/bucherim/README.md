@@ -10,7 +10,18 @@ Current implementation highlights:
 - Per-user data folders and JSON/JSONL audit logs
 - Media-aware inbound/outbound logging (image analysis/generation placeholders)
 
+Membership states:
+- unknown
+- pending_request
+- allowlisted
+- active
+- rejected
+- blocked
+
 Data root:
 - mashbak/data/users/bucherim/<normalized_user_key>/
+
+Assistant audit root:
+- mashbak/data/logs/bucherim/events.jsonl
 
 See mashbak/docs/BUCHERIM.md for full behavior and operations.

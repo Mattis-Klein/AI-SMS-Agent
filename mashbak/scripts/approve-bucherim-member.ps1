@@ -99,7 +99,7 @@ $config.allowlist = $allowlist
 Write-JsonFile -Path $configPath -Object $config
 
 $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-$status = if ($ActivateNow) { "active" } else { "allowed_not_joined" }
+$status = if ($ActivateNow) { "active" } else { "allowlisted" }
 $source = "approved_request"
 
 if (Test-Path $membershipPath) {
