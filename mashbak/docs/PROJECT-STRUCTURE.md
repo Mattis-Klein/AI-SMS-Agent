@@ -23,9 +23,15 @@ mashbak/
 │   ├── config.py
 │   ├── config_loader.py
 │   ├── config.json
+│   ├── bucherim.py
+│   ├── bucherim_config.json
 │   ├── requirements.txt
 │   ├── tools/
 │   └── workspace/
+├── bucherim/
+│   ├── README.md
+│   └── data/
+│       └── users/
 ├── desktop_app/
 │   ├── main.py
 │   ├── ui.py
@@ -50,6 +56,7 @@ mashbak/
 ## Role Of Each Area
 
 - agent/: backend API, reasoning, interpreter, dispatcher, tool registry, and tools
+- bucherim/: Bucherim user data and subsystem notes
 - desktop_app/: local desktop transport and UI only
 - sms-bridge/: Twilio transport and sender access-control only
 - tests/: Python regression tests for backend behavior

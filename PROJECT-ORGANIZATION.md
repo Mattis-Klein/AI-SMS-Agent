@@ -13,6 +13,7 @@ C:\AI-SMS-Agent\
 ├── mashbak/
 │   ├── README.md
 │   ├── agent/
+│   ├── bucherim/
 │   ├── desktop_app/
 │   ├── sms-bridge/
 │   ├── scripts/
@@ -46,7 +47,8 @@ Generated artifacts stay out of source control:
 ## Application Roles
 
 - `mashbak/`: active production assistant, desktop-first with optional SMS transport
-- `bucherim/`: future assistant scaffold, not yet runnable
+- `mashbak/bucherim/`: Bucherim SMS subsystem data and per-user logs
+- `bucherim/`: legacy scaffold folder retained for future standalone split if needed
 
 ## Start Points
 

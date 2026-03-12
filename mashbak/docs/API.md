@@ -60,6 +60,25 @@ Request body:
 
 owner_unlocked is used by desktop lock policy flow.
 
+## POST /bucherim/sms
+
+Dedicated Bucherim SMS entry point used by bridge routing for Twilio number +18772683048.
+
+Request body:
+
+```json
+{
+  "from_number": "+12125550101",
+  "to_number": "+18772683048",
+  "body": "@bucherim",
+  "message_sid": "SM...",
+  "account_sid": "AC...",
+  "media": [
+    {"url": "https://api.twilio.com/...", "content_type": "image/jpeg"}
+  ]
+}
+```
+
 ## POST /run (Compatibility)
 
 Legacy compatibility endpoint that forwards to /execute.

@@ -10,6 +10,7 @@
 ## Architecture And Behavior
 
 - Current architecture: ARCHITECTURE.md
+- Bucherim assistant flow: BUCHERIM.md
 - Component details: COMPONENTS.md
 - API endpoints: API.md
 - Tool behavior: TOOLS.md

@@ -6,6 +6,11 @@ Mashbak is a desktop-first assistant with one shared backend reasoning engine.
 - SMS bridge is transport and access-control only.
 - Tool execution runs only through backend interpreter, dispatcher, and tool registry.
 
+Bucherim is now implemented as a separate SMS assistant flow inside this project:
+- Destination Twilio number: +18772683048
+- Bridge routing stays transport-only and forwards Bucherim payloads to backend endpoint /bucherim/sms
+- Backend module `agent/bucherim.py` owns membership gating, per-user logs, and conversational behavior
+
 ## Run
 
 From repository root:
@@ -60,6 +65,11 @@ Reload behavior:
 - Backend/OpenAI/email/runtime tuning values reload in-process.
 - Bridge transport and access-control values are startup-loaded and require bridge restart.
 - `AGENT_API_KEY` change requires callers to use the new key and typically restart active clients.
+
+Bucherim-specific behavior:
+- allowlist and responses are configured in `mashbak/agent/bucherim_config.json`
+- per-user Bucherim logs are stored in `mashbak/bucherim/data/users/`
+- pending join requests are stored in `mashbak/bucherim/data/pending_requests.jsonl`
 
 ## Filesystem Action Grounding
 

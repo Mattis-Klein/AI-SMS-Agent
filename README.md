@@ -5,7 +5,7 @@ This repository hosts multiple assistant applications.
 ## Assistants
 
 - Mashbak: current production assistant in [mashbak/README.md](mashbak/README.md)
-- Bucherim: scaffold-only placeholder for a future assistant in [bucherim/README.md](bucherim/README.md)
+- Bucherim: SMS-first assistant subsystem now implemented inside `mashbak/` (see [mashbak/docs/BUCHERIM.md](mashbak/docs/BUCHERIM.md))
 
 ## Repository Layout
 
@@ -28,7 +28,7 @@ AI-SMS-Agent/
 ## Current Status
 
 - Mashbak is the active app and retains the current desktop, agent, and SMS functionality.
-- Bucherim is scaffold-only and not runnable yet.
+- Bucherim membership-gated SMS flow is live in Mashbak runtime and bridge routing.
 - Repo-level docs are now an index; assistant-specific operational details live inside each assistant folder.
 
 ## Run Mashbak
@@ -56,13 +56,13 @@ Output: `mashbak/dist/Mashbak.exe`
 
 ## Routing Direction
 
-Incoming SMS routing is being prepared for a future router layer:
+Incoming SMS routing now supports explicit assistant destination routing:
 
 ```text
 incoming SMS
-  -> router
-     -> mashbak
-     -> bucherim
+  -> mashbak/sms-bridge transport
+     -> Mashbak sender-access route (existing number behavior)
+     -> Bucherim route when inbound To is +18772683048
 ```
 
 ## Documentation

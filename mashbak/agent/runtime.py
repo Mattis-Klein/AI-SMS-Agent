@@ -9,6 +9,7 @@ if __package__:
     from .config import Config
     from .config_loader import ConfigLoader
     from .assistant_core import AssistantCore, AssistantMetadata
+    from .bucherim import BucherimService, BucherimSmsRequest
     from .logger import StructuredLogger
     from .tools import ToolRegistry
     from .tools.builtin import ALL_BUILTIN_TOOLS
@@ -20,6 +21,7 @@ else:
     from config import Config
     from config_loader import ConfigLoader
     from assistant_core import AssistantCore, AssistantMetadata
+    from bucherim import BucherimService, BucherimSmsRequest
     from logger import StructuredLogger
     from tools import ToolRegistry
     from tools.builtin import ALL_BUILTIN_TOOLS
@@ -79,6 +81,12 @@ class AgentRuntime:
             except ValueError:
                 pass
         self.assistant = AssistantCore(self)
+        self.bucherim = BucherimService(
+            base_dir=self.base_dir,
+            openai_api_key=self.openai_api_key,
+            openai_model=self.openai_model,
+            session_turns=self.session_context_turns,
+        )
 
     def reload_dynamic_config(self) -> dict:
         """Reload dynamic config values used at runtime without restarting the process."""
@@ -99,6 +107,11 @@ class AgentRuntime:
 
         self.assistant.model_client.api_key = self.openai_api_key
         self.assistant.model_client.model = self.openai_model
+        self.bucherim.update_model_config(
+            api_key=self.openai_api_key,
+            model=self.openai_model,
+            session_turns=self.session_context_turns,
+        )
 
         return {
             "assistant_ai_enabled": bool(self.openai_api_key),
@@ -107,6 +120,31 @@ class AgentRuntime:
             "tool_timeout_seconds": self.default_tool_timeout_seconds,
             "model_response_max_tokens": self.model_response_max_tokens,
         }
+
+    async def execute_bucherim_sms(
+        self,
+        *,
+        sender: str,
+        recipient: str,
+        body: str,
+        request_id: str,
+        message_sid: str | None = None,
+        account_sid: str | None = None,
+        media: list[dict] | None = None,
+    ) -> dict:
+        """Process Bucherim SMS flow using dedicated backend membership + assistant logic."""
+        self.reload_dynamic_config()
+        return await self.bucherim.process_sms(
+            BucherimSmsRequest(
+                sender=sender,
+                recipient=recipient,
+                body=body,
+                request_id=request_id,
+                message_sid=message_sid,
+                account_sid=account_sid,
+                media=media or [],
+            )
+        )
 
     def _resolve_source(self, sender: str, source: Optional[str]) -> str:
         if source:

@@ -9,7 +9,7 @@ inputs and logs all activities.
 from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 if __package__:
     from .runtime import create_runtime
@@ -39,6 +39,21 @@ class ExecuteNaturalLanguageRequest(BaseModel):
     """Request to execute a natural language message"""
     message: str
     owner_unlocked: bool | None = None
+
+
+class BucherimMediaItem(BaseModel):
+    url: str
+    content_type: str | None = None
+    filename: str | None = None
+
+
+class BucherimSmsRequest(BaseModel):
+    from_number: str
+    to_number: str
+    body: str = ""
+    message_sid: str | None = None
+    account_sid: str | None = None
+    media: list[BucherimMediaItem] = Field(default_factory=list)
 
 
 # ============================================================================
@@ -215,6 +230,39 @@ async def execute_natural_language(
         "source": result.get("source", x_source or "unknown"),
         "data": result.get("data"),
         "trace": result.get("trace"),
+    }
+
+
+@app.post("/bucherim/sms")
+async def execute_bucherim_sms(
+    req: BucherimSmsRequest,
+    x_api_key: str = Header(None),
+    x_request_id: str = Header(None),
+):
+    """Dedicated Bucherim SMS entrypoint for bridge transport routing."""
+    authenticate(x_api_key, x_request_id)
+
+    result = await runtime.execute_bucherim_sms(
+        sender=req.from_number,
+        recipient=req.to_number,
+        body=req.body,
+        request_id=x_request_id or "unknown",
+        message_sid=req.message_sid,
+        account_sid=req.account_sid,
+        media=[item.model_dump() for item in req.media],
+    )
+
+    return {
+        "success": True,
+        "reply": result.get("reply", ""),
+        "full_reply": result.get("full_reply", result.get("reply", "")),
+        "status": result.get("status"),
+        "response_mode": result.get("response_mode"),
+        "normalized_sender": result.get("normalized_sender"),
+        "normalized_recipient": result.get("normalized_recipient"),
+        "media_count": result.get("media_count", 0),
+        "outbound_media": result.get("outbound_media", []),
+        "request_id": x_request_id or "unknown",
     }
 
 

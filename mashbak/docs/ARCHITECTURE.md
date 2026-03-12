@@ -8,6 +8,7 @@ Mashbak preserves these strict architecture rules:
 - Backend is the single reasoning engine for both desktop and SMS.
 - Tools execute only through interpreter -> dispatcher -> tool registry.
 - SMS bridge stays transport and access-control only.
+- Bucherim is a separate backend assistant flow with independent membership state and logs.
 
 ## Runtime Topology
 
@@ -25,6 +26,13 @@ FastAPI backend request path:
   -> ToolRegistry
   -> Built-in tool
   -> AssistantCore response shaping
+
+Bucherim SMS path:
+Twilio inbound to +18772683048
+  -> sms-bridge transport parsing
+  -> POST /bucherim/sms
+  -> AgentRuntime.execute_bucherim_sms
+  -> BucherimService (membership + conversation + logging)
 ```
 
 ## Backend Endpoints
@@ -34,6 +42,7 @@ FastAPI backend request path:
 - GET /tools/{tool_name}
 - POST /execute for direct tool calls
 - POST /execute-nl for natural language
+- POST /bucherim/sms for Bucherim SMS flow
 - POST /run legacy compatibility wrapper to /execute
 
 Request headers:
@@ -47,6 +56,7 @@ Request headers:
 Session ids are source-aware and normalized:
 - Desktop: desktop:<sender_key>
 - SMS: sms:<10-digit-normalized-sender>
+- Bucherim SMS: bucherim:<normalized-e164-digits>
 
 Current session context fields include:
 - last_topic
@@ -60,6 +70,8 @@ Current session context fields include:
 - recent_turns
 
 Context is in-memory and resets when backend process restarts.
+
+Bucherim keeps a separate in-memory session context manager from Mashbak runtime context.
 
 ## Tool System
 
@@ -88,6 +100,7 @@ Bridge responsibilities only:
 - Twilio request handling and signature validation
 - Sender access-control decisions
 - Forwarding to backend /execute-nl
+- Destination routing for Bucherim number (+18772683048) to backend /bucherim/sms
 - Returning TwiML responses
 - Structured bridge logging with redaction
 

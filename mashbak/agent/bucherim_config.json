@@ -1,0 +1,14 @@
+{
+  "assistant_number": "+18772683048",
+  "allowlist": [],
+  "blocked_numbers": [],
+  "responses": {
+    "welcome": "Welcome to Bucherim. You are now connected and can start asking questions.",
+    "not_approved": "You are not currently approved for Bucherim. Text join@bucherim to request access.",
+    "join_ack": "Your request to join Bucherim has been received and will be reviewed.",
+    "already_active": "You are already connected to Bucherim. Ask me anything.",
+    "not_member": "You are not currently a Bucherim member. Text @bucherim if approved, or join@bucherim to request access.",
+    "media_unavailable": "I received your media, but image analysis is not enabled yet. Please describe what you need in text.",
+    "image_generation_unavailable": "I can discuss images, but outbound image generation is not enabled yet."
+  }
+}

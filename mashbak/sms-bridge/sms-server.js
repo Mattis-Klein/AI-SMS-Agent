@@ -51,6 +51,7 @@ const AGENT_URL = process.env.AGENT_URL || "http://127.0.0.1:8787";
 const AGENT_API_KEY = process.env.AGENT_API_KEY || "";
 const PORT = Number(process.env.BRIDGE_PORT || 34567);
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
+const BUCHERIM_TWILIO_NUMBER = process.env.BUCHERIM_TWILIO_NUMBER || "+18772683048";
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || "";
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || "";
 const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER || "";
@@ -253,6 +254,55 @@ function buildTwimlMessage(message) {
     return twiml.toString();
 }
 
+function buildTwimlMessageWithMedia(message, media = []) {
+    const twiml = new twilio.twiml.MessagingResponse();
+    const msg = twiml.message(message);
+    for (const mediaItem of media) {
+        const url = String(mediaItem && mediaItem.url ? mediaItem.url : "").trim();
+        if (url) {
+            msg.media(url);
+        }
+    }
+    return twiml.toString();
+}
+
+function normalizeToE164(value) {
+    const digits = String(value || "").replace(/\D/g, "");
+    if (!digits) {
+        return "";
+    }
+    if (digits.length === 10) {
+        return `+1${digits}`;
+    }
+    if (digits.length === 11 && digits.startsWith("1")) {
+        return `+${digits}`;
+    }
+    return `+${digits}`;
+}
+
+function extractInboundMedia(body) {
+    const count = Number(body.NumMedia || 0);
+    if (!Number.isFinite(count) || count <= 0) {
+        return [];
+    }
+
+    const media = [];
+    for (let i = 0; i < count; i += 1) {
+        const url = String(body[`MediaUrl${i}`] || "").trim();
+        const contentType = String(body[`MediaContentType${i}`] || "").trim();
+        if (!url) {
+            continue;
+        }
+        media.push({
+            url,
+            content_type: contentType || null,
+            filename: null,
+        });
+    }
+
+    return media;
+}
+
 async function postJson(endpoint, payload, requestId, sender = null) {
     const safePayload = sanitize(payload);
     logBridgeEvent({
@@ -310,6 +360,10 @@ async function callAgentExecuteNaturalLanguage(message, requestId, sender = null
     return postJson("/execute-nl", { message }, requestId, sender);
 }
 
+async function callAgentBucherimSms(payload, requestId, sender = null) {
+    return postJson("/bucherim/sms", payload, requestId, sender);
+}
+
 function formatAgentError(result) {
     if (result.data && result.data.detail) {
         return `Agent error (${result.status}): ${result.data.detail}`;
@@ -344,6 +398,38 @@ async function buildReply(message, requestId, from) {
     }
 }
 
+async function buildBucherimReply({ message, from, to, requestId, messageSid, accountSid, media }) {
+    const result = await callAgentBucherimSms({
+        from_number: from,
+        to_number: to,
+        body: message,
+        message_sid: messageSid || null,
+        account_sid: accountSid || null,
+        media: media || [],
+    }, requestId, from);
+
+    if (!result.ok) {
+        return {
+            reply: formatAgentError(result),
+            fullReply: formatAgentError(result),
+            status: "error",
+            responseMode: "error",
+            outboundMedia: [],
+        };
+    }
+
+    const reply = String(result.data.reply || result.data.output || "Done.");
+    const outboundMedia = Array.isArray(result.data.outbound_media) ? result.data.outbound_media : [];
+
+    return {
+        reply,
+        fullReply: String(result.data.full_reply || reply),
+        status: String(result.data.status || "unknown"),
+        responseMode: String(result.data.response_mode || "text"),
+        outboundMedia,
+    };
+}
+
 app.get("/", (req, res) => {
     res.status(200).send("SMS bridge is running.");
 });
@@ -370,15 +456,25 @@ app.post("/sms", async (req, res) => {
     const safeMessage = redactConfigAssignments(message);
     const from = req.body.From || "";
     const to = req.body.To || "";
-    const senderDecision = resolveSenderAction(from, SENDER_ACCESS);
+    const messageSid = req.body.MessageSid || "";
+    const accountSid = req.body.AccountSid || "";
+    const inboundMedia = extractInboundMedia(req.body);
+    const normalizedTo = normalizeToE164(to);
+    const normalizedBucherimNumber = normalizeToE164(BUCHERIM_TWILIO_NUMBER);
+    const isBucherimRoute = Boolean(normalizedTo && normalizedTo === normalizedBucherimNumber);
 
     console.log(`[sms] requestId=${requestId} from=${from} body=${safeMessage}`);
     logBridgeEvent({
         requestId,
         stage: "incoming_sms",
         from,
-        normalizedFrom: senderDecision.normalizedFrom,
+        to,
+        normalizedTo,
+        bucherimRoute: isBucherimRoute,
+        messageSid,
         message: safeMessage,
+        mediaCount: inboundMedia.length,
+        media: inboundMedia,
         url: getRequestUrlCandidates(req)[0] || req.originalUrl
     });
 
@@ -395,45 +491,74 @@ app.post("/sms", async (req, res) => {
         return;
     }
 
-    if (!senderDecision.shouldForward) {
-        console.log(
-            `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
-        );
-        logBridgeEvent({
-            requestId,
-            stage: "sender_access_control",
-            from,
-            normalizedFrom: senderDecision.normalizedFrom,
-            action: senderDecision.action,
-            message: safeMessage,
-            forwarded: false
-        });
-    }
-
     let reply;
+    let fullReply = "";
+    let outboundMedia = [];
     try {
-        if (senderDecision.shouldForward) {
-            console.log(
-                `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
-            );
+        if (isBucherimRoute) {
+            const bucherimResult = await buildBucherimReply({
+                message,
+                from,
+                to,
+                requestId,
+                messageSid,
+                accountSid,
+                media: inboundMedia,
+            });
+            reply = bucherimResult.reply;
+            fullReply = bucherimResult.fullReply;
+            outboundMedia = bucherimResult.outboundMedia || [];
             logBridgeEvent({
                 requestId,
-                stage: "sender_access_control",
-                from,
-                normalizedFrom: senderDecision.normalizedFrom,
-                action: senderDecision.action,
-                message: safeMessage,
-                forwarded: true
+                stage: "bucherim_route",
+                normalizedTo,
+                normalizedBucherimNumber,
+                status: bucherimResult.status,
+                responseMode: bucherimResult.responseMode,
+                mediaCount: inboundMedia.length,
+                outboundMediaCount: outboundMedia.length,
             });
-            reply = await buildReply(message, requestId, from);
         } else {
-            reply = senderDecision.reply;
-            if (senderDecision.action === "access_request_response" && isAccessRequestCommand(message, SENDER_ACCESS)) {
-                await notifyOwnerAccessRequest({
+            const senderDecision = resolveSenderAction(from, SENDER_ACCESS);
+
+            if (!senderDecision.shouldForward) {
+                console.log(
+                    `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
+                );
+                logBridgeEvent({
                     requestId,
+                    stage: "sender_access_control",
+                    from,
                     normalizedFrom: senderDecision.normalizedFrom,
-                    inboundTo: to,
+                    action: senderDecision.action,
+                    message: safeMessage,
+                    forwarded: false
                 });
+            }
+
+            if (senderDecision.shouldForward) {
+                console.log(
+                    `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
+                );
+                logBridgeEvent({
+                    requestId,
+                    stage: "sender_access_control",
+                    from,
+                    normalizedFrom: senderDecision.normalizedFrom,
+                    action: senderDecision.action,
+                    message: safeMessage,
+                    forwarded: true
+                });
+                reply = await buildReply(message, requestId, from);
+            } else {
+                reply = senderDecision.reply;
+                if (senderDecision.action === "access_request_response" && isAccessRequestCommand(message, SENDER_ACCESS)) {
+                    await notifyOwnerAccessRequest({
+                        requestId,
+                        normalizedFrom: senderDecision.normalizedFrom,
+                        inboundTo: to,
+                    });
+                }
             }
         }
     } catch (error) {
@@ -444,6 +569,7 @@ app.post("/sms", async (req, res) => {
             stack: truncateText(error.stack || "", 2000)
         });
         reply = `Bridge error: ${error.message}`;
+        fullReply = reply;
     }
 
     if (reply.length > 1500) {
@@ -454,12 +580,19 @@ app.post("/sms", async (req, res) => {
         requestId,
         stage: "reply_ready",
         from,
-        reply: truncateText(reply, 2000)
+        bucherimRoute: isBucherimRoute,
+        reply: truncateText(reply, 2000),
+        fullReply: truncateText(fullReply || reply, 2000),
+        outboundMediaCount: outboundMedia.length,
     });
 
     res.status(200);
     res.type("text/xml");
-    res.send(buildTwimlMessage(reply));
+    if (outboundMedia.length > 0) {
+        res.send(buildTwimlMessageWithMedia(reply, outboundMedia));
+    } else {
+        res.send(buildTwimlMessage(reply));
+    }
     logBridgeEvent({
         requestId,
         stage: "reply_sent",

@@ -59,6 +59,18 @@ Compatibility aliases accepted by validation and checks:
 - TWILIO_ACCOUNT_SID
 - TWILIO_AUTH_TOKEN
 - TWILIO_FROM_NUMBER
+- BUCHERIM_TWILIO_NUMBER (default +18772683048)
+
+## Bucherim Backend Variables
+
+Bucherim membership and behavior are configured via:
+- mashbak/agent/bucherim_config.json
+
+Main keys:
+- assistant_number
+- allowlist
+- blocked_numbers
+- responses
 
 ## Runtime And Logging Variables
 
@@ -86,6 +98,7 @@ Bridge restart required after change:
 - TWILIO_ACCOUNT_SID
 - TWILIO_AUTH_TOKEN
 - TWILIO_FROM_NUMBER
+- BUCHERIM_TWILIO_NUMBER
 - SMS_OWNER_NUMBER
 - SMS_ACCESS_REQUEST_NUMBERS
 - SMS_ACCESS_REQUEST_RESPONSE
@@ -96,6 +109,9 @@ Bridge restart required after change:
 - REJECTED_RESPONSE
 - SMS_DENIAL_RESPONSE
 - SMS_PHONE_NORMALIZATION_DIGITS
+
+Backend reload on request (no restart required):
+- mashbak/agent/bucherim_config.json allowlist and response text changes
 
 Coordinated restart/re-auth required:
 - AGENT_API_KEY
