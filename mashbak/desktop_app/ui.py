@@ -434,6 +434,8 @@ class DesktopControlApp:
         ttk.Label(top, text="Operational conversation and execution trace", style="Muted.TLabel").pack(side=LEFT, padx=(10, 0))
         self.chat_state_label = ttk.Label(top, text="Waiting for unlock", foreground=_SLATE)
         self.chat_state_label.pack(side=LEFT, padx=(10, 0))
+        self.verification_state_label = ttk.Label(top, text="Verification: Local-only", foreground=_SLATE)
+        self.verification_state_label.pack(side=RIGHT)
 
         helper_strip = ttk.Frame(frame, style="SectionSurface.TFrame")
         helper_strip.pack(fill=X, pady=(0, 8))
@@ -928,6 +930,8 @@ class DesktopControlApp:
         self.chat_state_label.configure(text="Connected and ready")
 
         trace = result.get("trace") or {}
+        verification_state = str(trace.get("verification_state") or "Local-only")
+        verification_reason = str(trace.get("verification_reason") or "No verification metadata provided.")
         context = trace.get("context") or {}
         raw_tool_output = trace.get("tool_output")
         safe_trace_args = sanitize_for_logging(trace.get("interpreted_args", {}))
@@ -938,6 +942,8 @@ class DesktopControlApp:
             f"Assistant mode: {trace.get('assistant_mode')}",
             f"Tool:           {result.get('tool_name')}",
             f"Success:        {result.get('success')}",
+            f"Verification:   {verification_state}",
+            f"Verify reason:  {verification_reason}",
             f"Request ID:     {result.get('request_id')}",
             f"Exec time (ms): {trace.get('execution_time_ms')}",
             f"Reply source:   {trace.get('assistant_response_source')}",
@@ -965,6 +971,14 @@ class DesktopControlApp:
         )
         self.last_response_text = str(final_text)
         self.last_trace_payload = dict(trace)
+
+        verify_color = _SLATE
+        if verification_state.lower() in {"verified", "tool-assisted"}:
+            verify_color = _GREEN
+        elif verification_state.lower() == "unverified":
+            verify_color = _RED
+        self.verification_state_label.configure(text=f"Verification: {verification_state}", foreground=verify_color)
+
         response_tag = "assistant" if result.get("success") else "error"
         self._replace_last_pending(final_text, response_tag)
 
@@ -986,6 +1000,7 @@ class DesktopControlApp:
     def _display_error(self, error_text: str) -> None:
         self.send_button.configure(state="normal")
         self.chat_state_label.configure(text="Connection problem")
+        self.verification_state_label.configure(text="Verification: Unverified", foreground=_RED)
         set_text(self.details_text, f"Error:\n{error_text}")
         self.last_response_text = str(error_text)
         self.last_trace_payload = {"error": str(error_text)}

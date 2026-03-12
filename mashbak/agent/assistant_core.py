@@ -183,6 +183,83 @@ class AssistantCore:
         response["trace"] = response_trace
         return response
 
+    _DYNAMIC_FACT_TERMS = (
+        "election", "officeholder", "president", "vice president", "senator", "governor", "mayor",
+        "congress", "parliament", "prime minister", "won", "winner", "results", "poll", "latest",
+        "breaking", "today", "this week", "this month", "this year", "current", "as of", "now",
+        "schedule", "calendar", "deadline", "law", "bill", "statute", "court", "ruling",
+        "price", "cost", "stock", "market", "inflation", "gdp", "population", "statistics", "stats",
+    )
+
+    _LOCAL_CONTEXT_TERMS = (
+        "mashbak", "this app", "this system", "my computer", "desktop", "inbox", "outbox",
+        "file", "folder", "path", "cpu", "disk", "network", "uptime", "process", "email",
+    )
+
+    def _is_time_sensitive_fact_query(self, message: str, parsed: dict[str, Any]) -> bool:
+        lower = str(message or "").strip().lower()
+        if not lower:
+            return False
+
+        # Local operations and runtime diagnostics are not external dynamic-fact queries.
+        if any(token in lower for token in self._LOCAL_CONTEXT_TERMS):
+            return False
+
+        if parsed.get("tool"):
+            return False
+
+        factual_cues = (
+            "who", "what", "when", "which", "did", "won", "winner", "result", "latest",
+            "current", "as of", "now", "price", "cost", "how much", "schedule", "law", "stat",
+        )
+        if not any(token in lower for token in factual_cues) and "?" not in lower:
+            return False
+
+        return any(token in lower for token in self._DYNAMIC_FACT_TERMS)
+
+    def _is_time_or_date_query(self, message: str) -> bool:
+        lower = str(message or "").strip().lower()
+        if not lower:
+            return False
+        date_time_tokens = (
+            "what time", "current time", "time is it", "date today", "today's date",
+            "what date", "what day is", "today",
+        )
+        return any(token in lower for token in date_time_tokens)
+
+    async def _dynamic_fact_reply(self, message: str, metadata: AssistantMetadata) -> tuple[str, str, str, str]:
+        """Return reply + verification metadata for dynamic factual questions."""
+        if self._is_time_or_date_query(message):
+            result = await self.runtime.execute_tool(
+                tool_name="current_time",
+                args={},
+                sender=metadata.sender,
+                request_id=metadata.request_id,
+                source=metadata.source,
+            )
+            if result.get("success"):
+                reply = self._fallback_tool_reply("current_time", result.get("output"), result.get("data"))
+                return (
+                    reply,
+                    "Tool-assisted",
+                    "Verified through current_time tool execution.",
+                    "tool",
+                )
+            return (
+                "I can't verify the current date/time right now because the local time tool is unavailable.",
+                "Unverified",
+                "Dynamic fact check attempted but current_time tool failed.",
+                "policy",
+            )
+
+        return (
+            "I can't verify that time-sensitive fact right now with the tools currently available. "
+            "I don't want to guess or provide stale information.",
+            "Unverified",
+            "Dynamic fact query blocked because no live retrieval/web verification path is available.",
+            "policy",
+        )
+
     def _build_unexecuted_action_response(
         self,
         message: str,
@@ -230,6 +307,8 @@ class AssistantCore:
                 "tool_execution_occurred": False,
                 "confidence": parsed.get("confidence", 0.0),
                 "assistant_response_source": "policy",
+                "verification_state": "Local-only",
+                "verification_reason": "No external factual claim; action was not executed.",
                 "followup_topic": parsed.get("followup_topic"),
                 "topic": parsed.get("topic"),
             },
@@ -258,6 +337,8 @@ class AssistantCore:
                 "execution_status": "blocked",
                 "confidence": 1.0,
                 "assistant_response_source": "policy",
+                "verification_state": "Local-only",
+                "verification_reason": "Policy lock response; no factual claim made.",
             },
         }
 
@@ -268,7 +349,15 @@ class AssistantCore:
         parsed: dict[str, Any],
         context_snapshot: dict[str, Any],
     ) -> dict[str, Any]:
-        reply = await self._generate_conversation_reply(message, metadata, parsed, context_snapshot)
+        verification_state = "Local-only"
+        verification_reason = "No time-sensitive factual verification required for this reply."
+        response_source = "openai" if self.model_client.enabled else "fallback"
+
+        if self._is_time_sensitive_fact_query(message, parsed):
+            reply, verification_state, verification_reason, response_source = await self._dynamic_fact_reply(message, metadata)
+        else:
+            reply = await self._generate_conversation_reply(message, metadata, parsed, context_snapshot)
+
         return {
             "success": True,
             "tool_name": None,
@@ -291,7 +380,9 @@ class AssistantCore:
                 "execution_result": "not_executed",
                 "tool_execution_occurred": False,
                 "confidence": parsed.get("confidence", 0.0),
-                "assistant_response_source": "openai" if self.model_client.enabled else "fallback",
+                "assistant_response_source": response_source,
+                "verification_state": verification_state,
+                "verification_reason": verification_reason,
                 "followup_topic": parsed.get("followup_topic"),
                 "topic": parsed.get("topic"),
             },
@@ -344,6 +435,12 @@ class AssistantCore:
         trace["tool_data"] = sanitize_for_logging(result.get("data"))
         trace["execution_result"] = "success" if result.get("success") else "failed"
         trace["tool_execution_occurred"] = True
+        trace["verification_state"] = "Tool-assisted"
+        trace["verification_reason"] = (
+            f"Grounded by tool execution: {result.get('tool_name')}."
+            if result.get("success")
+            else f"Tool execution failed for {result.get('tool_name')}"
+        )
         if result.get("error"):
             trace["tool_error"] = sanitize_for_logging(result.get("error"))
             trace["error_type"] = result.get("error_type")
@@ -562,6 +659,8 @@ class AssistantCore:
         return (
             "You are Mashbak, the single assistant core for the user's desktop and SMS access. "
             "Use natural language, avoid raw debug formatting, and stay faithful to the actual tool results. "
+            "Never present unverified dynamic facts (current events, elections, officeholders, laws, prices, statistics, schedules) as certain. "
+            "If a dynamic fact is not verified by a tool or retrieval path in this runtime, clearly say you cannot verify and do not guess. "
             f"{source_guidance}"
         )
 

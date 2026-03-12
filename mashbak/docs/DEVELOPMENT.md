@@ -77,6 +77,13 @@ npm start
 - Exactly one assistant completion should be rendered per send cycle.
 - Pending placeholder replacement must remove the pending block in-place to avoid duplicate timestamp artifacts.
 - Debug/status details should reflect the current request trace (`assistant_response_source`, selected tool, execution status).
+- Chat should surface trace verification status for each reply (`verification_state` and `verification_reason`).
+
+## Dynamic Fact Trust Guard
+
+- Any dynamic factual query (elections, officeholders, current events, schedules, laws, prices, statistics) must be verified through an available runtime tool path before being answered.
+- If no verification path is available, assistant must refuse transparently (no guessing, no confident stale claims).
+- Tool-backed replies should set `verification_state=Tool-assisted`; unverifiable dynamic claims should set `verification_state=Unverified`.
 
 ## Logging And Redaction
 

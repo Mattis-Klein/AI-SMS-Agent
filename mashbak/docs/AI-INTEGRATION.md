@@ -37,3 +37,8 @@ Config updates still route through set_config_variable and write to mashbak/.env
 - Redaction runs before traces/logs are persisted.
 - Bridge remains transport/access-control only.
 - Backend remains the only reasoning engine.
+- Time-sensitive factual queries (current events, elections, officeholders, schedules, laws, prices, statistics) must be verified via an available tool path before answering.
+- If verification is not available in-runtime, Mashbak refuses cleanly instead of guessing.
+- Conversation traces now include verification metadata:
+- verification_state: Verified | Tool-assisted | Local-only | Unverified
+- verification_reason: short reason explaining why the reply was or was not verified
