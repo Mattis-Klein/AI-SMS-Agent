@@ -10,8 +10,7 @@
 ## 1. Python Dependencies
 
 ```powershell
-cd mashbak
-python -m pip install -r agent/requirements.txt
+python -m pip install -r mashbak/agent/requirements.txt
 ```
 
 ## 2. Node Dependencies

@@ -10,11 +10,11 @@ Do not violate these boundaries:
 
 ## Local Dev Loop
 
-From mashbak root:
+From repository root:
 
 ```powershell
-python -m pytest -q
-cd sms_bridge
+python -m pytest -q mashbak/tests
+cd mashbak/sms_bridge
 npm test
 ```
 
@@ -27,20 +27,20 @@ python -m uvicorn agent.agent:app --app-dir mashbak --host 127.0.0.1 --port 8787
 Run desktop:
 
 ```powershell
-python desktop_app/main.py
+python mashbak/desktop_app/main.py
 ```
 
 Run bridge:
 
 ```powershell
-cd sms_bridge
+cd mashbak/sms_bridge
 npm start
 ```
 
 ## Adding Or Updating A Tool
 
-1. Implement tool in agent/tools/builtin/.
-2. Register in agent/tools/builtin/__init__.py.
+1. Implement tool in mashbak/agent/tools/builtin/.
+2. Register in mashbak/agent/tools/builtin/__init__.py.
 3. Keep argument validation strict in tool.validate_args().
 4. Ensure tool output is deterministic and safe for assistant wrapping.
 5. Add regression tests under mashbak/tests/.
@@ -53,7 +53,7 @@ npm start
 
 ## Logging And Redaction
 
-- Use agent/redaction.py for backend trace/log sanitization.
+- Use mashbak/agent/redaction.py for backend trace/log sanitization.
 - Use sms_bridge/redaction.js for bridge sanitization.
 - Never add raw secret values to logs or debug surfaces.
 

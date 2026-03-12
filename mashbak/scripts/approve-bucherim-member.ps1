@@ -10,7 +10,8 @@ param(
 function Normalize-E164 {
     param([string]$Value)
 
-    $digits = -join (($Value ?? "") -replace "\D", "")
+    $rawValue = if ($null -eq $Value) { "" } else { [string]$Value }
+    $digits = -join (($rawValue) -replace "\D", "")
     if (-not $digits) {
         throw "Phone number is empty after normalization."
     }
@@ -117,7 +118,7 @@ if (Test-Path $membershipPath) {
         $membership | Add-Member -NotePropertyName history -NotePropertyValue @()
     }
 
-    $event = [ordered]@{
+    $membershipEvent = [ordered]@{
         timestamp = $now
         event = if ($ActivateNow) { "approved_and_activated" } else { "approved_allowlisted" }
         status = $status
@@ -126,7 +127,7 @@ if (Test-Path $membershipPath) {
     }
 
     $history = @($membership.history)
-    $history += $event
+    $history += $membershipEvent
     $membership.history = $history
     $membership.updated_at = $now
 
@@ -135,9 +136,9 @@ if (Test-Path $membershipPath) {
         timestamp = $now
         direction = "event"
         event_type = "membership"
-        event = $event.event
+        event = $membershipEvent.event
         status = $status
-        details = $event.details
+        details = $membershipEvent.details
     })
 }
 

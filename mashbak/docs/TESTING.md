@@ -13,7 +13,7 @@ python -m pytest -q
 Bridge:
 
 ```powershell
-cd sms_bridge
+cd mashbak/sms_bridge
 npm test
 ```
 
@@ -78,7 +78,7 @@ Expected:
 Start bridge:
 
 ```powershell
-cd sms_bridge
+cd mashbak/sms_bridge
 npm start
 ```
 

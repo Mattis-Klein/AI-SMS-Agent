@@ -55,4 +55,5 @@ Do not commit real secrets.
 ## Cleanup Outcome
 
 - Legacy duplicate roots (agent/, bucherim/, sms-bridge/) are not part of canonical architecture.
+- Preserved legacy bridge snapshot now lives at local-memory-notes/legacy-archives/sms-bridge-legacy-2026-03-12/ for continuity only.
 - All active implementation, scripts, tests, and docs should reference mashbak/ paths only.
