@@ -10,6 +10,18 @@ This repository is organized around one canonical platform root: mashbak/.
 - Desktop UI client: mashbak/desktop_app
 - Runtime data root: mashbak/data
 
+## Mashbak Control Board
+
+The local desktop app is now a multi-section control board over the backend runtime (not a second backend):
+
+- Dashboard: backend/bridge/email status, recent failures, recent actions
+- Chat / Console: conversational execution with optional trace visibility
+- Assistants: Mashbak and Bucherim runtime settings visibility
+- Communications: email setup/testing and number routing controls
+- Files & Permissions: allowed directories, path policy test, blocked attempt visibility
+- Projects / Files: recent file-oriented activity overview
+- Activity / Audit: searchable recent tool execution history
+
 ## Current Assistants
 
 - Mashbak profile: mashbak/assistants/mashbak

@@ -6,7 +6,13 @@ All requests are routed through the tool dispatcher, which validates
 inputs and logs all activities.
 """
 
-from typing import Optional
+import asyncio
+import json
+import re
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any, Optional
 
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -54,6 +60,174 @@ class BucherimSmsRequest(BaseModel):
     message_sid: str | None = None
     account_sid: str | None = None
     media: list[BucherimMediaItem] = Field(default_factory=list)
+
+
+class EmailConfigSaveRequest(BaseModel):
+    provider: str = "imap"
+    email_address: str = ""
+    password: str = ""
+    imap_host: str = ""
+    imap_port: int = 993
+    use_ssl: bool = True
+    mailbox: str = "INBOX"
+
+
+class FilesPolicySaveRequest(BaseModel):
+    allowed_directories: list[str] = Field(default_factory=list)
+
+
+class PathTestRequest(BaseModel):
+    path: str
+
+
+class RoutingApproveRequest(BaseModel):
+    phone_number: str
+    activate_now: bool = False
+
+
+class RoutingDeactivateRequest(BaseModel):
+    phone_number: str
+
+
+def _platform_root() -> Path:
+    return runtime.base_dir
+
+
+def _agent_log_path() -> Path:
+    return _platform_root() / "data" / "logs" / "agent.log"
+
+
+def _bridge_log_path() -> Path:
+    return _platform_root() / "data" / "logs" / "bridge.log"
+
+
+def _agent_config_path() -> Path:
+    return _platform_root() / "agent" / "config.json"
+
+
+def _bucherim_config_path() -> Path:
+    return _platform_root() / "assistants" / "bucherim" / "config.json"
+
+
+def _bucherim_users_root() -> Path:
+    return _platform_root() / "data" / "users" / "bucherim"
+
+
+def _pending_requests_path() -> Path:
+    return _bucherim_users_root() / "pending_requests.jsonl"
+
+
+def _normalize_phone(value: str) -> str:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    if not digits:
+        return ""
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    return f"+{digits}"
+
+
+def _load_json(path: Path, default: Any) -> Any:
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def _save_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _read_jsonl(path: Path, limit: int = 200) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except Exception:
+            rows.append({"raw": line})
+    return rows[-limit:]
+
+
+def _tail_events(path: Path, limit: int = 120) -> list[dict[str, Any]]:
+    rows = _read_jsonl(path, limit=limit)
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def _recent_tool_actions(limit: int = 25) -> list[dict[str, Any]]:
+    events = _tail_events(_agent_log_path(), limit=400)
+    actions: list[dict[str, Any]] = []
+    for ev in reversed(events):
+        if ev.get("event_type") != "tool_execution":
+            continue
+        actions.append({
+            "timestamp": ev.get("time"),
+            "assistant": ev.get("sender") or "desktop",
+            "requested_action": ev.get("interpreted_intent") or ev.get("tool_name"),
+            "selected_tool": ev.get("tool_name"),
+            "result": "success" if ev.get("success") else "failure",
+            "state": "blocked" if str(ev.get("error") or "").lower().find("allowed") >= 0 else ("success" if ev.get("success") else "failure"),
+            "target": (ev.get("arguments") or {}).get("path") if isinstance(ev.get("arguments"), dict) else None,
+            "details": ev.get("error") or ev.get("output"),
+        })
+        if len(actions) >= limit:
+            break
+    return actions
+
+
+def _recent_failures(limit: int = 10) -> list[dict[str, Any]]:
+    events = _tail_events(_agent_log_path(), limit=400)
+    failures: list[dict[str, Any]] = []
+    for ev in reversed(events):
+        if ev.get("event_type") == "tool_execution" and not ev.get("success"):
+            failures.append({
+                "timestamp": ev.get("time"),
+                "tool": ev.get("tool_name"),
+                "error": ev.get("error"),
+            })
+        elif ev.get("event_type") == "error":
+            failures.append({
+                "timestamp": ev.get("time"),
+                "tool": ev.get("tool_name"),
+                "error": ev.get("error_message") or ev.get("error_type"),
+            })
+        if len(failures) >= limit:
+            break
+    return failures
+
+
+def _bridge_health() -> dict[str, Any]:
+    url = "http://127.0.0.1:34567/health"
+    try:
+        with urllib.request.urlopen(url, timeout=1.2) as response:
+            payload = response.read().decode("utf-8", errors="replace")
+        parsed = json.loads(payload)
+        return {"connected": True, "detail": parsed}
+    except Exception as exc:
+        return {"connected": False, "detail": str(exc)}
+
+
+def _test_path_allowed(path_text: str) -> tuple[bool, str]:
+    path_value = str(path_text or "").strip()
+    if not path_value:
+        return False, "Path is empty"
+    requested = Path(path_value).expanduser().resolve()
+    workspace = runtime.workspace.resolve()
+    if requested.is_relative_to(workspace):
+        return True, f"Allowed: workspace-relative ({requested})"
+    for allowed in runtime.config.get_allowed_directories():
+        base = Path(allowed).expanduser().resolve()
+        if requested.is_relative_to(base):
+            return True, f"Allowed: within {base}"
+    return False, "Blocked: path is not in allowed directories"
 
 
 # ============================================================================
@@ -264,6 +438,254 @@ async def execute_bucherim_sms(
         "outbound_media": result.get("outbound_media", []),
         "request_id": x_request_id or "unknown",
     }
+
+
+# ============================================================================
+# Control Board Endpoints
+# ============================================================================
+
+@app.get("/control-board/overview")
+def control_board_overview(x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    summary = runtime.summary()
+    return {
+        "backend": {
+            "connected": True,
+            "workspace": summary.get("workspace"),
+            "model": summary.get("assistant_model"),
+            "ai_enabled": summary.get("assistant_ai_enabled"),
+        },
+        "bridge": _bridge_health(),
+        "email": {
+            "configured": summary.get("email_configured"),
+        },
+        "active_assistant": "mashbak",
+        "recent_failures": _recent_failures(limit=10),
+        "recent_actions": _recent_tool_actions(limit=12),
+        "quick_actions": [
+            "check system info",
+            "list recent emails",
+            "create file in workspace",
+            "show blocked path attempts",
+        ],
+    }
+
+
+@app.get("/control-board/activity")
+def control_board_activity(limit: int = 100, x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    cap = max(10, min(int(limit or 100), 500))
+    return {
+        "items": _recent_tool_actions(limit=cap),
+        "count": cap,
+    }
+
+
+@app.get("/control-board/email-config")
+def control_board_email_config(x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    from .config_loader import ConfigLoader
+
+    host = (ConfigLoader.get("EMAIL_IMAP_HOST") or ConfigLoader.get("IMAP_SERVER") or "").strip()
+    port = int(ConfigLoader.get("EMAIL_IMAP_PORT") or ConfigLoader.get("IMAP_PORT") or 993)
+    username = (ConfigLoader.get("EMAIL_USERNAME") or ConfigLoader.get("EMAIL_ADDRESS") or "").strip()
+    mailbox = (ConfigLoader.get("EMAIL_MAILBOX") or "INBOX").strip() or "INBOX"
+    use_ssl = ConfigLoader.get_bool("EMAIL_USE_SSL", True)
+    provider = (ConfigLoader.get("EMAIL_PROVIDER") or "imap").strip() or "imap"
+
+    return {
+        "provider": provider,
+        "email_address": username,
+        "password_set": bool((ConfigLoader.get("EMAIL_PASSWORD") or "").strip()),
+        "imap_host": host,
+        "imap_port": port,
+        "use_ssl": use_ssl,
+        "mailbox": mailbox,
+    }
+
+
+@app.post("/control-board/email-config/save")
+async def control_board_email_save(req: EmailConfigSaveRequest, x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+
+    updates = {
+        "EMAIL_PROVIDER": req.provider,
+        "EMAIL_USERNAME": req.email_address,
+        "EMAIL_IMAP_HOST": req.imap_host,
+        "EMAIL_IMAP_PORT": str(req.imap_port),
+        "EMAIL_USE_SSL": "true" if req.use_ssl else "false",
+        "EMAIL_MAILBOX": req.mailbox,
+    }
+    if str(req.password or "").strip():
+        updates["EMAIL_PASSWORD"] = req.password
+
+    results = []
+    for key, value in updates.items():
+        if not str(value or "").strip():
+            continue
+        result = await runtime.execute_tool(
+            tool_name="set_config_variable",
+            args={"variable_name": key, "variable_value": str(value)},
+            sender="desktop-control-board",
+            source="desktop",
+        )
+        results.append({"variable": key, "success": bool(result.get("success")), "error": result.get("error")})
+
+    return {
+        "success": all(item["success"] for item in results) if results else False,
+        "updates": results,
+    }
+
+
+@app.post("/control-board/email-config/test")
+async def control_board_email_test(x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    result = await runtime.execute_tool(
+        tool_name="list_recent_emails",
+        args={"limit": 1},
+        sender="desktop-control-board",
+        source="desktop",
+    )
+    return {
+        "success": bool(result.get("success")),
+        "error_type": result.get("error_type"),
+        "message": result.get("output") if result.get("success") else result.get("error"),
+    }
+
+
+@app.get("/control-board/files-policy")
+def control_board_files_policy(x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    allowed = [str(item) for item in runtime.config.get_allowed_directories()]
+    blocked_attempts = []
+    for ev in _tail_events(_agent_log_path(), limit=250):
+        if ev.get("event_type") != "tool_execution":
+            continue
+        if ev.get("success"):
+            continue
+        err = str(ev.get("error") or "")
+        if "allowed" in err.lower() or "path is not in allowed directories" in err.lower():
+            args = ev.get("arguments") if isinstance(ev.get("arguments"), dict) else {}
+            blocked_attempts.append({
+                "timestamp": ev.get("time"),
+                "tool": ev.get("tool_name"),
+                "path": args.get("path") or args.get("parent_path"),
+                "error": err,
+            })
+    blocked_attempts = blocked_attempts[-60:]
+    return {
+        "allowed_directories": allowed,
+        "blocked_attempts": blocked_attempts,
+    }
+
+
+@app.post("/control-board/files-policy/save")
+def control_board_files_policy_save(req: FilesPolicySaveRequest, x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    normalized = [str(Path(p).expanduser().resolve()) for p in req.allowed_directories if str(p).strip()]
+    payload = _load_json(_agent_config_path(), default={})
+    payload["allowed_directories"] = normalized
+    _save_json(_agent_config_path(), payload)
+    runtime.config.load()
+    return {"success": True, "allowed_directories": normalized}
+
+
+@app.post("/control-board/files-policy/test-path")
+def control_board_files_policy_test_path(req: PathTestRequest, x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    allowed, reason = _test_path_allowed(req.path)
+    return {
+        "allowed": allowed,
+        "reason": reason,
+    }
+
+
+@app.get("/control-board/assistants")
+def control_board_assistants(x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    bucherim = _load_json(_bucherim_config_path(), default={})
+    return {
+        "mashbak": {
+            "model": runtime.openai_model,
+            "base_url": runtime.openai_base_url,
+            "temperature": runtime.openai_temperature,
+            "max_tokens": runtime.model_response_max_tokens,
+            "ai_enabled": bool(runtime.openai_api_key),
+        },
+        "bucherim": {
+            "assistant_number": bucherim.get("assistant_number"),
+            "allowlist_count": len(bucherim.get("allowlist") or []),
+            "blocked_numbers_count": len(bucherim.get("blocked_numbers") or []),
+            "responses": bucherim.get("responses") or {},
+        },
+    }
+
+
+@app.get("/control-board/routing")
+def control_board_routing(x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    bucherim = _load_json(_bucherim_config_path(), default={})
+    pending = _read_jsonl(_pending_requests_path(), limit=200)
+    pending = [item for item in pending if isinstance(item, dict)]
+    return {
+        "assistant_number": bucherim.get("assistant_number"),
+        "allowlist": bucherim.get("allowlist") or [],
+        "blocked_numbers": bucherim.get("blocked_numbers") or [],
+        "pending_join_requests": pending,
+    }
+
+
+@app.post("/control-board/routing/approve")
+def control_board_routing_approve(req: RoutingApproveRequest, x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    normalized = _normalize_phone(req.phone_number)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+
+    config = _load_json(_bucherim_config_path(), default={})
+    allowlist = list(config.get("allowlist") or [])
+    if normalized not in allowlist:
+        allowlist.append(normalized)
+    config["allowlist"] = allowlist
+    _save_json(_bucherim_config_path(), config)
+
+    user_key = "p" + "".join(ch for ch in normalized if ch.isdigit())
+    user_dir = _bucherim_users_root() / user_key
+    membership_path = user_dir / "membership.json"
+    membership = _load_json(membership_path, default={})
+    membership["phone_number"] = normalized
+    membership["status"] = "active" if req.activate_now else "allowlisted"
+    membership["source"] = "control_board_approve"
+    _save_json(membership_path, membership)
+
+    return {"success": True, "phone_number": normalized, "status": membership.get("status")}
+
+
+@app.post("/control-board/routing/deactivate")
+def control_board_routing_deactivate(req: RoutingDeactivateRequest, x_api_key: str = Header(None)):
+    authenticate(x_api_key)
+    normalized = _normalize_phone(req.phone_number)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+
+    config = _load_json(_bucherim_config_path(), default={})
+    allowlist = [item for item in list(config.get("allowlist") or []) if str(item) != normalized]
+    blocked = list(config.get("blocked_numbers") or [])
+    if normalized not in blocked:
+        blocked.append(normalized)
+    config["allowlist"] = allowlist
+    config["blocked_numbers"] = blocked
+    _save_json(_bucherim_config_path(), config)
+
+    user_key = "p" + "".join(ch for ch in normalized if ch.isdigit())
+    membership_path = _bucherim_users_root() / user_key / "membership.json"
+    membership = _load_json(membership_path, default={})
+    if membership:
+        membership["status"] = "blocked"
+        membership["source"] = "control_board_deactivate"
+        _save_json(membership_path, membership)
+
+    return {"success": True, "phone_number": normalized, "status": "blocked"}
 
 
 # ============================================================================

@@ -26,6 +26,85 @@ class AgentClient:
             body={"message": message, "owner_unlocked": owner_unlocked},
         )
 
+    def get_overview(self) -> dict:
+        return self._request("GET", "/control-board/overview", include_auth=True)
+
+    def get_activity(self, limit: int = 100) -> dict:
+        return self._request("GET", f"/control-board/activity?limit={int(limit)}", include_auth=True)
+
+    def get_assistants(self) -> dict:
+        return self._request("GET", "/control-board/assistants", include_auth=True)
+
+    def get_routing(self) -> dict:
+        return self._request("GET", "/control-board/routing", include_auth=True)
+
+    def approve_routing_member(self, phone_number: str, activate_now: bool = False) -> dict:
+        return self._request(
+            "POST",
+            "/control-board/routing/approve",
+            include_auth=True,
+            body={"phone_number": phone_number, "activate_now": bool(activate_now)},
+        )
+
+    def deactivate_routing_member(self, phone_number: str) -> dict:
+        return self._request(
+            "POST",
+            "/control-board/routing/deactivate",
+            include_auth=True,
+            body={"phone_number": phone_number},
+        )
+
+    def get_email_config(self) -> dict:
+        return self._request("GET", "/control-board/email-config", include_auth=True)
+
+    def save_email_config(
+        self,
+        *,
+        provider: str,
+        email_address: str,
+        password: str,
+        imap_host: str,
+        imap_port: int,
+        use_ssl: bool,
+        mailbox: str,
+    ) -> dict:
+        return self._request(
+            "POST",
+            "/control-board/email-config/save",
+            include_auth=True,
+            body={
+                "provider": provider,
+                "email_address": email_address,
+                "password": password,
+                "imap_host": imap_host,
+                "imap_port": int(imap_port),
+                "use_ssl": bool(use_ssl),
+                "mailbox": mailbox,
+            },
+        )
+
+    def test_email_connection(self) -> dict:
+        return self._request("POST", "/control-board/email-config/test", include_auth=True, body={})
+
+    def get_files_policy(self) -> dict:
+        return self._request("GET", "/control-board/files-policy", include_auth=True)
+
+    def save_files_policy(self, allowed_directories: list[str]) -> dict:
+        return self._request(
+            "POST",
+            "/control-board/files-policy/save",
+            include_auth=True,
+            body={"allowed_directories": allowed_directories},
+        )
+
+    def test_policy_path(self, path: str) -> dict:
+        return self._request(
+            "POST",
+            "/control-board/files-policy/test-path",
+            include_auth=True,
+            body={"path": path},
+        )
+
     def _request(
         self,
         method: str,

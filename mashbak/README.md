@@ -5,6 +5,19 @@ Mashbak is a desktop-first assistant with one shared backend reasoning engine.
 - Desktop UI is transport and presentation only.
 - SMS bridge is transport and access-control only.
 - Tool execution runs only through backend interpreter, dispatcher, and tool registry.
+- Desktop app is a multi-section control board that reads/updates backend-owned state through backend APIs.
+
+## Control Board UX
+
+The desktop app now provides a full local operations shell with sections:
+
+- Dashboard: service health, failures, actions
+- Chat / Console: natural-language operation execution and trace visibility
+- Assistants: Mashbak/Bucherim runtime settings visibility
+- Communications: email setup/test and routing/member controls
+- Files & Permissions: allowed directories and policy test tools
+- Projects / Files: recent file/project operation view
+- Activity / Audit: tool execution audit timeline
 
 Bucherim is now implemented as a separate SMS assistant flow inside this project:
 - Destination Twilio number: +18772683048

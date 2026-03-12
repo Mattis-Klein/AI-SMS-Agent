@@ -56,6 +56,9 @@ cd mashbak
 python desktop_app/main.py
 ```
 
+The desktop app opens as the Mashbak Control Board with Dashboard, Chat/Console,
+Assistants, Communications, Files & Permissions, Projects/Files, and Activity/Audit sections.
+
 ## 5. Verify
 
 Backend health:
@@ -90,6 +93,7 @@ Build output:
 - Runtime config source is mashbak/.env.master.
 - Chat config updates write to mashbak/.env.master.
 - Bridge transport/access-control values require bridge restart after change.
+- Desktop control forms (email/policy/routing) submit through backend-owned control endpoints.
 
 ## Stabilization Verification (Post-Install)
 

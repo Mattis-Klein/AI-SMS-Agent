@@ -32,8 +32,22 @@ AI-SMS-Agent/
 - mashbak/agent is the shared reasoning and execution core.
 - mashbak/assistants contains assistant-specific behavior/config.
 - mashbak/sms_bridge is transport-only.
-- mashbak/desktop_app is UI-only.
+- mashbak/desktop_app is UI-only and acts as a control board surface over backend APIs.
 - mashbak/data holds runtime users, logs, media, and workspace data.
+
+## Desktop Control Board Sections
+
+The desktop app is organized as a control board shell with these sections:
+
+- Dashboard
+- Chat / Console
+- Assistants
+- Communications
+- Files & Permissions
+- Projects / Files
+- Activity / Audit
+
+All operational state and policy remain backend-owned; desktop surfaces and updates state through backend endpoints.
 
 ## Runtime Behavior Invariants
 

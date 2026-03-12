@@ -1,4 +1,6 @@
-"""Tkinter UI for local Mashbak control and observability."""
+"""Tkinter UI for Mashbak Control Board."""
+
+from __future__ import annotations
 
 import json
 import threading
@@ -6,21 +8,24 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from tkinter import BOTH, END, LEFT, RIGHT, X, Y, Text, Tk
+from tkinter import BOTH, END, LEFT, RIGHT, X, Y, BooleanVar, Listbox, StringVar, Text, Tk
 from tkinter import ttk
 
 from widgets import add_refresh_button, labeled_scroll_text, make_scrolled_text, set_text
 
 try:
     from agent.redaction import sanitize_for_logging
-except Exception:  # pragma: no cover - desktop fallback if import path changes
+except Exception:  # pragma: no cover
     def sanitize_for_logging(value, key=None):
         return value
+
 
 _GREEN = "#1a7f37"
 _RED = "#b42318"
 _AMBER = "#9a6700"
 _SLATE = "#57606a"
+_BG = "#f6f8fa"
+_CARD = "#ffffff"
 
 
 class DesktopControlApp:
@@ -35,31 +40,39 @@ class DesktopControlApp:
             raise RuntimeError("LOCAL_APP_PIN is required. Set it in mashbak/.env.master or the environment.")
 
         self.root = root
-        self.root.title("Mashbak Desktop")
-        self.root.geometry("1380x860")
-        self.root.minsize(960, 640)
+        self.root.title("Mashbak Control Board")
+        self.root.geometry("1520x940")
+        self.root.minsize(1080, 680)
 
         self.client = client
         self.runtime_summary = runtime_summary
         self.local_app_pin = local_app_pin
+
+        self.is_unlocked = False
+        self.pending_start_index: str | None = None
+        self.current_section = StringVar(value="Dashboard")
+
         self.activity: list[str] = []
         self.chat_history: list[tuple[str, str]] = []
         self.quick_buttons: list[ttk.Button] = []
-        self.lock_sensitive_buttons: list[ttk.Button] = []
-        self.is_unlocked = False
-        self.pending_start_index: str | None = None
+        self.lock_sensitive_buttons: list[ttk.Widget] = []
 
-        workspace = Path(runtime_summary["workspace"])
-        platform_root = workspace.parent.parent
+        workspace = Path(runtime_summary.get("workspace") or "")
+        platform_root = workspace.parent.parent if workspace else Path.cwd()
         self.agent_log_file = platform_root / "data" / "logs" / "agent.log"
         self.bridge_log_file = platform_root / "data" / "logs" / "bridge.log"
+
+        self.section_frames: dict[str, ttk.Frame] = {}
+        self.section_buttons: dict[str, ttk.Button] = {}
 
         self._apply_styles()
         self._build_ui()
         self._set_backend_status("starting", "Mashbak is starting the local assistant backend.")
-        self._lock_ui("Mashbak is locked. Enter your PIN above to unlock the assistant.")
+        self._lock_ui("Control board locked. Enter your PIN above to unlock.")
 
-    # ── theming ────────────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # Theme and shell
+    # ------------------------------------------------------------------
 
     def _apply_styles(self) -> None:
         style = ttk.Style(self.root)
@@ -68,41 +81,33 @@ class DesktopControlApp:
                 style.theme_use(theme)
                 break
 
-        style.configure("Header.TFrame", background="#1c2128")
-        style.configure("Header.TLabel", background="#1c2128", foreground="#cdd9e5", font=("Segoe UI", 10))
-        style.configure("AppTitle.TLabel", background="#1c2128", foreground="#e6edf3", font=("Segoe UI", 16, "bold"))
-        style.configure("SubTitle.TLabel", background="#1c2128", foreground="#9fb0c1", font=("Segoe UI", 9))
-        style.configure("Section.TLabel", font=("Segoe UI", 10, "bold"), foreground="#1f2328")
-        style.configure("ConversationTitle.TLabel", font=("Segoe UI", 12, "bold"), foreground="#1f2328")
-        style.configure("ConversationSub.TLabel", font=("Segoe UI", 9), foreground=_SLATE)
-        style.configure("StatusBar.TLabel", font=("Segoe UI", 8), foreground="#656d76")
-        style.configure("Send.TButton", font=("Segoe UI", 10, "bold"))
-
-    # ── layout ─────────────────────────────────────────────────────────────────
+        style.configure("Header.TFrame", background="#111827")
+        style.configure("Header.TLabel", background="#111827", foreground="#d1d5db", font=("Segoe UI", 10))
+        style.configure("AppTitle.TLabel", background="#111827", foreground="#f9fafb", font=("Segoe UI", 16, "bold"))
+        style.configure("SubTitle.TLabel", background="#111827", foreground="#9ca3af", font=("Segoe UI", 9))
+        style.configure("Section.TLabel", font=("Segoe UI", 11, "bold"), foreground="#111827")
+        style.configure("StatusBar.TLabel", font=("Segoe UI", 8), foreground="#6b7280")
+        style.configure("Nav.TButton", font=("Segoe UI", 10), padding=(10, 8), anchor="w")
+        style.configure("NavActive.TButton", font=("Segoe UI", 10, "bold"), padding=(10, 8), anchor="w")
 
     def _build_ui(self) -> None:
         self._build_header()
 
-        body = ttk.Frame(self.root)
-        body.pack(fill=BOTH, expand=True, padx=8, pady=(4, 0))
+        shell = ttk.Frame(self.root)
+        shell.pack(fill=BOTH, expand=True, padx=8, pady=(6, 0))
 
-        sidebar = ttk.Frame(body, width=210)
-        sidebar.pack(side=LEFT, fill=Y)
-        sidebar.pack_propagate(False)
-        self._build_sidebar(sidebar)
+        nav = ttk.Frame(shell, width=230)
+        nav.pack(side=LEFT, fill=Y)
+        nav.pack_propagate(False)
+        self._build_sidebar(nav)
 
-        ttk.Separator(body, orient="vertical").pack(side=LEFT, fill=Y, padx=(6, 6))
+        ttk.Separator(shell, orient="vertical").pack(side=LEFT, fill=Y, padx=8)
 
-        chat_col = ttk.Frame(body)
-        chat_col.pack(side=LEFT, fill=BOTH, expand=True)
-        self._build_chat_panel(chat_col)
+        self.content_root = ttk.Frame(shell)
+        self.content_root.pack(side=LEFT, fill=BOTH, expand=True)
 
-        ttk.Separator(body, orient="vertical").pack(side=LEFT, fill=Y, padx=(6, 6))
-
-        right_col = ttk.Frame(body, width=430)
-        right_col.pack(side=RIGHT, fill=BOTH)
-        right_col.pack_propagate(False)
-        self._build_right_panel(right_col)
+        self._build_sections(self.content_root)
+        self._show_section("Dashboard")
 
         self._build_statusbar()
 
@@ -112,8 +117,8 @@ class DesktopControlApp:
 
         title_col = ttk.Frame(header, style="Header.TFrame")
         title_col.pack(side=LEFT)
-        ttk.Label(title_col, text="Mashbak", style="AppTitle.TLabel").pack(anchor="w")
-        ttk.Label(title_col, text="Personal desktop assistant", style="SubTitle.TLabel").pack(anchor="w")
+        ttk.Label(title_col, text="Mashbak Control Board", style="AppTitle.TLabel").pack(anchor="w")
+        ttk.Label(title_col, text="AI-driven operations console for Mashbak platform", style="SubTitle.TLabel").pack(anchor="w")
 
         self.backend_status_label = ttk.Label(header, text="Starting backend", style="Header.TLabel")
         self.backend_status_label.pack(side=LEFT, padx=(20, 0))
@@ -121,11 +126,11 @@ class DesktopControlApp:
         lock_bar = ttk.Frame(header, style="Header.TFrame")
         lock_bar.pack(side=RIGHT)
 
-        self.lock_icon_label = ttk.Label(lock_bar, text="🔒", style="Header.TLabel")
+        self.lock_icon_label = ttk.Label(lock_bar, text="LOCK", style="Header.TLabel")
         self.lock_icon_label.pack(side=LEFT, padx=(0, 4))
         self.lock_status = ttk.Label(lock_bar, text="Locked", style="Header.TLabel")
         self.lock_status.pack(side=LEFT, padx=(0, 8))
-        self.pin_entry = ttk.Entry(lock_bar, width=9, show="●", font=("Segoe UI", 10))
+        self.pin_entry = ttk.Entry(lock_bar, width=9, show="*", font=("Segoe UI", 10))
         self.pin_entry.pack(side=LEFT, padx=(0, 4))
         self.pin_entry.bind("<Return>", lambda _e: self.unlock_app())
         self.unlock_button = ttk.Button(lock_bar, text="Unlock", command=self.unlock_app, width=7)
@@ -135,145 +140,444 @@ class DesktopControlApp:
 
         self.bridge_badge = ttk.Label(header, text="Bridge: checking", style="Header.TLabel")
         self.bridge_badge.pack(side=RIGHT, padx=(0, 10))
-        self.agent_badge = ttk.Label(header, text="Agent: starting", style="Header.TLabel")
+        self.agent_badge = ttk.Label(header, text="Backend: starting", style="Header.TLabel")
         self.agent_badge.pack(side=RIGHT, padx=(0, 10))
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="Quick Commands", style="Section.TLabel").pack(
-            anchor="w", padx=8, pady=(8, 4)
-        )
-        for label, message in [
-            ("Inbox Summary", "Do I have any new emails?"),
-            ("System Info", "system info"),
-            ("CPU Usage", "How busy is my computer right now?"),
-            ("Running Apps", "show running processes"),
-            ("Current Time", "what time is it"),
-        ]:
+        ttk.Label(parent, text="Navigation", style="Section.TLabel").pack(anchor="w", padx=8, pady=(10, 6))
+
+        sections = [
+            "Dashboard",
+            "Chat / Console",
+            "Assistants",
+            "Communications",
+            "Files & Permissions",
+            "Projects / Files",
+            "Activity / Audit",
+        ]
+
+        for section in sections:
             btn = ttk.Button(
-                parent, text=label,
-                command=lambda m=message: self._send_quick_command(m),
+                parent,
+                text=section,
+                style="Nav.TButton",
+                command=lambda s=section: self._show_section(s),
             )
             btn.pack(fill=X, padx=8, pady=2)
-            self.quick_buttons.append(btn)
+            self.section_buttons[section] = btn
+            self.lock_sensitive_buttons.append(btn)
 
         ttk.Separator(parent, orient="horizontal").pack(fill=X, padx=8, pady=10)
 
-        ttk.Label(parent, text="Available Tools", style="Section.TLabel").pack(
-            anchor="w", padx=8, pady=(0, 4)
-        )
-        tools_frame = ttk.Frame(parent)
-        tools_frame.pack(fill=BOTH, expand=True, padx=8, pady=(0, 8))
-        self.tools_text = Text(
-            tools_frame, wrap="word", font=("Segoe UI", 8),
-            relief="flat", bd=0, state="disabled",
-        )
-        tools_scroll = ttk.Scrollbar(tools_frame, orient="vertical", command=self.tools_text.yview)
-        self.tools_text.configure(yscrollcommand=tools_scroll.set)
-        tools_scroll.pack(side=RIGHT, fill=Y)
-        self.tools_text.pack(side=LEFT, fill=BOTH, expand=True)
+        ttk.Label(parent, text="Quick Commands", style="Section.TLabel").pack(anchor="w", padx=8, pady=(0, 4))
+        for label, message in [
+            ("System Info", "system info"),
+            ("CPU Usage", "How busy is my computer right now?"),
+            ("Recent Emails", "Do I have any new emails?"),
+            ("Current Time", "what time is it"),
+        ]:
+            btn = ttk.Button(parent, text=label, command=lambda m=message: self._send_quick_command(m))
+            btn.pack(fill=X, padx=8, pady=2)
+            self.quick_buttons.append(btn)
 
-    def _build_chat_panel(self, parent: ttk.Frame) -> None:
-        chat_frame = ttk.LabelFrame(parent, text="Chat")
-        chat_frame.pack(fill=BOTH, expand=True, pady=(4, 4))
+    def _build_sections(self, parent: ttk.Frame) -> None:
+        self.section_frames["Dashboard"] = self._build_dashboard_section(parent)
+        self.section_frames["Chat / Console"] = self._build_chat_section(parent)
+        self.section_frames["Assistants"] = self._build_assistants_section(parent)
+        self.section_frames["Communications"] = self._build_communications_section(parent)
+        self.section_frames["Files & Permissions"] = self._build_files_section(parent)
+        self.section_frames["Projects / Files"] = self._build_projects_section(parent)
+        self.section_frames["Activity / Audit"] = self._build_activity_section(parent)
 
-        intro = ttk.Frame(chat_frame)
-        intro.pack(fill=X, padx=10, pady=(10, 0))
-        ttk.Label(intro, text="Conversation", style="ConversationTitle.TLabel").pack(anchor="w")
-        ttk.Label(
-            intro,
-            text="Mashbak replies here in natural language using the shared backend assistant.",
-            style="ConversationSub.TLabel",
-        ).pack(anchor="w", pady=(0, 8))
+    def _new_section_frame(self, parent: ttk.Frame) -> ttk.Frame:
+        frame = ttk.Frame(parent)
+        frame.pack(fill=BOTH, expand=True)
+        return frame
 
-        self.chat_state_label = ttk.Label(
-            intro,
-            text="Waiting for unlock",
-            style="ConversationSub.TLabel",
-        )
-        self.chat_state_label.pack(anchor="w")
+    def _show_section(self, section: str) -> None:
+        self.current_section.set(section)
+        for name, frame in self.section_frames.items():
+            if name == section:
+                frame.pack(fill=BOTH, expand=True)
+            else:
+                frame.pack_forget()
 
-        self.chat_text = make_scrolled_text(
-            chat_frame, wrap="word", font=("Segoe UI", 10),
-            state="disabled", relief="flat", bd=0,
-            spacing1=3, spacing3=3, padx=6, pady=6,
-        )
-        self.chat_text.tag_configure("user_meta", foreground=_SLATE, font=("Segoe UI", 8, "bold"), justify="right")
-        self.chat_text.tag_configure("assistant_meta", foreground=_SLATE, font=("Segoe UI", 8, "bold"), justify="left")
-        self.chat_text.tag_configure("user_bubble", foreground="#0a3069", background="#ddf4ff", font=("Segoe UI", 10), lmargin1=190, lmargin2=190, rmargin=12, spacing3=10, justify="right")
-        self.chat_text.tag_configure("assistant_bubble", foreground="#1f2328", background="#f6f8fa", font=("Segoe UI", 10), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
-        self.chat_text.tag_configure("error_bubble", foreground="#8c2f39", background="#fff1f0", font=("Segoe UI", 10), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
-        self.chat_text.tag_configure("system_bubble", foreground="#57606a", background="#f3f4f6", font=("Segoe UI", 10, "italic"), lmargin1=70, lmargin2=70, rmargin=70, spacing3=12, justify="center")
-        self.chat_text.tag_configure("pending_bubble", foreground="#57606a", background="#f6f8fa", font=("Segoe UI", 10, "italic"), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
-
-        input_frame = ttk.Frame(parent)
-        input_frame.pack(fill=X, pady=(0, 6))
-        self.message_entry = ttk.Entry(input_frame, font=("Segoe UI", 11))
-        self.message_entry.pack(side=LEFT, fill=X, expand=True, ipady=4, padx=(0, 6))
-        self.message_entry.bind("<Return>", lambda _e: self.on_send())
-        self.send_button = ttk.Button(
-            input_frame, text="Send ▶", command=self.on_send,
-            style="Send.TButton", width=8,
-        )
-        self.send_button.pack(side=RIGHT)
-
-    def _build_right_panel(self, parent: ttk.Frame) -> None:
-        actions = ttk.Frame(parent)
-        actions.pack(fill=X, pady=(4, 4))
-        self.refresh_status_button = add_refresh_button(actions, self.refresh_status, label="⟳ Status")
-        self.refresh_logs_button = add_refresh_button(actions, self.refresh_logs,  label="⟳ Logs")
-        self.clear_chat_button = ttk.Button(actions, text="✕ Chat", command=self.clear_chat)
-        self.clear_chat_button.pack(side=LEFT, padx=(6, 0))
-        self.clear_activity_button = ttk.Button(actions, text="✕ Activity", command=self.clear_activity)
-        self.clear_activity_button.pack(side=LEFT, padx=(4, 0))
-
-        self.lock_sensitive_buttons.extend([
-            self.refresh_status_button,
-            self.refresh_logs_button,
-            self.clear_chat_button,
-            self.clear_activity_button,
-        ])
-
-        nb = ttk.Notebook(parent)
-        nb.pack(fill=BOTH, expand=True)
-        self.info_notebook = nb
-
-        def _tab(title: str) -> ttk.Frame:
-            frame = ttk.Frame(nb, padding=4)
-            nb.add(frame, text=title)
-            return frame
-
-        detail_tab = _tab("Details")
-        self.details_text = labeled_scroll_text(detail_tab, height=0, font=("Consolas", 9))
-
-        activity_tab = _tab("Activity")
-        self.activity_list = labeled_scroll_text(activity_tab, height=0, font=("Consolas", 9), wrap="none")
-
-        status_tab = _tab("Status")
-        self.status_text = labeled_scroll_text(status_tab, height=0, font=("Consolas", 9))
-
-        config_tab = _tab("Config")
-        self.config_text = labeled_scroll_text(config_tab, height=0, font=("Consolas", 9))
-
-        logs_tab = _tab("Logs")
-        ttk.Label(logs_tab, text="Agent", style="Section.TLabel").pack(anchor="w")
-        self.agent_logs_text = labeled_scroll_text(logs_tab, height=12, font=("Consolas", 8), wrap="none")
-        ttk.Label(logs_tab, text="Bridge", style="Section.TLabel").pack(anchor="w", pady=(6, 0))
-        self.bridge_logs_text = labeled_scroll_text(logs_tab, height=12, font=("Consolas", 8), wrap="none")
+        for name, button in self.section_buttons.items():
+            button.configure(style="NavActive.TButton" if name == section else "Nav.TButton")
 
     def _build_statusbar(self) -> None:
         bar = ttk.Frame(self.root, relief="sunken", padding=(8, 2))
         bar.pack(fill=X, side="bottom")
-        self.statusbar_label = ttk.Label(bar, text="Mashbak Desktop  •  locked", style="StatusBar.TLabel")
+        self.statusbar_label = ttk.Label(bar, text="Mashbak Control Board  |  locked", style="StatusBar.TLabel")
         self.statusbar_label.pack(side=LEFT)
         model_label = self.runtime_summary.get("assistant_model") or "fallback"
         ttk.Label(bar, text=f"Assistant model: {model_label}", style="StatusBar.TLabel").pack(side=RIGHT)
 
-    # ── lock / unlock ──────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # Section builders
+    # ------------------------------------------------------------------
+
+    def _build_dashboard_section(self, parent: ttk.Frame) -> ttk.Frame:
+        frame = self._new_section_frame(parent)
+
+        head = ttk.Frame(frame)
+        head.pack(fill=X, pady=(2, 8))
+        ttk.Label(head, text="Dashboard", style="Section.TLabel").pack(side=LEFT)
+        self.dashboard_refresh_btn = add_refresh_button(head, self.refresh_status, label="Refresh Dashboard")
+        self.lock_sensitive_buttons.append(self.dashboard_refresh_btn)
+
+        cards = ttk.Frame(frame)
+        cards.pack(fill=X)
+
+        self.backend_card = ttk.LabelFrame(cards, text="Backend")
+        self.backend_card.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
+        self.backend_card_value = ttk.Label(self.backend_card, text="Unknown", foreground=_SLATE)
+        self.backend_card_value.pack(anchor="w", padx=8, pady=8)
+
+        self.bridge_card = ttk.LabelFrame(cards, text="Bridge")
+        self.bridge_card.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
+        self.bridge_card_value = ttk.Label(self.bridge_card, text="Unknown", foreground=_SLATE)
+        self.bridge_card_value.pack(anchor="w", padx=8, pady=8)
+
+        self.email_card = ttk.LabelFrame(cards, text="Email")
+        self.email_card.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
+        self.email_card_value = ttk.Label(self.email_card, text="Unknown", foreground=_SLATE)
+        self.email_card_value.pack(anchor="w", padx=8, pady=8)
+
+        self.assistant_card = ttk.LabelFrame(cards, text="Active Assistant")
+        self.assistant_card.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
+        self.assistant_card_value = ttk.Label(self.assistant_card, text="Mashbak", foreground=_SLATE)
+        self.assistant_card_value.pack(anchor="w", padx=8, pady=8)
+
+        lower = ttk.Frame(frame)
+        lower.pack(fill=BOTH, expand=True, pady=(10, 0))
+
+        recent_actions = ttk.LabelFrame(lower, text="Recent Actions")
+        recent_actions.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
+        self.dashboard_actions_text = labeled_scroll_text(recent_actions, height=12, font=("Consolas", 9), wrap="none")
+
+        recent_failures = ttk.LabelFrame(lower, text="Recent Failures")
+        recent_failures.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
+        self.dashboard_failures_text = labeled_scroll_text(recent_failures, height=12, font=("Consolas", 9), wrap="none")
+
+        quick_actions = ttk.LabelFrame(lower, text="Quick Actions")
+        quick_actions.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
+        qa = ttk.Frame(quick_actions)
+        qa.pack(fill=BOTH, expand=True, padx=8, pady=8)
+        for label, msg in [
+            ("Check System", "system info"),
+            ("Check Emails", "list recent emails"),
+            ("Show Processes", "show running processes"),
+        ]:
+            btn = ttk.Button(qa, text=label, command=lambda m=msg: self._send_quick_command(m))
+            btn.pack(fill=X, pady=2)
+            self.quick_buttons.append(btn)
+
+        return frame
+
+    def _build_chat_section(self, parent: ttk.Frame) -> ttk.Frame:
+        frame = self._new_section_frame(parent)
+
+        top = ttk.Frame(frame)
+        top.pack(fill=X, pady=(2, 6))
+        ttk.Label(top, text="Chat / Console", style="Section.TLabel").pack(side=LEFT)
+        self.chat_state_label = ttk.Label(top, text="Waiting for unlock", foreground=_SLATE)
+        self.chat_state_label.pack(side=LEFT, padx=(10, 0))
+
+        body = ttk.Frame(frame)
+        body.pack(fill=BOTH, expand=True)
+
+        left = ttk.LabelFrame(body, text="Conversation")
+        left.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
+
+        self.chat_text = make_scrolled_text(
+            left,
+            wrap="word",
+            font=("Segoe UI", 10),
+            state="disabled",
+            relief="flat",
+            bd=0,
+            spacing1=3,
+            spacing3=3,
+            padx=6,
+            pady=6,
+        )
+        self.chat_text.tag_configure("user_meta", foreground=_SLATE, font=("Segoe UI", 8, "bold"), justify="right")
+        self.chat_text.tag_configure("assistant_meta", foreground=_SLATE, font=("Segoe UI", 8, "bold"), justify="left")
+        self.chat_text.tag_configure("user_bubble", foreground="#0a3069", background="#ddf4ff", font=("Segoe UI", 10), lmargin1=190, lmargin2=190, rmargin=12, spacing3=10, justify="right")
+        self.chat_text.tag_configure("assistant_bubble", foreground="#111827", background="#f3f4f6", font=("Segoe UI", 10), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
+        self.chat_text.tag_configure("error_bubble", foreground="#8c2f39", background="#fff1f0", font=("Segoe UI", 10), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
+        self.chat_text.tag_configure("system_bubble", foreground="#57606a", background="#f3f4f6", font=("Segoe UI", 10, "italic"), lmargin1=70, lmargin2=70, rmargin=70, spacing3=12, justify="center")
+        self.chat_text.tag_configure("pending_bubble", foreground="#57606a", background="#f6f8fa", font=("Segoe UI", 10, "italic"), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
+
+        input_frame = ttk.Frame(left)
+        input_frame.pack(fill=X, padx=8, pady=8)
+        self.message_entry = ttk.Entry(input_frame, font=("Segoe UI", 11))
+        self.message_entry.pack(side=LEFT, fill=X, expand=True, ipady=4, padx=(0, 6))
+        self.message_entry.bind("<Return>", lambda _e: self.on_send())
+        self.send_button = ttk.Button(input_frame, text="Send", command=self.on_send, width=8)
+        self.send_button.pack(side=RIGHT)
+
+        right = ttk.LabelFrame(body, text="Trace / Debug")
+        right.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
+
+        self.trace_notebook = ttk.Notebook(right)
+        self.trace_notebook.pack(fill=BOTH, expand=True)
+
+        details_tab = ttk.Frame(self.trace_notebook)
+        activity_tab = ttk.Frame(self.trace_notebook)
+        logs_tab = ttk.Frame(self.trace_notebook)
+        self.trace_notebook.add(details_tab, text="Details")
+        self.trace_notebook.add(activity_tab, text="Activity")
+        self.trace_notebook.add(logs_tab, text="Logs")
+
+        self.details_text = labeled_scroll_text(details_tab, height=0, font=("Consolas", 9))
+        self.activity_list = labeled_scroll_text(activity_tab, height=0, font=("Consolas", 9), wrap="none")
+
+        ttk.Label(logs_tab, text="Agent", style="Section.TLabel").pack(anchor="w")
+        self.agent_logs_text = labeled_scroll_text(logs_tab, height=10, font=("Consolas", 8), wrap="none")
+        ttk.Label(logs_tab, text="Bridge", style="Section.TLabel").pack(anchor="w", pady=(6, 0))
+        self.bridge_logs_text = labeled_scroll_text(logs_tab, height=10, font=("Consolas", 8), wrap="none")
+
+        chat_actions = ttk.Frame(frame)
+        chat_actions.pack(fill=X, pady=(6, 0))
+        self.clear_chat_button = ttk.Button(chat_actions, text="Clear Chat", command=self.clear_chat)
+        self.clear_chat_button.pack(side=LEFT)
+        self.clear_activity_button = ttk.Button(chat_actions, text="Clear Activity", command=self.clear_activity)
+        self.clear_activity_button.pack(side=LEFT, padx=(6, 0))
+        self.refresh_logs_button = add_refresh_button(chat_actions, self.refresh_logs, label="Refresh Logs")
+
+        self.lock_sensitive_buttons.extend([
+            self.message_entry,
+            self.send_button,
+            self.clear_chat_button,
+            self.clear_activity_button,
+            self.refresh_logs_button,
+        ])
+
+        return frame
+
+    def _build_assistants_section(self, parent: ttk.Frame) -> ttk.Frame:
+        frame = self._new_section_frame(parent)
+
+        head = ttk.Frame(frame)
+        head.pack(fill=X, pady=(2, 8))
+        ttk.Label(head, text="Assistants", style="Section.TLabel").pack(side=LEFT)
+        self.refresh_assistants_button = add_refresh_button(head, self.refresh_assistants, label="Refresh")
+        self.lock_sensitive_buttons.append(self.refresh_assistants_button)
+
+        self.assistants_text = labeled_scroll_text(frame, height=0, font=("Consolas", 9), wrap="none")
+        return frame
+
+    def _build_communications_section(self, parent: ttk.Frame) -> ttk.Frame:
+        frame = self._new_section_frame(parent)
+
+        head = ttk.Frame(frame)
+        head.pack(fill=X, pady=(2, 8))
+        ttk.Label(head, text="Communications", style="Section.TLabel").pack(side=LEFT)
+        self.refresh_comms_button = add_refresh_button(head, self.refresh_communications, label="Refresh")
+        self.lock_sensitive_buttons.append(self.refresh_comms_button)
+
+        nb = ttk.Notebook(frame)
+        nb.pack(fill=BOTH, expand=True)
+
+        email_tab = ttk.Frame(nb, padding=8)
+        routing_tab = ttk.Frame(nb, padding=8)
+        nb.add(email_tab, text="Email")
+        nb.add(routing_tab, text="SMS / Routing")
+
+        self._build_email_panel(email_tab)
+        self._build_routing_panel(routing_tab)
+
+        return frame
+
+    def _build_email_panel(self, parent: ttk.Frame) -> None:
+        form = ttk.LabelFrame(parent, text="Email Configuration")
+        form.pack(fill=X)
+
+        grid = ttk.Frame(form)
+        grid.pack(fill=X, padx=8, pady=8)
+
+        self.email_provider = StringVar(value="imap")
+        self.email_address = StringVar(value="")
+        self.email_password = StringVar(value="")
+        self.email_imap_host = StringVar(value="")
+        self.email_imap_port = StringVar(value="993")
+        self.email_mailbox = StringVar(value="INBOX")
+        self.email_use_ssl = BooleanVar(value=True)
+
+        rows = [
+            ("Provider", ttk.Entry(grid, textvariable=self.email_provider, width=36)),
+            ("Email Address", ttk.Entry(grid, textvariable=self.email_address, width=36)),
+            ("Password / App Password", ttk.Entry(grid, textvariable=self.email_password, width=36, show="*")),
+            ("IMAP Server", ttk.Entry(grid, textvariable=self.email_imap_host, width=36)),
+            ("IMAP Port", ttk.Entry(grid, textvariable=self.email_imap_port, width=36)),
+            ("Mailbox", ttk.Entry(grid, textvariable=self.email_mailbox, width=36)),
+        ]
+
+        for idx, (label, widget) in enumerate(rows):
+            ttk.Label(grid, text=label).grid(row=idx, column=0, sticky="w", padx=(0, 8), pady=4)
+            widget.grid(row=idx, column=1, sticky="w", pady=4)
+
+        ttk.Checkbutton(grid, text="Use SSL/TLS", variable=self.email_use_ssl).grid(row=6, column=1, sticky="w", pady=4)
+
+        actions = ttk.Frame(form)
+        actions.pack(fill=X, padx=8, pady=(0, 8))
+        self.email_save_button = ttk.Button(actions, text="Save Email Settings", command=self.save_email_config)
+        self.email_save_button.pack(side=LEFT)
+        self.email_test_button = ttk.Button(actions, text="Test Connection", command=self.test_email_connection)
+        self.email_test_button.pack(side=LEFT, padx=(6, 0))
+
+        self.email_status = ttk.Label(parent, text="Email status: unknown", foreground=_SLATE)
+        self.email_status.pack(anchor="w", pady=(8, 6))
+
+        self.email_result_text = labeled_scroll_text(parent, height=10, font=("Consolas", 9), wrap="word")
+
+        self.lock_sensitive_buttons.extend([self.email_save_button, self.email_test_button])
+
+    def _build_routing_panel(self, parent: ttk.Frame) -> None:
+        top = ttk.Frame(parent)
+        top.pack(fill=X)
+
+        left = ttk.LabelFrame(top, text="Allowlist")
+        left.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
+        self.routing_allowlist = Listbox(left, height=10)
+        self.routing_allowlist.pack(fill=BOTH, expand=True, padx=8, pady=8)
+
+        mid = ttk.LabelFrame(top, text="Blocked Numbers")
+        mid.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
+        self.routing_blocked = Listbox(mid, height=10)
+        self.routing_blocked.pack(fill=BOTH, expand=True, padx=8, pady=8)
+
+        right = ttk.LabelFrame(top, text="Pending Join Requests")
+        right.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
+        self.routing_pending = Listbox(right, height=10)
+        self.routing_pending.pack(fill=BOTH, expand=True, padx=8, pady=8)
+
+        controls = ttk.LabelFrame(parent, text="Member Controls")
+        controls.pack(fill=X, pady=(10, 0))
+
+        row = ttk.Frame(controls)
+        row.pack(fill=X, padx=8, pady=8)
+        self.routing_phone_var = StringVar(value="")
+        ttk.Label(row, text="Phone").pack(side=LEFT)
+        ttk.Entry(row, textvariable=self.routing_phone_var, width=28).pack(side=LEFT, padx=(6, 8))
+
+        self.routing_activate_var = BooleanVar(value=False)
+        ttk.Checkbutton(row, text="Activate now", variable=self.routing_activate_var).pack(side=LEFT)
+
+        self.routing_approve_button = ttk.Button(row, text="Approve", command=self.approve_member)
+        self.routing_approve_button.pack(side=LEFT, padx=(10, 0))
+        self.routing_deactivate_button = ttk.Button(row, text="Deactivate", command=self.deactivate_member)
+        self.routing_deactivate_button.pack(side=LEFT, padx=(6, 0))
+
+        self.routing_status = ttk.Label(parent, text="Routing status: unknown", foreground=_SLATE)
+        self.routing_status.pack(anchor="w", pady=(8, 6))
+
+        self.lock_sensitive_buttons.extend([self.routing_approve_button, self.routing_deactivate_button])
+
+    def _build_files_section(self, parent: ttk.Frame) -> ttk.Frame:
+        frame = self._new_section_frame(parent)
+
+        head = ttk.Frame(frame)
+        head.pack(fill=X, pady=(2, 8))
+        ttk.Label(head, text="Files & Permissions", style="Section.TLabel").pack(side=LEFT)
+        self.refresh_policy_button = add_refresh_button(head, self.refresh_files_policy, label="Refresh")
+        self.lock_sensitive_buttons.append(self.refresh_policy_button)
+
+        upper = ttk.Frame(frame)
+        upper.pack(fill=BOTH, expand=True)
+
+        allowed_box = ttk.LabelFrame(upper, text="Allowed Directories")
+        allowed_box.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
+        self.allowed_dirs_list = Listbox(allowed_box, height=16)
+        self.allowed_dirs_list.pack(fill=BOTH, expand=True, padx=8, pady=8)
+
+        blocked_box = ttk.LabelFrame(upper, text="Recent Blocked Filesystem Attempts")
+        blocked_box.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
+        self.blocked_attempts_text = labeled_scroll_text(blocked_box, height=16, font=("Consolas", 9), wrap="none")
+
+        actions = ttk.LabelFrame(frame, text="Policy Controls")
+        actions.pack(fill=X, pady=(10, 0))
+
+        row1 = ttk.Frame(actions)
+        row1.pack(fill=X, padx=8, pady=(8, 4))
+        self.new_allowed_dir_var = StringVar(value="")
+        ttk.Label(row1, text="Directory").pack(side=LEFT)
+        ttk.Entry(row1, textvariable=self.new_allowed_dir_var, width=65).pack(side=LEFT, padx=(8, 8), fill=X, expand=True)
+        self.add_allowed_button = ttk.Button(row1, text="Add", command=self.add_allowed_directory)
+        self.add_allowed_button.pack(side=LEFT)
+        self.remove_allowed_button = ttk.Button(row1, text="Remove Selected", command=self.remove_selected_directory)
+        self.remove_allowed_button.pack(side=LEFT, padx=(6, 0))
+
+        row2 = ttk.Frame(actions)
+        row2.pack(fill=X, padx=8, pady=(0, 8))
+        self.save_policy_button = ttk.Button(row2, text="Save Allowed Directories", command=self.save_allowed_directories)
+        self.save_policy_button.pack(side=LEFT)
+
+        self.test_path_var = StringVar(value="")
+        ttk.Entry(row2, textvariable=self.test_path_var, width=58).pack(side=LEFT, padx=(10, 6), fill=X, expand=True)
+        self.test_path_button = ttk.Button(row2, text="Test Path", command=self.test_path_policy)
+        self.test_path_button.pack(side=LEFT)
+
+        self.policy_status_label = ttk.Label(frame, text="Policy status: unknown", foreground=_SLATE)
+        self.policy_status_label.pack(anchor="w", pady=(8, 0))
+
+        self.lock_sensitive_buttons.extend([
+            self.add_allowed_button,
+            self.remove_allowed_button,
+            self.save_policy_button,
+            self.test_path_button,
+        ])
+
+        return frame
+
+    def _build_projects_section(self, parent: ttk.Frame) -> ttk.Frame:
+        frame = self._new_section_frame(parent)
+
+        head = ttk.Frame(frame)
+        head.pack(fill=X, pady=(2, 8))
+        ttk.Label(head, text="Projects / Files", style="Section.TLabel").pack(side=LEFT)
+        self.refresh_projects_button = add_refresh_button(head, self.refresh_projects, label="Refresh")
+        self.lock_sensitive_buttons.append(self.refresh_projects_button)
+
+        self.projects_text = labeled_scroll_text(frame, height=0, font=("Consolas", 9), wrap="none")
+        return frame
+
+    def _build_activity_section(self, parent: ttk.Frame) -> ttk.Frame:
+        frame = self._new_section_frame(parent)
+
+        head = ttk.Frame(frame)
+        head.pack(fill=X, pady=(2, 8))
+        ttk.Label(head, text="Activity / Audit", style="Section.TLabel").pack(side=LEFT)
+        self.refresh_activity_button = add_refresh_button(head, self.refresh_activity_audit, label="Refresh")
+        self.lock_sensitive_buttons.append(self.refresh_activity_button)
+
+        columns = ("timestamp", "assistant", "action", "tool", "state", "target")
+        self.activity_tree = ttk.Treeview(frame, columns=columns, show="headings", height=18)
+        for col, width in [
+            ("timestamp", 140),
+            ("assistant", 120),
+            ("action", 170),
+            ("tool", 130),
+            ("state", 100),
+            ("target", 360),
+        ]:
+            self.activity_tree.heading(col, text=col.title())
+            self.activity_tree.column(col, width=width, anchor="w")
+        self.activity_tree.pack(fill=BOTH, expand=True)
+
+        self.activity_detail = labeled_scroll_text(frame, height=7, font=("Consolas", 9), wrap="word")
+        return frame
+
+    # ------------------------------------------------------------------
+    # Lock handling
+    # ------------------------------------------------------------------
 
     def _show_chat_placeholder(self) -> None:
         self.chat_text.configure(state="normal")
         self.chat_text.delete("1.0", END)
-        self.chat_text.insert("1.0", "Mashbak is locked.\nEnter your PIN to unlock your assistant.", "system_bubble")
+        self.chat_text.insert("1.0", "Mashbak is locked.\nEnter your PIN to unlock the control board.", "system_bubble")
         self.chat_text.configure(state="disabled")
         self.pending_start_index = None
 
@@ -283,39 +587,41 @@ class DesktopControlApp:
 
         if candidate != self.local_app_pin:
             self.lock_status.configure(text="Wrong PIN", foreground=_RED)
-            self.statusbar_label.configure(text="Mashbak Desktop  •  locked — wrong PIN")
-            self._lock_ui("Desktop locked. Enter PIN to unlock.")
-            self.root.after(2000, lambda: self.lock_status.configure(
-                text="Locked", foreground="#cdd9e5",
-            ))
+            self.statusbar_label.configure(text="Mashbak Control Board  |  locked (wrong PIN)")
+            self._lock_ui("Control board locked. Enter PIN to unlock.")
+            self.root.after(2000, lambda: self.lock_status.configure(text="Locked", foreground="#d1d5db"))
             return
 
         self.is_unlocked = True
-        self.lock_icon_label.configure(text="🔓")
+        self.lock_icon_label.configure(text="UNLOCK")
         self.lock_status.configure(text="Unlocked", foreground=_GREEN)
         self.unlock_button.configure(state="disabled")
         self.lock_button.configure(state="normal")
         self.pin_entry.configure(state="disabled")
-        self.statusbar_label.configure(text="Mashbak Desktop  •  unlocked")
-        self.chat_state_label.configure(text="Unlocked and ready")
+        self.statusbar_label.configure(text="Mashbak Control Board  |  unlocked")
+        self.chat_state_label.configure(text="Connected and ready")
         self.chat_text.configure(state="normal")
         self.chat_text.delete("1.0", END)
         self.chat_text.configure(state="disabled")
         self._set_interaction_enabled(True)
-        self._append_message("assistant", "I'm ready. Ask me about your computer, files, or email.")
+        self._append_message("assistant", "Control board unlocked. I am ready.")
         self.refresh_status()
         self.refresh_logs()
+        self.refresh_assistants()
+        self.refresh_communications()
+        self.refresh_files_policy()
+        self.refresh_activity_audit()
+        self.refresh_projects()
         self.message_entry.focus_set()
 
     def lock_app(self) -> None:
-        self._lock_ui("Desktop locked. Enter PIN to unlock.")
+        self._lock_ui("Control board locked. Enter PIN to unlock.")
 
     def _lock_ui(self, details_message: str) -> None:
         self.is_unlocked = False
-        self.lock_icon_label.configure(text="🔒")
-        self.lock_status.configure(text="Locked", foreground="#cdd9e5")
-        self.statusbar_label.configure(text="Mashbak Desktop  •  locked")
-        self.chat_state_label.configure(text="Locked until you enter your PIN")
+        self.lock_icon_label.configure(text="LOCK")
+        self.lock_status.configure(text="Locked", foreground="#d1d5db")
+        self.statusbar_label.configure(text="Mashbak Control Board  |  locked")
         self.unlock_button.configure(state="normal")
         self.lock_button.configure(state="disabled")
         self.pin_entry.configure(state="normal")
@@ -324,34 +630,31 @@ class DesktopControlApp:
         self._show_chat_placeholder()
         set_text(self.details_text, details_message)
         set_text(self.activity_list, "Locked")
-        set_text(self.status_text, "Locked")
-        set_text(self.config_text, "Locked")
         set_text(self.agent_logs_text, "Locked")
         set_text(self.bridge_logs_text, "Locked")
-        self.tools_text.configure(state="normal")
-        self.tools_text.delete("1.0", END)
-        self.tools_text.insert("1.0", "Locked")
-        self.tools_text.configure(state="disabled")
         self.pin_entry.focus_set()
 
     def _set_interaction_enabled(self, enabled: bool) -> None:
         state = "normal" if enabled else "disabled"
-        self.message_entry.configure(state=state)
-        self.send_button.configure(state=state)
         for button in self.quick_buttons:
-            button.configure(state=state)
-        for button in self.lock_sensitive_buttons:
-            button.configure(state=state)
-        try:
-            self.info_notebook.configure(state=state)
-        except Exception:
-            pass
+            try:
+                button.configure(state=state)
+            except Exception:
+                pass
+        for widget in self.lock_sensitive_buttons:
+            try:
+                widget.configure(state=state)
+            except Exception:
+                pass
 
-    # ── messaging ──────────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # Chat
+    # ------------------------------------------------------------------
 
     def _send_quick_command(self, message: str) -> None:
         if not self.is_unlocked:
             return
+        self._show_section("Chat / Console")
         self.message_entry.delete(0, END)
         self.message_entry.insert(0, message)
         self.on_send()
@@ -366,9 +669,9 @@ class DesktopControlApp:
         self.send_button.configure(state="disabled")
         self.message_entry.delete(0, END)
         self._append_message("user", message)
-        self._append_message("pending", "Mashbak is thinking…")
-        self.chat_state_label.configure(text="Waiting for Mashbak's reply")
-        set_text(self.details_text, "Mashbak is processing your message…")
+        self._append_message("pending", "Mashbak is thinking...")
+        self.chat_state_label.configure(text="Waiting for Mashbak reply")
+        set_text(self.details_text, "Mashbak is processing your message...")
 
         thread = threading.Thread(target=self._run_message, args=(message,), daemon=True)
         thread.start()
@@ -377,51 +680,47 @@ class DesktopControlApp:
         self.chat_text.configure(state="normal")
         has_prior = bool(self.chat_text.get("1.0", END).strip())
         timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
+
         if role == "user":
             if has_prior:
                 self.chat_text.insert(END, "\n\n")
-            self.chat_text.insert(END, f"You  •  {timestamp}\n", "user_meta")
+            self.chat_text.insert(END, f"You  |  {timestamp}\n", "user_meta")
             self.chat_text.insert(END, text, "user_bubble")
         elif role == "assistant":
             if has_prior:
                 self.chat_text.insert(END, "\n\n")
-            self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
+            self.chat_text.insert(END, f"Mashbak  |  {timestamp}\n", "assistant_meta")
             self.chat_text.insert(END, text, "assistant_bubble")
         elif role == "error":
             if has_prior:
                 self.chat_text.insert(END, "\n\n")
-            self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
+            self.chat_text.insert(END, f"Mashbak  |  {timestamp}\n", "assistant_meta")
             self.chat_text.insert(END, text, "error_bubble")
         elif role == "system":
             if has_prior:
                 self.chat_text.insert(END, "\n\n")
             self.chat_text.insert(END, text, "system_bubble")
         else:
-            # Set a mark with LEFT gravity BEFORE inserting the separator so that
-            # _replace_last_pending can delete(mark, END) and remove exactly the
-            # separator + meta + pending text in one step – no trailing \n\n orphan.
             self.chat_text.mark_set("pending_msg_start", "end")
             self.chat_text.mark_gravity("pending_msg_start", "left")
             self.pending_start_index = "pending_msg_start"
             if has_prior:
                 self.chat_text.insert(END, "\n\n")
-            self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
+            self.chat_text.insert(END, f"Mashbak  |  {timestamp}\n", "assistant_meta")
             self.chat_text.insert(END, text, "pending_bubble")
+
         self.chat_text.configure(state="disabled")
         self.chat_text.see(END)
 
     def _replace_last_pending(self, text: str, tag: str = "assistant") -> None:
         self.chat_text.configure(state="normal")
         if self.pending_start_index:
-            # delete(mark, END) removes the separator \n\n + the pending meta + the
-            # pending text in one shot, leaving only the prior user content.
             self.chat_text.delete(self.pending_start_index, END)
             self.pending_start_index = None
-            # Add a single clean separator before the final response.
             if self.chat_text.get("1.0", END).strip():
                 self.chat_text.insert(END, "\n\n")
             timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
-            self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
+            self.chat_text.insert(END, f"Mashbak  |  {timestamp}\n", "assistant_meta")
             bubble_tag = "assistant_bubble" if tag == "assistant" else "error_bubble"
             self.chat_text.insert(END, text, bubble_tag)
         self.chat_text.configure(state="disabled")
@@ -429,11 +728,7 @@ class DesktopControlApp:
 
     def _run_message(self, message: str) -> None:
         try:
-            result = self.client.execute_nl(
-                message=message,
-                sender="local-desktop",
-                owner_unlocked=self.is_unlocked,
-            )
+            result = self.client.execute_nl(message=message, sender="local-desktop", owner_unlocked=self.is_unlocked)
             self.root.after(0, lambda: self._display_result(message, result))
         except Exception as exc:
             self.root.after(0, lambda: self._display_error(str(exc)))
@@ -448,6 +743,7 @@ class DesktopControlApp:
         safe_trace_args = sanitize_for_logging(trace.get("interpreted_args", {}))
         safe_raw_tool_output = sanitize_for_logging(raw_tool_output)
         safe_message = sanitize_for_logging(message)
+
         detail_lines = [
             f"Assistant mode: {trace.get('assistant_mode')}",
             f"Tool:           {result.get('tool_name')}",
@@ -457,7 +753,6 @@ class DesktopControlApp:
             f"Reply source:   {trace.get('assistant_response_source')}",
             "",
             f"Intent class:   {trace.get('intent_classification')}",
-            f"Interpreted:    {trace.get('interpreted_intent')}",
             f"Selected tool:  {trace.get('selected_tool')}",
             f"Validation:     {trace.get('validation_status')}",
             f"Exec status:    {trace.get('execution_status')}",
@@ -466,9 +761,6 @@ class DesktopControlApp:
             f"Ctx intent:     {context.get('last_intent')}",
             f"Ctx tool:       {context.get('last_tool')}",
             f"Ctx failure:    {context.get('last_failure_type')}",
-            f"Cfg progress:   {context.get('config_progress_state')}",
-            f"Cfg missing:    {', '.join(context.get('missing_config_fields') or []) or 'none'}",
-            f"Cfg restart:    {', '.join(context.get('pending_restart_components') or []) or 'none'}",
             "",
             f"Args: {json.dumps(safe_trace_args, ensure_ascii=True)}",
         ]
@@ -477,9 +769,9 @@ class DesktopControlApp:
         set_text(self.details_text, "\n".join(detail_lines))
 
         final_text = (
-            result.get("output") or "Mashbak finished that request."
+            (result.get("output") or "Mashbak finished that request.")
             if result.get("success")
-            else result.get("error") or "Request failed."
+            else (result.get("error") or "Request failed.")
         )
         response_tag = "assistant" if result.get("success") else "error"
         self._replace_last_pending(final_text, response_tag)
@@ -491,11 +783,13 @@ class DesktopControlApp:
 
         ts = datetime.now().strftime("%H:%M:%S")
         tool = result.get("tool_name") or trace.get("assistant_mode") or "conversation"
-        self.activity.insert(0, f"{ts}  {tool}  {str(safe_message)[:60]}")
-        self.activity = self.activity[:50]
+        self.activity.insert(0, f"{ts}  {tool}  {str(safe_message)[:70]}")
+        self.activity = self.activity[:80]
         set_text(self.activity_list, "\n".join(self.activity))
 
         self.refresh_logs()
+        self.refresh_activity_audit()
+        self.refresh_dashboard_overview()
 
     def _display_error(self, error_text: str) -> None:
         self.send_button.configure(state="normal")
@@ -507,85 +801,232 @@ class DesktopControlApp:
         self.chat_history.append(("error", error_text))
 
         ts = datetime.now().strftime("%H:%M:%S")
-        self.activity.insert(0, f"{ts}  [error]  {error_text[:60]}")
-        self.activity = self.activity[:50]
+        self.activity.insert(0, f"{ts}  [error]  {error_text[:70]}")
+        self.activity = self.activity[:80]
         set_text(self.activity_list, "\n".join(self.activity))
+
+    # ------------------------------------------------------------------
+    # Section refresh actions
+    # ------------------------------------------------------------------
 
     def refresh_status(self) -> None:
         summary = self.runtime_summary
 
-        agent_status  = self._check_agent_health()
+        agent_status = self._check_agent_health()
         bridge_status = self._check_http_health("http://127.0.0.1:34567/health")
 
-        self._set_service_badge(self.agent_badge, "Agent", agent_status)
+        self._set_service_badge(self.agent_badge, "Backend", agent_status)
         self._set_service_badge(self.bridge_badge, "Bridge", bridge_status)
 
+        self.backend_card_value.configure(
+            text=("Connected" if agent_status["running"] else "Disconnected") + f"\n{agent_status['detail'][:120]}",
+            foreground=(_GREEN if agent_status["running"] else _RED),
+        )
+        self.bridge_card_value.configure(
+            text=("Connected" if bridge_status["running"] else "Disconnected") + f"\n{bridge_status['detail'][:120]}",
+            foreground=(_GREEN if bridge_status["running"] else _RED),
+        )
+        self.email_card_value.configure(
+            text=("Configured" if summary.get("email_configured") else "Not configured"),
+            foreground=(_GREEN if summary.get("email_configured") else _AMBER),
+        )
+
         if agent_status["running"]:
-            self._set_backend_status("connected", "Mashbak is connected to the local backend.")
+            self._set_backend_status("connected", "Mashbak backend connected.")
         else:
-            self._set_backend_status("error", f"Mashbak cannot reach the local backend: {agent_status['detail']}")
+            self._set_backend_status("error", f"Mashbak cannot reach backend: {agent_status['detail']}")
 
         if not self.is_unlocked:
-            set_text(self.status_text, "Locked")
-            self.tools_text.configure(state="normal")
-            self.tools_text.delete("1.0", END)
-            self.tools_text.insert("1.0", "Locked")
-            self.tools_text.configure(state="disabled")
-            set_text(self.config_text, "Locked")
             return
 
-        set_text(self.status_text, "\n".join([
-            f"Agent  : {'connected' if agent_status['running']  else 'error'}",
-            f"Bridge : {'connected' if bridge_status['running'] else 'error'}",
-            f"AI     : {'enabled' if summary.get('assistant_ai_enabled') else 'fallback only'}",
-            f"Email  : {'configured' if summary.get('email_configured') else 'not configured'}",
+        self.refresh_dashboard_overview()
+
+    def refresh_dashboard_overview(self) -> None:
+        if not self.is_unlocked:
+            return
+        overview = self.client.get_overview()
+        if not isinstance(overview, dict) or overview.get("success") is False:
+            return
+
+        backend = overview.get("backend") or {}
+        bridge = overview.get("bridge") or {}
+        email = overview.get("email") or {}
+
+        self.assistant_card_value.configure(text=(overview.get("active_assistant") or "mashbak").title(), foreground=_SLATE)
+        self.backend_card_value.configure(
+            text=("Connected" if backend.get("connected") else "Disconnected") + f"\nModel: {backend.get('model')}",
+            foreground=(_GREEN if backend.get("connected") else _RED),
+        )
+        self.bridge_card_value.configure(
+            text=("Connected" if bridge.get("connected") else "Disconnected"),
+            foreground=(_GREEN if bridge.get("connected") else _RED),
+        )
+        self.email_card_value.configure(
+            text=("Configured" if email.get("configured") else "Not configured"),
+            foreground=(_GREEN if email.get("configured") else _AMBER),
+        )
+
+        action_lines = []
+        for row in overview.get("recent_actions") or []:
+            action_lines.append(
+                f"{row.get('timestamp')} | {row.get('selected_tool')} | {row.get('state')} | {row.get('target') or '-'}"
+            )
+        set_text(self.dashboard_actions_text, "\n".join(action_lines) if action_lines else "No recent actions.")
+
+        failure_lines = []
+        for row in overview.get("recent_failures") or []:
+            failure_lines.append(f"{row.get('timestamp')} | {row.get('tool') or '-'} | {row.get('error') or '-'}")
+        set_text(self.dashboard_failures_text, "\n".join(failure_lines) if failure_lines else "No recent failures.")
+
+    def refresh_assistants(self) -> None:
+        if not self.is_unlocked:
+            return
+        payload = self.client.get_assistants()
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            set_text(self.assistants_text, str(payload))
+            return
+
+        mashbak = payload.get("mashbak") or {}
+        bucherim = payload.get("bucherim") or {}
+
+        lines = [
+            "Mashbak",
+            f"  AI enabled: {mashbak.get('ai_enabled')}",
+            f"  Model: {mashbak.get('model')}",
+            f"  Base URL: {mashbak.get('base_url')}",
+            f"  Temperature: {mashbak.get('temperature')}",
+            f"  Max tokens: {mashbak.get('max_tokens')}",
             "",
-            f"Agent  detail : {agent_status['detail']}",
-            f"Bridge detail : {bridge_status['detail']}",
-        ]))
-
-        tools_response = self.client.list_tools()
-        tools_payload = tools_response.get("tools")
-        tools: list = []
-        if isinstance(tools_payload, dict):
-            tools = list(tools_payload.values())
-        elif isinstance(tools_payload, list):
-            tools = tools_payload
-
-        tool_lines = []
-        for item in tools:
-            if isinstance(item, dict):
-                tool_lines.append(f"▸ {item.get('name') or 'unknown'}")
-                desc = (item.get("description") or "").strip()
-                if desc:
-                    tool_lines.append(f"  {desc}")
-            else:
-                tool_lines.append(f"▸ {item}")
-
-        self.tools_text.configure(state="normal")
-        self.tools_text.delete("1.0", END)
-        self.tools_text.insert("1.0", "\n".join(tool_lines) if tool_lines else "unavailable")
-        self.tools_text.configure(state="disabled")
-
-        config_lines = [
-            f"Workspace : {summary['workspace']}",
+            "Bucherim",
+            f"  Assistant number: {bucherim.get('assistant_number')}",
+            f"  Allowlist count: {bucherim.get('allowlist_count')}",
+            f"  Blocked count: {bucherim.get('blocked_numbers_count')}",
             "",
-            "Allowed directories:",
+            "Bucherim Responses",
         ]
-        config_lines.extend([f"  {item}" for item in summary["allowed_directories"]])
-        config_lines += [
-            "",
-            f"Allowed tools : {summary['allowed_tools']}",
-            f"Timeout (s)   : {summary['tool_timeout_seconds']}",
-            f"AI enabled    : {summary.get('assistant_ai_enabled')}",
-            f"Model         : {summary.get('assistant_model')}",
-            f"Max tokens    : {summary.get('model_response_max_tokens')}",
-            f"Ctx turns     : {summary.get('session_context_max_turns')}",
-            f"Log level     : {summary.get('log_level')}",
-            f"Debug mode    : {summary.get('debug_mode')}",
-            f"Email ready   : {summary.get('email_configured')}",
-        ]
-        set_text(self.config_text, "\n".join(config_lines))
+        responses = bucherim.get("responses") or {}
+        for key, value in responses.items():
+            lines.append(f"  {key}: {value}")
+        set_text(self.assistants_text, "\n".join(lines))
+
+    def refresh_communications(self) -> None:
+        if not self.is_unlocked:
+            return
+        self.refresh_email_config_view()
+        self.refresh_routing_view()
+
+    def refresh_email_config_view(self) -> None:
+        payload = self.client.get_email_config()
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            set_text(self.email_result_text, str(payload))
+            return
+
+        self.email_provider.set(str(payload.get("provider") or "imap"))
+        self.email_address.set(str(payload.get("email_address") or ""))
+        self.email_imap_host.set(str(payload.get("imap_host") or ""))
+        self.email_imap_port.set(str(payload.get("imap_port") or "993"))
+        self.email_mailbox.set(str(payload.get("mailbox") or "INBOX"))
+        self.email_use_ssl.set(bool(payload.get("use_ssl")))
+
+        self.email_status.configure(
+            text=("Email status: configured" if payload.get("password_set") else "Email status: password missing"),
+            foreground=(_GREEN if payload.get("password_set") else _AMBER),
+        )
+
+    def refresh_routing_view(self) -> None:
+        payload = self.client.get_routing()
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            self.routing_status.configure(text=f"Routing status: {payload}", foreground=_RED)
+            return
+
+        self.routing_allowlist.delete(0, END)
+        self.routing_blocked.delete(0, END)
+        self.routing_pending.delete(0, END)
+
+        for item in payload.get("allowlist") or []:
+            self.routing_allowlist.insert(END, str(item))
+        for item in payload.get("blocked_numbers") or []:
+            self.routing_blocked.insert(END, str(item))
+        for item in payload.get("pending_join_requests") or []:
+            phone = item.get("phone_number") if isinstance(item, dict) else str(item)
+            ts = item.get("timestamp") if isinstance(item, dict) else ""
+            self.routing_pending.insert(END, f"{phone}  ({ts})")
+
+        self.routing_status.configure(
+            text=f"Routing status: assistant number {payload.get('assistant_number')}",
+            foreground=_SLATE,
+        )
+
+    def refresh_files_policy(self) -> None:
+        if not self.is_unlocked:
+            return
+        payload = self.client.get_files_policy()
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            self.policy_status_label.configure(text=f"Policy status: {payload}", foreground=_RED)
+            return
+
+        self.allowed_dirs_list.delete(0, END)
+        for path in payload.get("allowed_directories") or []:
+            self.allowed_dirs_list.insert(END, str(path))
+
+        lines = []
+        for row in payload.get("blocked_attempts") or []:
+            lines.append(
+                f"{row.get('timestamp')} | {row.get('tool')} | {row.get('path') or '-'} | {row.get('error') or '-'}"
+            )
+        set_text(self.blocked_attempts_text, "\n".join(lines) if lines else "No blocked attempts.")
+        self.policy_status_label.configure(text="Policy status: loaded", foreground=_GREEN)
+
+    def refresh_projects(self) -> None:
+        if not self.is_unlocked:
+            return
+        payload = self.client.get_activity(limit=120)
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            set_text(self.projects_text, str(payload))
+            return
+
+        file_like = []
+        for item in payload.get("items") or []:
+            tool = str(item.get("selected_tool") or "")
+            target = str(item.get("target") or "")
+            if tool in {"create_file", "create_folder", "delete_file", "list_files"} or target:
+                file_like.append(
+                    f"{item.get('timestamp')} | {tool} | {item.get('state')} | {target or '-'}"
+                )
+        if not file_like:
+            file_like = ["No recent file/project actions."]
+        set_text(self.projects_text, "\n".join(file_like))
+
+    def refresh_activity_audit(self) -> None:
+        if not self.is_unlocked:
+            return
+        payload = self.client.get_activity(limit=160)
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            set_text(self.activity_detail, str(payload))
+            return
+
+        for item in self.activity_tree.get_children():
+            self.activity_tree.delete(item)
+
+        for row in payload.get("items") or []:
+            values = (
+                row.get("timestamp") or "",
+                row.get("assistant") or "",
+                row.get("requested_action") or "",
+                row.get("selected_tool") or "",
+                row.get("state") or "",
+                row.get("target") or "",
+            )
+            self.activity_tree.insert("", END, values=values)
+
+        sample = (payload.get("items") or [])[:12]
+        lines = []
+        for row in sample:
+            lines.append(
+                f"{row.get('timestamp')} | {row.get('selected_tool')} | {row.get('state')}\n"
+                f"  Details: {row.get('details') or '-'}"
+            )
+        set_text(self.activity_detail, "\n\n".join(lines) if lines else "No recent activity.")
 
     def refresh_logs(self) -> None:
         if not self.is_unlocked:
@@ -593,17 +1034,134 @@ class DesktopControlApp:
             set_text(self.bridge_logs_text, "Locked")
             return
 
-        agent_lines  = self._tail_file(self.agent_log_file,  max_lines=40)
+        agent_lines = self._tail_file(self.agent_log_file, max_lines=40)
         bridge_lines = self._tail_file(self.bridge_log_file, max_lines=40)
-        set_text(self.agent_logs_text,  "\n".join(agent_lines)  if agent_lines  else "No agent logs yet.")
+        set_text(self.agent_logs_text, "\n".join(agent_lines) if agent_lines else "No agent logs yet.")
         set_text(self.bridge_logs_text, "\n".join(bridge_lines) if bridge_lines else "No bridge logs yet.")
 
-    # ── helpers ────────────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # Actions (forms/buttons)
+    # ------------------------------------------------------------------
+
+    def save_email_config(self) -> None:
+        if not self.is_unlocked:
+            return
+        try:
+            port = int(self.email_imap_port.get().strip() or "993")
+        except ValueError:
+            self.email_status.configure(text="Email status: invalid IMAP port", foreground=_RED)
+            return
+
+        result = self.client.save_email_config(
+            provider=self.email_provider.get().strip(),
+            email_address=self.email_address.get().strip(),
+            password=self.email_password.get(),
+            imap_host=self.email_imap_host.get().strip(),
+            imap_port=port,
+            use_ssl=bool(self.email_use_ssl.get()),
+            mailbox=self.email_mailbox.get().strip() or "INBOX",
+        )
+
+        ok = bool(result.get("success"))
+        self.email_status.configure(
+            text=("Email status: saved" if ok else f"Email status: save failed ({result})"),
+            foreground=(_GREEN if ok else _RED),
+        )
+        set_text(self.email_result_text, json.dumps(result, indent=2, ensure_ascii=True))
+        self.refresh_status()
+
+    def test_email_connection(self) -> None:
+        if not self.is_unlocked:
+            return
+        result = self.client.test_email_connection()
+        ok = bool(result.get("success"))
+        message = result.get("message") or result.get("error") or "No response"
+        self.email_status.configure(
+            text=("Email status: test successful" if ok else "Email status: test failed"),
+            foreground=(_GREEN if ok else _RED),
+        )
+        set_text(self.email_result_text, message)
+
+    def approve_member(self) -> None:
+        if not self.is_unlocked:
+            return
+        phone = self.routing_phone_var.get().strip()
+        if not phone:
+            self.routing_status.configure(text="Routing status: enter a phone number", foreground=_RED)
+            return
+        result = self.client.approve_routing_member(phone_number=phone, activate_now=bool(self.routing_activate_var.get()))
+        ok = bool(result.get("success"))
+        self.routing_status.configure(
+            text=(f"Approved {result.get('phone_number')} ({result.get('status')})" if ok else f"Approval failed: {result}"),
+            foreground=(_GREEN if ok else _RED),
+        )
+        if ok:
+            self.refresh_routing_view()
+
+    def deactivate_member(self) -> None:
+        if not self.is_unlocked:
+            return
+        phone = self.routing_phone_var.get().strip()
+        if not phone:
+            self.routing_status.configure(text="Routing status: enter a phone number", foreground=_RED)
+            return
+        result = self.client.deactivate_routing_member(phone_number=phone)
+        ok = bool(result.get("success"))
+        self.routing_status.configure(
+            text=(f"Deactivated {result.get('phone_number')}" if ok else f"Deactivate failed: {result}"),
+            foreground=(_GREEN if ok else _RED),
+        )
+        if ok:
+            self.refresh_routing_view()
+
+    def add_allowed_directory(self) -> None:
+        path = self.new_allowed_dir_var.get().strip()
+        if not path:
+            self.policy_status_label.configure(text="Policy status: enter a directory path", foreground=_RED)
+            return
+        self.allowed_dirs_list.insert(END, path)
+        self.new_allowed_dir_var.set("")
+        self.policy_status_label.configure(text="Policy status: directory staged", foreground=_AMBER)
+
+    def remove_selected_directory(self) -> None:
+        selected = self.allowed_dirs_list.curselection()
+        if not selected:
+            return
+        for idx in reversed(selected):
+            self.allowed_dirs_list.delete(idx)
+        self.policy_status_label.configure(text="Policy status: directory removed (not saved yet)", foreground=_AMBER)
+
+    def save_allowed_directories(self) -> None:
+        values = [self.allowed_dirs_list.get(i) for i in range(self.allowed_dirs_list.size())]
+        result = self.client.save_files_policy(values)
+        ok = bool(result.get("success"))
+        self.policy_status_label.configure(
+            text=("Policy status: saved" if ok else f"Policy status: save failed ({result})"),
+            foreground=(_GREEN if ok else _RED),
+        )
+        if ok:
+            self.refresh_files_policy()
+
+    def test_path_policy(self) -> None:
+        path = self.test_path_var.get().strip()
+        if not path:
+            self.policy_status_label.configure(text="Policy status: enter a path to test", foreground=_RED)
+            return
+        result = self.client.test_policy_path(path)
+        allowed = bool(result.get("allowed"))
+        self.policy_status_label.configure(
+            text=f"Policy test: {'ALLOWED' if allowed else 'BLOCKED'} | {result.get('reason')}",
+            foreground=(_GREEN if allowed else _RED),
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
 
     def _check_agent_health(self) -> dict:
         health = self.client.health()
         if health.get("status") == "ok":
-            return {"running": True, "detail": json.dumps(health, ensure_ascii=True)[:200]}
+            return {"running": True, "detail": json.dumps(health, ensure_ascii=True)[:220]}
         return {"running": False, "detail": health.get("error", "unavailable")}
 
     def _set_service_badge(self, label: ttk.Label, name: str, status: dict) -> None:
@@ -613,8 +1171,8 @@ class DesktopControlApp:
             label.configure(text=f"{name}: error", foreground=_RED)
 
     def _set_backend_status(self, level: str, text: str) -> None:
-        colour = {"starting": _AMBER, "connected": _GREEN, "error": _RED}.get(level, "#cdd9e5")
-        self.backend_status_label.configure(text=text, foreground=colour)
+        color = {"starting": _AMBER, "connected": _GREEN, "error": _RED}.get(level, "#d1d5db")
+        self.backend_status_label.configure(text=text, foreground=color)
 
     def _tail_file(self, path: Path, max_lines: int = 40) -> list[str]:
         if not path.exists():
@@ -629,13 +1187,15 @@ class DesktopControlApp:
         try:
             with urllib.request.urlopen(url, timeout=1.2) as response:
                 raw = response.read().decode("utf-8", errors="replace")
-                return {"running": response.status == 200, "detail": raw.strip()[:200]}
+                return {"running": response.status == 200, "detail": raw.strip()[:220]}
         except urllib.error.URLError as exc:
             return {"running": False, "detail": str(exc.reason)}
         except Exception as exc:
             return {"running": False, "detail": str(exc)}
 
-    # ── clear actions ──────────────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # Clear actions
+    # ------------------------------------------------------------------
 
     def clear_chat(self) -> None:
         self.chat_history.clear()
@@ -644,7 +1204,7 @@ class DesktopControlApp:
         self.chat_text.configure(state="disabled")
         self.pending_start_index = None
         if self.is_unlocked:
-            self._append_message("assistant", "Chat cleared. I'm ready when you are.")
+            self._append_message("assistant", "Chat cleared. Ready for the next command.")
         else:
             self._show_chat_placeholder()
 

@@ -129,3 +129,16 @@ Expected behavior:
 - Timestamp appears once per final assistant message.
 - Success language appears only after verified successful execution.
 - Follow-up references resolve from last verified filesystem action in session context.
+
+## Control Board Verification
+
+Validate these in desktop app after unlock:
+
+1. Dashboard shows backend and bridge connectivity and recent actions.
+2. Chat / Console still executes natural-language requests.
+3. Communications page can enter and save email configuration fields.
+4. Communications page can run email connection test and show status/errors clearly.
+5. Files & Permissions page can load/edit/save allowed directories.
+6. Files & Permissions policy path test returns allowed/blocked reason.
+7. Activity / Audit page shows timestamp, tool, state, and target rows.
+8. Routing controls and Bucherim list/pending visibility are present.

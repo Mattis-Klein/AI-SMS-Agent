@@ -1,127 +1,127 @@
 {
-    "allowed_directories": [
-        "C:\\Users\\owner\\Documents",
-        "C:\\Users\\owner\\Desktop",
-        "C:\\Users\\owner\\By type",
-        "C:\\Users\\owner\\Pictures",
-        "C:\\Users\\owner\\Downloads",
-        "C:\\Users\\owner\\Mashbak",
-        "C:\\Users\\mattis",
-        "C:\\Users\\public",
-        "C:\\Temp"
-    ],
-    "allowed_commands": {
-        "dir_inbox": {
-            "description": "List files in inbox directory",
-            "command": [
-                "cmd",
-                "/c",
-                "dir",
-                "{workspace}\\inbox"
-            ],
-            "requires_args": false
-        },
-        "dir_outbox": {
-            "description": "List files in outbox directory",
-            "command": [
-                "cmd",
-                "/c",
-                "dir",
-                "{workspace}\\outbox"
-            ],
-            "requires_args": false
-        },
-        "list_files": {
-            "description": "List files in a specified directory",
-            "command": [
-                "cmd",
-                "/c",
-                "dir",
-                "{path}"
-            ],
-            "requires_args": true,
-            "validate_path": true
-        },
-        "system_info": {
-            "description": "Get basic system information",
-            "command": [
-                "cmd",
-                "/c",
-                "systeminfo | findstr /B /C:\"OS Name\" /C:\"OS Version\" /C:\"System Type\" /C:\"Total Physical Memory\""
-            ],
-            "requires_args": false
-        },
-        "cpu_usage": {
-            "description": "Check CPU usage",
-            "command": [
-                "powershell",
-                "-Command",
-                "Get-Counter '\\Processor(_Total)\\% Processor Time' | Select-Object -ExpandProperty CounterSamples | Select-Object -ExpandProperty CookedValue | ForEach-Object { [math]::Round($_, 2) }"
-            ],
-            "requires_args": false
-        },
-        "disk_space": {
-            "description": "Check disk space on C: drive",
-            "command": [
-                "cmd",
-                "/c",
-                "wmic logicaldisk where \"DeviceID='C:'\" get FreeSpace,Size"
-            ],
-            "requires_args": false
-        },
-        "current_time": {
-            "description": "Get current system time",
-            "command": [
-                "cmd",
-                "/c",
-                "echo %date% %time%"
-            ],
-            "requires_args": false
-        },
-        "network_status": {
-            "description": "Check network connection status",
-            "command": [
-                "cmd",
-                "/c",
-                "ipconfig | findstr /C:\"IPv4\""
-            ],
-            "requires_args": false
-        },
-        "list_processes": {
-            "description": "List top running processes",
-            "command": [
-                "powershell",
-                "-Command",
-                "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 ProcessName, CPU, WorkingSet | Format-Table -AutoSize"
-            ],
-            "requires_args": false
-        },
-        "uptime": {
-            "description": "Get system uptime",
-            "command": [
-                "powershell",
-                "-Command",
-                "(Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime | Select-Object -ExpandProperty TotalHours | ForEach-Object { [math]::Round($_, 2) }"
-            ],
-            "requires_args": false
-        }
+  "allowed_directories": [
+    "C:\\Users\\owner\\Documents",
+    "C:\\Users\\owner\\Desktop",
+    "C:\\Users\\owner\\By type",
+    "C:\\Users\\owner\\Pictures",
+    "C:\\Users\\owner\\Downloads",
+    "C:\\Users\\owner\\Mashbak",
+    "C:\\Users\\mattis",
+    "C:\\Users\\Public",
+    "C:\\Temp"
+  ],
+  "allowed_commands": {
+    "dir_inbox": {
+      "description": "List files in inbox directory",
+      "command": [
+        "cmd",
+        "/c",
+        "dir",
+        "{workspace}\\inbox"
+      ],
+      "requires_args": false
     },
-    "logging": {
-        "max_log_size_bytes": 5000000,
-        "log_retention_days": 30,
-        "log_level": "info"
+    "dir_outbox": {
+      "description": "List files in outbox directory",
+      "command": [
+        "cmd",
+        "/c",
+        "dir",
+        "{workspace}\\outbox"
+      ],
+      "requires_args": false
     },
-    "security": {
-        "tool_timeout_seconds": 10,
-        "max_file_size_bytes": 10485760,
-        "blocked_extensions": [
-            ".exe",
-            ".bat",
-            ".cmd",
-            ".ps1",
-            ".vbs",
-            ".js"
-        ],
-        "require_sender_validation": true
+    "list_files": {
+      "description": "List files in a specified directory",
+      "command": [
+        "cmd",
+        "/c",
+        "dir",
+        "{path}"
+      ],
+      "requires_args": true,
+      "validate_path": true
+    },
+    "system_info": {
+      "description": "Get basic system information",
+      "command": [
+        "cmd",
+        "/c",
+        "systeminfo | findstr /B /C:\"OS Name\" /C:\"OS Version\" /C:\"System Type\" /C:\"Total Physical Memory\""
+      ],
+      "requires_args": false
+    },
+    "cpu_usage": {
+      "description": "Check CPU usage",
+      "command": [
+        "powershell",
+        "-Command",
+        "Get-Counter '\\Processor(_Total)\\% Processor Time' | Select-Object -ExpandProperty CounterSamples | Select-Object -ExpandProperty CookedValue | ForEach-Object { [math]::Round($_, 2) }"
+      ],
+      "requires_args": false
+    },
+    "disk_space": {
+      "description": "Check disk space on C: drive",
+      "command": [
+        "cmd",
+        "/c",
+        "wmic logicaldisk where \"DeviceID='C:'\" get FreeSpace,Size"
+      ],
+      "requires_args": false
+    },
+    "current_time": {
+      "description": "Get current system time",
+      "command": [
+        "cmd",
+        "/c",
+        "echo %date% %time%"
+      ],
+      "requires_args": false
+    },
+    "network_status": {
+      "description": "Check network connection status",
+      "command": [
+        "cmd",
+        "/c",
+        "ipconfig | findstr /C:\"IPv4\""
+      ],
+      "requires_args": false
+    },
+    "list_processes": {
+      "description": "List top running processes",
+      "command": [
+        "powershell",
+        "-Command",
+        "Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 ProcessName, CPU, WorkingSet | Format-Table -AutoSize"
+      ],
+      "requires_args": false
+    },
+    "uptime": {
+      "description": "Get system uptime",
+      "command": [
+        "powershell",
+        "-Command",
+        "(Get-Date) - (Get-CimInstance Win32_OperatingSystem).LastBootUpTime | Select-Object -ExpandProperty TotalHours | ForEach-Object { [math]::Round($_, 2) }"
+      ],
+      "requires_args": false
     }
+  },
+  "logging": {
+    "max_log_size_bytes": 5000000,
+    "log_retention_days": 30,
+    "log_level": "info"
+  },
+  "security": {
+    "tool_timeout_seconds": 10,
+    "max_file_size_bytes": 10485760,
+    "blocked_extensions": [
+      ".exe",
+      ".bat",
+      ".cmd",
+      ".ps1",
+      ".vbs",
+      ".js"
+    ],
+    "require_sender_validation": true
+  }
 }

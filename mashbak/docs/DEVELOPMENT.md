@@ -8,6 +8,12 @@ Do not violate these boundaries:
 - tools execute through interpreter + dispatcher + registry
 - sms_bridge stays transport and access-control only
 
+For control-board features:
+
+- Add operational state endpoints in backend (`agent/agent.py`) and consume them from desktop client.
+- Do not mutate runtime policy/config directly from desktop file writes.
+- Keep forms as UI adapters to backend-owned config/state updates.
+
 ## Local Dev Loop
 
 From repository root:
@@ -16,6 +22,13 @@ From repository root:
 python -m pytest -q mashbak/tests
 cd mashbak/sms_bridge
 npm test
+```
+
+Desktop smoke tests:
+
+```powershell
+python desktop_app/main.py --ui-smoke
+python desktop_app/main.py --service-smoke-test
 ```
 
 Run backend:
