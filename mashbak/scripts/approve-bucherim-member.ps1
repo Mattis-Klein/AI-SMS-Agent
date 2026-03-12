@@ -7,7 +7,7 @@ param(
     [switch]$ActivateNow
 )
 
-function Normalize-E164 {
+function Convert-ToE164 {
     param([string]$Value)
 
     $rawValue = if ($null -eq $Value) { "" } else { [string]$Value }
@@ -52,7 +52,7 @@ function Write-JsonFile {
     $Object | ConvertTo-Json -Depth 20 | Set-Content -Path $Path -Encoding UTF8
 }
 
-function Append-Jsonl {
+function Add-JsonlRecord {
     param(
         [string]$Path,
         [Parameter(Mandatory = $true)]$Object
@@ -67,7 +67,7 @@ function Append-Jsonl {
     Add-Content -Path $Path -Value $line -Encoding UTF8
 }
 
-function Acquire-ExclusiveLock {
+function New-ExclusiveLock {
     param([Parameter(Mandatory = $true)][string]$LockPath)
 
     $dir = Split-Path -Parent $LockPath
@@ -113,7 +113,7 @@ if (-not (Test-Path $configPath)) {
     throw "Bucherim config not found: $configPath"
 }
 
-$normalizedPhone = Normalize-E164 -Value $Phone
+$normalizedPhone = Convert-ToE164 -Value $Phone
 $userKey = "p" + (($normalizedPhone -replace "\D", ""))
 $userDir = Join-Path $usersRoot $userKey
 $membershipPath = Join-Path $userDir "membership.json"
@@ -124,7 +124,7 @@ $rollbackTargets = @{}
 
 try {
     # Serialize multi-file mutation to avoid races across concurrent approvals.
-    $lockHandle = Acquire-ExclusiveLock -LockPath $mutationLockPath
+    $lockHandle = New-ExclusiveLock -LockPath $mutationLockPath
 
     $pathsToTrack = @($configPath, $approvedNumbersPath, $newPendingPath, $membershipPath, $pendingPath)
     foreach ($path in $pathsToTrack) {
@@ -217,7 +217,7 @@ try {
     }
     Write-JsonFile -Path $approvedNumbersPath -Object ([ordered]@{ numbers = @($approvedNumbers | Sort-Object) })
 
-    Append-Jsonl -Path (Join-Path $userDir "conversation.jsonl") -Object ([ordered]@{
+    Add-JsonlRecord -Path (Join-Path $userDir "conversation.jsonl") -Object ([ordered]@{
         timestamp = $now
         direction = "event"
         event_type = "membership"
@@ -253,7 +253,7 @@ try {
         Write-JsonFile -Path $newPendingPath -Object ([ordered]@{ requests = $filteredRequests })
     }
 
-    Append-Jsonl -Path $requestsPath -Object ([ordered]@{
+    Add-JsonlRecord -Path $requestsPath -Object ([ordered]@{
         timestamp = $now
         phone_number = $normalizedPhone
         status = $status
