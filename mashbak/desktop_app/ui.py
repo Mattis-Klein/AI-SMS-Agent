@@ -375,22 +375,36 @@ class DesktopControlApp:
 
     def _append_message(self, role: str, text: str) -> None:
         self.chat_text.configure(state="normal")
-        if self.chat_text.get("1.0", END).strip():
-            self.chat_text.insert(END, "\n\n")
+        has_prior = bool(self.chat_text.get("1.0", END).strip())
         timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
         if role == "user":
+            if has_prior:
+                self.chat_text.insert(END, "\n\n")
             self.chat_text.insert(END, f"You  •  {timestamp}\n", "user_meta")
             self.chat_text.insert(END, text, "user_bubble")
         elif role == "assistant":
+            if has_prior:
+                self.chat_text.insert(END, "\n\n")
             self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
             self.chat_text.insert(END, text, "assistant_bubble")
         elif role == "error":
+            if has_prior:
+                self.chat_text.insert(END, "\n\n")
             self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
             self.chat_text.insert(END, text, "error_bubble")
         elif role == "system":
+            if has_prior:
+                self.chat_text.insert(END, "\n\n")
             self.chat_text.insert(END, text, "system_bubble")
         else:
-            self.pending_start_index = self.chat_text.index(END)
+            # Set a mark with LEFT gravity BEFORE inserting the separator so that
+            # _replace_last_pending can delete(mark, END) and remove exactly the
+            # separator + meta + pending text in one step – no trailing \n\n orphan.
+            self.chat_text.mark_set("pending_msg_start", "end")
+            self.chat_text.mark_gravity("pending_msg_start", "left")
+            self.pending_start_index = "pending_msg_start"
+            if has_prior:
+                self.chat_text.insert(END, "\n\n")
             self.chat_text.insert(END, f"Mashbak  •  {timestamp}\n", "assistant_meta")
             self.chat_text.insert(END, text, "pending_bubble")
         self.chat_text.configure(state="disabled")
@@ -399,8 +413,11 @@ class DesktopControlApp:
     def _replace_last_pending(self, text: str, tag: str = "assistant") -> None:
         self.chat_text.configure(state="normal")
         if self.pending_start_index:
+            # delete(mark, END) removes the separator \n\n + the pending meta + the
+            # pending text in one shot, leaving only the prior user content.
             self.chat_text.delete(self.pending_start_index, END)
             self.pending_start_index = None
+            # Add a single clean separator before the final response.
             if self.chat_text.get("1.0", END).strip():
                 self.chat_text.insert(END, "\n\n")
             timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")

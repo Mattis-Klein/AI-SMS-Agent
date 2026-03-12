@@ -78,7 +78,8 @@ Mashbak now enforces hard grounding for filesystem actions in backend runtime:
 
 - Action completion language is allowed only after a real successful tool execution.
 - If no tool is selected, validation is skipped, or execution fails, Mashbak will not claim changes were applied.
-- Successful filesystem mutation tools must return a resolved `created_path`.
+- Successful filesystem mutation tools must return a resolved verified path (`created_path` for create, `deleted_path` for delete).
+- Filesystem tools now verify effects post-execution (create confirms exists, delete confirms missing) before success is reported.
 
 Examples that map to concrete backend tools:
 
@@ -89,6 +90,7 @@ make a file on the desktop called todo
 create a file named notes.txt
 add a file in that folder with all 50 states
 put a file in it
+delete that file
 ```
 
 Context follow-ups are resolved from last verified action state (session memory only, reset on restart):
@@ -98,8 +100,9 @@ where is it?
 did you create it?
 add states to that folder
 create a file named states in that folder
+delete that file
 ```
 
-If no prior successful folder creation exists in the current session, follow-ups like "that folder" and "in it" trigger clarification instead of guessing a path.
+If no prior successful filesystem action exists in the current session, follow-ups like "that folder" or "delete that file" trigger clarification instead of guessing a path.
 
 See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for complete variable reference and restart details.

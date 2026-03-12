@@ -66,6 +66,37 @@ def test_email_missing_config_returns_structured_error():
     assert "EMAIL_PASSWORD" in result.missing_config_fields
 
 
+def test_email_empty_config_values_are_treated_as_missing():
+    original_method = ConfigLoader._get_master_env_path
+    original_cache = ConfigLoader._config_cache
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            test_master_path = Path(tmpdir) / ".env.master"
+            test_master_path.write_text(
+                "EMAIL_IMAP_HOST=\n"
+                "EMAIL_IMAP_PORT=993\n"
+                "EMAIL_USERNAME=\n"
+                "EMAIL_PASSWORD=\n",
+                encoding="utf-8",
+            )
+
+            ConfigLoader._get_master_env_path = classmethod(lambda cls: test_master_path)
+            ConfigLoader._config_cache = None
+
+            tool = ListRecentEmailsTool()
+            result = __import__("asyncio").run(tool.execute({"limit": 3}))
+    finally:
+        ConfigLoader._get_master_env_path = original_method
+        ConfigLoader._config_cache = original_cache
+
+    assert result.success is False
+    assert result.error_type == "missing_configuration"
+    missing = set(result.missing_config_fields or [])
+    assert "EMAIL_IMAP_HOST|IMAP_SERVER" in missing
+    assert "EMAIL_USERNAME|EMAIL_ADDRESS" in missing
+    assert "EMAIL_PASSWORD" in missing
+
+
 def test_session_context_denied_action_not_marked_missing_path():
     manager = SessionContextManager(max_recent_turns=4)
 

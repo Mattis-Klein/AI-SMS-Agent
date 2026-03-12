@@ -289,3 +289,67 @@ def test_unresolved_that_folder_reference_does_not_invent_path():
     assert response["tool_name"] is None
     reply = str(response.get("assistant_reply") or "").lower()
     assert "couldn't resolve which folder" in reply
+
+
+def test_contextual_delete_that_file_maps_to_delete_tool():
+    interpreter = NaturalLanguageInterpreter()
+    ctx = {
+        "last_created_path": "C:/Users/owner/Desktop/TripPack/note.txt",
+        "last_result": "success",
+        "last_task": "create_file",
+        "recent_turns": [
+            {
+                "tool": "create_file",
+                "success": True,
+                "created_path": "C:/Users/owner/Desktop/TripPack/note.txt",
+            }
+        ],
+    }
+    parsed = interpreter.parse_to_dict("delete that file", context=ctx)
+    assert parsed.get("tool") == "delete_file"
+    path_value = str(parsed.get("args", {}).get("path", "")).replace("\\", "/")
+    assert path_value == "C:/Users/owner/Desktop/TripPack/note.txt"
+
+
+def test_unresolved_delete_that_file_no_prior_action_is_not_executed():
+    runtime = FakeRuntime()
+    assistant = AssistantCore(runtime)
+
+    response = _respond(assistant, "delete that file")
+
+    assert response["success"] is False
+    assert response["tool_name"] is None
+    reply = str(response.get("assistant_reply") or "").lower()
+    assert "there isn't a verified created file" in reply
+
+
+def test_successful_delete_result_without_deleted_path_is_rejected():
+    def fake_result(tool_name: str, _args: dict) -> dict:
+        if tool_name == "delete_file":
+            return {
+                "success": True,
+                "tool_name": tool_name,
+                "output": "File deleted",
+                "error": None,
+                "data": {
+                    "fs_action": "delete_file",
+                    "action_status": "success",
+                },
+            }
+        return {
+            "success": False,
+            "tool_name": tool_name,
+            "output": None,
+            "error": "Unexpected tool",
+            "error_type": "execution_failure",
+            "data": None,
+        }
+
+    runtime = FakeRuntime(fake_result)
+    assistant = AssistantCore(runtime)
+    response = _respond(assistant, "delete file at C:/Users/owner/Desktop/demo.txt")
+
+    assert response["success"] is False
+    assert response.get("error_type") == "execution_failure"
+    reply = (response.get("assistant_reply") or "").lower()
+    assert ("verify" in reply) or ("did not delete" in reply)

@@ -13,6 +13,7 @@ from .email_tools import ListRecentEmailsTool, SummarizeInboxTool, SearchEmailsT
 from .config_tools import SetConfigVariableTool
 from .create_folder import CreateFolderTool
 from .create_file import CreateFileTool
+from .delete_file import DeleteFileTool
 
 ALL_BUILTIN_TOOLS = [
     DirInboxTool(),
@@ -32,6 +33,7 @@ ALL_BUILTIN_TOOLS = [
     SetConfigVariableTool(),
     CreateFolderTool(),
     CreateFileTool(),
+    DeleteFileTool(),
 ]
 
 __all__ = ["ALL_BUILTIN_TOOLS"]

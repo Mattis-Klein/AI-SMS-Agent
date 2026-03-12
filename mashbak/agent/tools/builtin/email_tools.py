@@ -62,6 +62,31 @@ class EmailToolBase(Tool):
             missing.append("EMAIL_IMAP_PORT|IMAP_PORT")
         return len(missing) == 0, missing
 
+    def _classify_email_exception(self, exc: Exception) -> tuple[str, str]:
+        """Map low-level IMAP/network exceptions to stable error categories/messages."""
+        message = str(exc or "").strip()
+        lowered = message.lower()
+
+        if isinstance(exc, TimeoutError) or "timed out" in lowered:
+            return "connection_failure", "Email server connection timed out."
+
+        if imaplib is not None:
+            try:
+                if isinstance(exc, imaplib.IMAP4.error):
+                    if any(token in lowered for token in ["auth", "login", "invalid", "credentials", "authenticationfailed"]):
+                        return "authentication_failure", "Email authentication failed."
+                    return "execution_failure", message or "Email operation failed."
+            except Exception:
+                pass
+
+        if any(token in lowered for token in ["connection refused", "name or service not known", "network is unreachable", "nodename nor servname", "temporary failure in name resolution"]):
+            return "connection_failure", "Email server could not be reached."
+
+        if any(token in lowered for token in ["auth", "login", "invalid credentials", "authenticationfailed", "password"]):
+            return "authentication_failure", "Email authentication failed."
+
+        return "execution_failure", (message or "Email operation failed.")
+
     def _ensure_configured(self) -> tuple[bool, str, list[str]]:
         self._refresh_config()
         if imaplib is None:
@@ -224,7 +249,15 @@ class ListRecentEmailsTool(EmailToolBase):
                 email_ids.reverse()
                 messages = self._fetch_messages(client, email_ids)
         except Exception as exc:
-            return ToolResult(success=False, output="", error=str(exc), error_type="execution_failure", tool_name=self.name, arguments=args)
+            error_type, error_text = self._classify_email_exception(exc)
+            return ToolResult(
+                success=False,
+                output="",
+                error=error_text,
+                error_type=error_type,
+                tool_name=self.name,
+                arguments=args,
+            )
 
         lines = [
             f"{item['email_id']}: {item['from']} | {item['subject']} | {item['date']}"
@@ -285,7 +318,15 @@ class SummarizeInboxTool(EmailToolBase):
                 email_ids.reverse()
                 messages = self._fetch_messages(client, email_ids)
         except Exception as exc:
-            return ToolResult(success=False, output="", error=str(exc), error_type="execution_failure", tool_name=self.name, arguments=args)
+            error_type, error_text = self._classify_email_exception(exc)
+            return ToolResult(
+                success=False,
+                output="",
+                error=error_text,
+                error_type=error_type,
+                tool_name=self.name,
+                arguments=args,
+            )
 
         unread_count = len(messages) if unread_only else len([item for item in messages if item.get("unread")])
         summary_lines = [
@@ -346,7 +387,15 @@ class SearchEmailsTool(EmailToolBase):
                 email_ids.reverse()
                 messages = self._fetch_messages(client, email_ids)
         except Exception as exc:
-            return ToolResult(success=False, output="", error=str(exc), error_type="execution_failure", tool_name=self.name, arguments=args)
+            error_type, error_text = self._classify_email_exception(exc)
+            return ToolResult(
+                success=False,
+                output="",
+                error=error_text,
+                error_type=error_type,
+                tool_name=self.name,
+                arguments=args,
+            )
 
         data = {
             "count": len(messages),
@@ -403,7 +452,15 @@ class ReadEmailThreadTool(EmailToolBase):
                 related_ids.reverse()
                 messages = self._fetch_messages(client, related_ids)
         except Exception as exc:
-            return ToolResult(success=False, output="", error=str(exc), error_type="execution_failure", tool_name=self.name, arguments=args)
+            error_type, error_text = self._classify_email_exception(exc)
+            return ToolResult(
+                success=False,
+                output="",
+                error=error_text,
+                error_type=error_type,
+                tool_name=self.name,
+                arguments=args,
+            )
 
         data = {
             "count": len(messages),

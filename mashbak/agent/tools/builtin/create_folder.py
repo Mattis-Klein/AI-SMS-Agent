@@ -57,6 +57,18 @@ class CreateFolderTool(Tool):
                 )
 
             target.mkdir(parents=True, exist_ok=False)
+
+            # Post-creation verification: confirm the folder actually exists.
+            if not target.exists():
+                return ToolResult(
+                    success=False,
+                    output="",
+                    error="Folder creation appeared to succeed but the directory was not found on disk.",
+                    error_type="execution_failure",
+                    tool_name=self.name,
+                    arguments=args,
+                )
+
             return ToolResult(
                 success=True,
                 output=f"Folder created: {target}",

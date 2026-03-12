@@ -50,6 +50,20 @@ npm start
 - Keep mappings deterministic and test-backed.
 - Preserve config-through-chat parsing for both assignment and natural language forms.
 - Preserve follow-up context behavior through session_context fields.
+- Keep extractor binding pattern-specific (tool name alone is not enough when multiple regexes map to the same tool).
+- Follow-up actions like `delete that file` must resolve from execution-backed context (`last_result=success` + path state), not guesses.
+
+## Filesystem Mutation Safety
+
+- Creation/deletion tools must perform post-execution verification before returning success.
+- Assistant success wording for filesystem changes must be grounded in tool result data only.
+- If verification fails, assistant must state failure and avoid completion claims.
+
+## Desktop UI Response Rendering
+
+- Exactly one assistant completion should be rendered per send cycle.
+- Pending placeholder replacement must remove the pending block in-place to avoid duplicate timestamp artifacts.
+- Debug/status details should reflect the current request trace (`assistant_response_source`, selected tool, execution status).
 
 ## Logging And Redaction
 

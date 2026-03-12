@@ -42,3 +42,10 @@ python desktop_app/main.py
 - Organization guide: PROJECT-ORGANIZATION.md
 - Platform README: mashbak/README.md
 - Docs index: mashbak/docs/INDEX.md
+
+## Stabilization Update (2026-03-12)
+
+- Filesystem mutation replies are now execution-grounded: success language is emitted only after verified tool success.
+- Follow-up references like "delete that file" resolve from session-backed successful actions (`last_result`, `last_task`, `last_created_path`).
+- Email failures are now categorized as missing configuration, authentication failure, or connection failure for clearer guidance.
+- Desktop chat rendering now replaces pending replies in-place to avoid duplicate-looking timestamp artifacts.

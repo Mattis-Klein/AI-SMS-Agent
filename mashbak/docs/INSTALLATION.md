@@ -90,3 +90,12 @@ Build output:
 - Runtime config source is mashbak/.env.master.
 - Chat config updates write to mashbak/.env.master.
 - Bridge transport/access-control values require bridge restart after change.
+
+## Stabilization Verification (Post-Install)
+
+After install, verify these behavior guarantees from Desktop chat:
+
+- `create a file named verify.txt in data/workspace/inbox`
+- `delete that file`
+- `delete that file` (should fail clearly, not claim success)
+- `list recent emails` (should classify failure as config/auth/connection)

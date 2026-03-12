@@ -112,3 +112,20 @@ Expected: no raw secret hits.
 
 - Keep smoke checks on isolated ports if another local service is already using 8787 or 34567.
 - /run exists only as compatibility path and forwards to /execute.
+
+## Manual Conversation Simulation Checklist
+
+Run these in desktop chat against a fresh session:
+
+1. `create a file named sim-check.txt in data/workspace/inbox`
+2. `delete that file`
+3. `delete that file` (expect explicit failure reason)
+4. `system info`
+5. `list recent emails` (expect categorized failure guidance when unavailable)
+
+Expected behavior:
+
+- One assistant completion appears per send cycle.
+- Timestamp appears once per final assistant message.
+- Success language appears only after verified successful execution.
+- Follow-up references resolve from last verified filesystem action in session context.

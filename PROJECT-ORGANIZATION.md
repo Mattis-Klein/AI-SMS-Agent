@@ -35,6 +35,13 @@ AI-SMS-Agent/
 - mashbak/desktop_app is UI-only.
 - mashbak/data holds runtime users, logs, media, and workspace data.
 
+## Runtime Behavior Invariants
+
+- Tool completion language must be backed by successful execution, never by intent guess.
+- Filesystem follow-up actions (for example, "delete that file") must resolve from verified session action state.
+- UI conversation panel renders one assistant completion per request cycle; debug details remain in the right-side status/details views.
+- Path restrictions are enforced by tool permission guards and surfaced to users as allowed-location guidance.
+
 ## Runtime Data Policy
 
 Runtime data is consolidated under mashbak/data:

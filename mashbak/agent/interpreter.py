@@ -86,6 +86,8 @@ class NaturalLanguageInterpreter:
             (r"(?:check|show).*(?:network|connection|ip)", "network_status", lambda m: {}),
             (r"(?:list|show).*(?:processes|running|tasks)", "list_processes", lambda m: {}),
             (r"(?:check|show).*uptime", "uptime", lambda m: {}),
+            (r"(?:delete|remove|erase)\s+(?:the\s+)?file\s+(?:called|named)\s+(.+)", "delete_file", lambda m: {"path": m.group(1).strip()}),
+            (r"(?:delete|remove|erase)\s+(?:the\s+file\s+at|file)\s+(.+)", "delete_file", lambda m: {"path": m.group(1).strip()}),
         ]
 
     def parse(self, message: str) -> ParsedRequest:
@@ -114,9 +116,28 @@ class NaturalLanguageInterpreter:
         """
         context = context or {}
 
+        unresolved_file_ref = self._detect_unresolved_file_reference(message, context)
+        if unresolved_file_ref:
+            return unresolved_file_ref
+
         unresolved_folder_ref = self._detect_unresolved_folder_reference(message, context)
         if unresolved_folder_ref:
             return unresolved_folder_ref
+
+        # --- 1a. Try contextual delete resolution before reference-query parsing ---
+        del_tool, del_args, del_confidence = self._detect_contextual_delete_action(message, context)
+        if del_tool:
+            del_entities = self._extract_entities(del_tool, del_args)
+            return {
+                "tool": del_tool,
+                "args": del_args,
+                "intent": "filesystem",
+                "confidence": del_confidence,
+                "mode": "tool",
+                "topic": "filesystem",
+                "followup_topic": None,
+                "entities": del_entities,
+            }
 
         # --- 1. Try context-reference resolution first (elliptical queries) ---
         ref_result = self._resolve_context_reference(message, context)
@@ -231,6 +252,61 @@ class NaturalLanguageInterpreter:
             }, 0.92
 
         return None, {}, 0.0
+
+    def _detect_contextual_delete_action(
+        self,
+        message: str,
+        context: dict[str, Any],
+    ) -> tuple[Optional[str], dict[str, Any], float]:
+        """Resolve 'delete that file' / 'delete it' against the last created file in context."""
+        msg = message.strip().lower()
+
+        delete_triggers = [
+            "delete that file",
+            "delete it",
+            "delete that",
+            "remove that file",
+            "remove it",
+            "erase that file",
+            "delete the file you just created",
+            "delete the file you made",
+            "delete the file you created",
+            "get rid of it",
+            "get rid of that file",
+        ]
+        if not any(t in msg for t in delete_triggers):
+            # Also check regex for "delete/remove/erase" + pronoun/that
+            if not re.search(r"(?:delete|remove|erase)\s+(?:that|it|the\s+(?:file|one))\b", msg):
+                return None, {}, 0.0
+
+        # Only resolve if there is a verified last_created_path from a successful action.
+        last_path = self._resolve_last_real_file_path(context)
+        if not last_path:
+            return None, {}, 0.0
+
+        return "delete_file", {"path": str(last_path)}, 0.93
+
+    def _resolve_last_real_file_path(self, context: dict[str, Any]) -> Optional[Path]:
+        """Return the last successfully created FILE path from context (not a folder)."""
+        if not isinstance(context, dict):
+            return None
+
+        if context.get("last_task") == "create_file" and context.get("last_result") == "success":
+            last_path = str(context.get("last_created_path") or "").strip()
+            if last_path:
+                p = Path(last_path)
+                if not p.is_dir():
+                    return p
+
+        for turn in reversed(context.get("recent_turns") or []):
+            if turn.get("tool") == "create_file" and bool(turn.get("success")):
+                created_path = str(turn.get("created_path") or "").strip()
+                if created_path:
+                    p = Path(created_path)
+                    if not p.is_dir():
+                        return p
+
+        return None
 
     # ------------------------------------------------------------------
     # Context-reference resolution
@@ -466,6 +542,8 @@ class NaturalLanguageInterpreter:
             return "email_access"
         if any(word in msg for word in ["inbox", "outbox", "files", "file", "folder", "directory"]):
             return "filesystem"
+        if any(word in msg for word in ["delete", "remove", "erase"]):
+            return "filesystem"
         if any(word in msg for word in ["system", "os", "cpu", "disk", "time", "network", "process", "uptime"]):
             return "system"
         return "conversation"
@@ -482,7 +560,7 @@ class NaturalLanguageInterpreter:
             match = re.search(pattern, raw, flags=re.IGNORECASE)
             if match:
                 # Action-verb requests should not be misclassified as read-only list_files.
-                if tool_name == "list_files" and action_verb_present:
+                if tool_name in {"list_files", "dir_inbox", "dir_outbox"} and action_verb_present:
                     continue
                 return tool_name, match, (0.9 if intent else 0.8)
         return None, None, 0.0
@@ -491,8 +569,9 @@ class NaturalLanguageInterpreter:
         if not tool_name or not match:
             return {}
 
-        for _pattern, known_tool, extractor in self.patterns:
-            if known_tool == tool_name:
+        matched_pattern = getattr(match.re, "pattern", None)
+        for pattern, known_tool, extractor in self.patterns:
+            if known_tool == tool_name and pattern == matched_pattern:
                 try:
                     return extractor(match)
                 except Exception:
@@ -604,7 +683,7 @@ class NaturalLanguageInterpreter:
         if intent != "filesystem":
             return False
         msg = message.lower()
-        return any(token in msg for token in ["create", "make", "add", "save", "delete", "move", "put", "write"])
+        return any(token in msg for token in ["create", "make", "add", "save", "delete", "remove", "erase", "move", "put", "write"])
 
     def _contains_folder_reference_phrase(self, message: str) -> bool:
         lowered = str(message or "").lower()
@@ -656,6 +735,32 @@ class NaturalLanguageInterpreter:
             "args": {},
             "intent": "filesystem",
             "confidence": 0.89,
+            "mode": "conversation",
+            "topic": "filesystem",
+            "followup_topic": "filesystem",
+            "entities": entities,
+        }
+
+    def _detect_unresolved_file_reference(self, message: str, context: dict[str, Any]) -> Optional[dict[str, Any]]:
+        msg = str(message or "").strip().lower()
+        if not re.search(r"(?:delete|remove|erase)\s+(?:that|it|the\s+(?:file|one))\b", msg):
+            return None
+
+        # If we can resolve a prior successful file, this is not unresolved.
+        if self._resolve_last_real_file_path(context):
+            return None
+
+        entities = {
+            "path_reference_unresolved": True,
+            "reference_target": "file_reference",
+            "action_requested": True,
+            "missing_parameters": ["path"],
+        }
+        return {
+            "tool": None,
+            "args": {},
+            "intent": "filesystem",
+            "confidence": 0.9,
             "mode": "conversation",
             "topic": "filesystem",
             "followup_topic": "filesystem",

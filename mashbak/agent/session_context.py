@@ -159,7 +159,12 @@ class SessionContextManager:
                 context.last_args = dict(parsed.get("args") or {})
                 # Extract any file/folder path the tool created.
                 result_data = result.get("data") if isinstance(result.get("data"), dict) else {}
-                created_path = result_data.get("created_path") or result_data.get("path") or result_data.get("file_path")
+                created_path = (
+                    result_data.get("created_path")
+                    or result_data.get("deleted_path")
+                    or result_data.get("path")
+                    or result_data.get("file_path")
+                )
                 if created_path:
                     context.last_created_path = str(created_path)
             elif tool_name and not succeeded:

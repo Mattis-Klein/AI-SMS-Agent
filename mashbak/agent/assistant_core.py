@@ -191,10 +191,16 @@ class AssistantCore:
     ) -> dict[str, Any]:
         entities = parsed.get("entities") or {}
         if entities.get("path_reference_unresolved"):
-            reply = (
-                "I couldn't resolve which folder you mean. "
-                "Please provide the full folder path, or create/select the folder first."
-            )
+            if entities.get("reference_target") == "file_reference":
+                reply = (
+                    "I couldn't resolve which file you mean because there isn't a verified created file in this session yet. "
+                    "Share the file path explicitly, or create a file first and then refer to it."
+                )
+            else:
+                reply = (
+                    "I couldn't resolve which folder you mean. "
+                    "Please provide the full folder path, or create/select the folder first."
+                )
         else:
             reply = (
                 "I have not executed a filesystem tool yet, so no filesystem change was applied. "
@@ -309,6 +315,15 @@ class AssistantCore:
                 result["error_type"] = "execution_failure"
                 result["error"] = "Filesystem action did not return a resolved path."
                 result["output"] = "I could not verify where that filesystem action was applied."
+
+        # Mandatory grounding: successful delete_file must report deleted_path.
+        if result.get("success") and result.get("tool_name") == "delete_file":
+            data = result.get("data") if isinstance(result.get("data"), dict) else {}
+            if not str(data.get("deleted_path") or "").strip():
+                result["success"] = False
+                result["error_type"] = "execution_failure"
+                result["error"] = "I could not verify that the file was deleted."
+                result["output"] = "I could not verify that the file was deleted."
         reply = await self._generate_tool_reply(
             user_message=message,
             metadata=metadata,
@@ -318,7 +333,13 @@ class AssistantCore:
 
         trace = sanitize_trace(result.get("trace") or {})
         trace["assistant_mode"] = parsed.get("mode") or "tool"
-        trace["assistant_response_source"] = "openai" if self.model_client.enabled else "fallback"
+        if not result.get("success"):
+            response_source = "fallback"
+        elif result.get("tool_name") in {"set_config_variable", "create_file", "create_folder", "delete_file"}:
+            response_source = "policy"
+        else:
+            response_source = "openai" if self.model_client.enabled else "fallback"
+        trace["assistant_response_source"] = response_source
         trace["tool_output"] = sanitize_for_logging(raw_output)
         trace["tool_data"] = sanitize_for_logging(result.get("data"))
         trace["execution_result"] = "success" if result.get("success") else "failed"
@@ -332,7 +353,11 @@ class AssistantCore:
         # Guard against completion-claim language when execution failed.
         is_action_intent = parsed.get("intent") == "filesystem"
         if is_action_intent and (not result.get("success")) and self._contains_completion_claim(reply):
-            reply = "I did not complete that filesystem action. No filesystem change was applied."
+            tool_nm = result.get("tool_name") or ""
+            if "delete" in tool_nm:
+                reply = "I did not delete that file. No filesystem change was applied."
+            else:
+                reply = "I did not complete that filesystem action. No filesystem change was applied."
 
         result["assistant_reply"] = reply
         result["output"] = reply
@@ -345,7 +370,7 @@ class AssistantCore:
         if not text:
             return False
         lower = text.lower()
-        return any(token in lower for token in ["created", "added", "saved", "deleted", "moved", "done"])
+        return any(token in lower for token in ["created", "added", "saved", "deleted", "removed", "moved", "done"])
 
     async def _generate_conversation_reply(
         self,
@@ -493,6 +518,11 @@ class AssistantCore:
                 remediation=result.get("remediation"),
             )
 
+        # Keep filesystem mutation confirmations deterministic and fully grounded
+        # to tool data to avoid model-added path hallucinations.
+        if result.get("tool_name") in {"create_file", "create_folder", "delete_file"}:
+            return self._fallback_tool_reply(result.get("tool_name"), result.get("output"), result.get("data"))
+
         # Safety rule: only describe a completed action when execution
         # actually succeeded.  We already confirmed success=True above, so
         # the AI prompt below is only reached for real successes.
@@ -578,16 +608,50 @@ class AssistantCore:
         if remediation:
             return remediation
         if tool_name in email_tools or (tool_name and "email" in tool_name):
-            if error and "not configured" in error.lower():
+            error_lower = (error or "").lower()
+            if error_type == "missing_configuration" or "not configured" in error_lower:
                 return self._email_setup_guidance()
+            if error_type == "authentication_failure" or any(
+                t in error_lower for t in ["authenticationfailed", "invalid credentials", "authentication failed", "login failed"]
+            ):
+                return (
+                    "Email authentication failed. Check your password — for Gmail, you need to create an "
+                    "App Password (myaccount.google.com > Security > App Passwords)."
+                )
+            if error_type == "connection_failure" or any(
+                t in error_lower for t in ["connection refused", "name or service not known", "timed out", "network is unreachable", "nodename nor servname"]
+            ):
+                return (
+                    "I could not reach your email server. Check that EMAIL_IMAP_HOST is correct "
+                    "and that your network allows outbound IMAP connections."
+                )
+            if error and error.strip():
+                return f"I couldn't access your email right now: {error.strip()}"
             return "I couldn't reach your email right now."
+        if error_type == "denied_action":
+            if tool_name in {"create_file", "create_folder", "delete_file", "list_files"}:
+                allowed_summary = self._allowed_path_summary()
+                return (
+                    "That path is outside the allowed areas. "
+                    f"Allowed locations are: {allowed_summary}."
+                )
+            return "That action is restricted by policy settings."
         if error_type == "validation_failure":
             return error or "I need a bit more detail to run that request safely."
         if error_type == "timeout":
             return "That request took too long and timed out. Try again with a narrower scope."
-        if error_type == "denied_action":
-            return "That action is currently restricted by policy settings."
         return error or "I couldn't complete that request."
+
+    def _allowed_path_summary(self) -> str:
+        try:
+            allowed = [str(p) for p in self.runtime.config.get_allowed_directories()]
+        except Exception:
+            allowed = []
+        if not allowed:
+            return "the configured safe directories"
+        if len(allowed) <= 4:
+            return ", ".join(allowed)
+        return ", ".join(allowed[:4]) + ", and other configured directories"
 
     def _email_setup_guidance(self) -> str:
         return (
@@ -601,6 +665,24 @@ class AssistantCore:
         )
 
     def _fallback_tool_reply(self, tool_name: str | None, output: str | None, data: Any) -> str:
+        if tool_name == "create_file":
+            path_str = (data or {}).get("created_path") if isinstance(data, dict) else None
+            if path_str:
+                return f"Done — I created {self._humanize_path(path_str)}."
+            return "The file was created."
+
+        if tool_name == "create_folder":
+            path_str = (data or {}).get("created_path") if isinstance(data, dict) else None
+            if path_str:
+                return f"Done — I created the folder {self._humanize_path(path_str)}."
+            return "The folder was created."
+
+        if tool_name == "delete_file":
+            path_str = (data or {}).get("deleted_path") if isinstance(data, dict) else None
+            if path_str:
+                return f"Done — I deleted {self._humanize_path(path_str)}."
+            return "The file was deleted."
+
         if tool_name == "cpu_usage":
             cpu_value = self._extract_percentage(output)
             if cpu_value is not None:
@@ -643,6 +725,32 @@ class AssistantCore:
             trimmed = self._trim_text(output, max_length=260)
             return f"I checked that for you. {trimmed}"
         return "Done."
+
+    def _humanize_path(self, path_str: str) -> str:
+        """Convert a raw filesystem path to a short natural description."""
+        from pathlib import Path as _Path
+        try:
+            p = _Path(path_str)
+            home = _Path.home()
+            desktop = home / "Desktop"
+            documents = home / "Documents"
+            downloads = home / "Downloads"
+            pictures = home / "Pictures"
+            for folder, label in (
+                (desktop, "your Desktop"),
+                (documents, "your Documents"),
+                (downloads, "your Downloads"),
+                (pictures, "your Pictures"),
+            ):
+                try:
+                    rel = p.relative_to(folder)
+                    rel_str = str(rel)
+                    return f"'{rel_str}' on {label}" if rel_str != "." else f"a file on {label}"
+                except ValueError:
+                    pass
+            return f"'{p.name}'"
+        except Exception:
+            return f"'{path_str}'"
 
     def _fallback_email_reply(self, tool_name: str | None, data: Any, output: str | None) -> str:
         if isinstance(data, dict) and data.get("messages"):

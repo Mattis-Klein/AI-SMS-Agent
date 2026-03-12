@@ -20,8 +20,16 @@ class SystemInfoTool(Tool):
     
     async def execute(self, args: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> ToolResult:
         try:
+            ps_script = (
+                "$os = Get-CimInstance Win32_OperatingSystem; "
+                "$memoryGb = [math]::Round(($os.TotalVisibleMemorySize / 1MB), 2); "
+                "Write-Output ('OS Name: ' + $os.Caption); "
+                "Write-Output ('OS Version: ' + $os.Version); "
+                "Write-Output ('System Type: ' + $os.OSArchitecture); "
+                "Write-Output ('Total Physical Memory: ' + $memoryGb + ' GB')"
+            )
             result = subprocess.run(
-                ["cmd", "/c", 'systeminfo | findstr /B /C:"OS Name" /C:"OS Version" /C:"System Type" /C:"Total Physical Memory"'],
+                ["powershell", "-NoProfile", "-Command", ps_script],
                 capture_output=True,
                 text=True,
                 timeout=10,
