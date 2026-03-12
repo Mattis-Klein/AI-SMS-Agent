@@ -103,9 +103,11 @@ function Restore-OriginalContent {
 
 $platformRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $configPath = Join-Path $platformRoot "assistants\bucherim\config.json"
+$approvedNumbersPath = Join-Path $platformRoot "assistants\bucherim\config\approved_numbers.json"
+$newPendingPath = Join-Path $platformRoot "assistants\bucherim\config\pending_requests.json"
 $usersRoot = Join-Path $platformRoot "data\users\bucherim"
 $pendingPath = Join-Path $usersRoot "pending_requests.jsonl"
-$mutationLockPath = Join-Path $usersRoot ".approve-member.lock"
+$mutationLockPath = Join-Path $platformRoot "assistants\bucherim\config\.approve-member.lock"
 
 if (-not (Test-Path $configPath)) {
     throw "Bucherim config not found: $configPath"
@@ -124,7 +126,7 @@ try {
     # Serialize multi-file mutation to avoid races across concurrent approvals.
     $lockHandle = Acquire-ExclusiveLock -LockPath $mutationLockPath
 
-    $pathsToTrack = @($configPath, $membershipPath, $pendingPath)
+    $pathsToTrack = @($configPath, $approvedNumbersPath, $newPendingPath, $membershipPath, $pendingPath)
     foreach ($path in $pathsToTrack) {
         $exists = Test-Path $path
         $rollbackTargets[$path] = [ordered]@{
@@ -198,6 +200,23 @@ try {
     Write-JsonFile -Path $membershipPath -Object $membership
     Write-JsonFile -Path $configPath -Object $config
 
+    # Also write to the new canonical approved_numbers.json.
+    $approvedNumbers = @()
+    if (Test-Path $approvedNumbersPath) {
+        $rawApproved = Read-JsonFile -Path $approvedNumbersPath
+        if ($rawApproved -and $rawApproved.PSObject.Properties.Name -contains "numbers") {
+            $approvedNumbers = @($rawApproved.numbers)
+        }
+    }
+    if ($approvedNumbers -notcontains $normalizedPhone) {
+        $approvedNumbers += $normalizedPhone
+    }
+    $approvedNumbersDir = Split-Path -Parent $approvedNumbersPath
+    if (-not (Test-Path $approvedNumbersDir)) {
+        New-Item -ItemType Directory -Path $approvedNumbersDir -Force | Out-Null
+    }
+    Write-JsonFile -Path $approvedNumbersPath -Object ([ordered]@{ numbers = @($approvedNumbers | Sort-Object) })
+
     Append-Jsonl -Path (Join-Path $userDir "conversation.jsonl") -Object ([ordered]@{
         timestamp = $now
         direction = "event"
@@ -207,6 +226,7 @@ try {
         details = $membershipEvent.details
     })
 
+    # Remove from legacy pending_requests.jsonl.
     if (Test-Path $pendingPath) {
         $lines = Get-Content $pendingPath | Where-Object { $_.Trim() }
         $kept = @()
@@ -221,6 +241,16 @@ try {
             }
         }
         Set-Content -Path $pendingPath -Value $kept -Encoding UTF8
+    }
+
+    # Remove from new canonical pending_requests.json.
+    if (Test-Path $newPendingPath) {
+        $rawPending = Read-JsonFile -Path $newPendingPath
+        $pendingRequests = if ($rawPending -and $rawPending.PSObject.Properties.Name -contains "requests") { @($rawPending.requests) } else { @() }
+        $filteredRequests = @($pendingRequests | Where-Object {
+            $null -ne $_ -and $_.PSObject.Properties.Name -contains "phone_number" -and $_.phone_number -ne $normalizedPhone
+        })
+        Write-JsonFile -Path $newPendingPath -Object ([ordered]@{ requests = $filteredRequests })
     }
 
     Append-Jsonl -Path $requestsPath -Object ([ordered]@{
@@ -246,4 +276,5 @@ finally {
 
 Write-Host "Approved Bucherim member: $normalizedPhone"
 Write-Host "Updated allowlist: $configPath"
+Write-Host "Updated approved_numbers: $approvedNumbersPath"
 Write-Host "Membership status: $status"

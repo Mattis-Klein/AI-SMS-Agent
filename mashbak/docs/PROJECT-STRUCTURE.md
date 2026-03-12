@@ -29,8 +29,21 @@ mashbak/
 │   ├── mashbak/
 │   └── bucherim/
 │       ├── __init__.py
-│       ├── service.py
-│       ├── config.json
+│       ├── service.py          (compat re-export)
+│       ├── membership.py
+│       ├── storage.py
+│       ├── bucherim_router.py
+│       ├── bucherim_service.py
+│       ├── config.json         (legacy allowlist, read by membership.py)
+│       ├── config/
+│       │   ├── approved_numbers.json
+│       │   ├── pending_requests.json
+│       │   └── blocked_numbers.json
+│       ├── logs/
+│       │   └── users/
+│       │       └── <normalized_phone>/
+│       │           ├── profile.json
+│       │           └── messages.jsonl
 │       └── README.md
 ├── sms_bridge/
 │   ├── sms-server.js

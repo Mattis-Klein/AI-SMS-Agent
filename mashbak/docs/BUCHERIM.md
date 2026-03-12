@@ -116,5 +116,8 @@ To review a specific user:
 - open folder under mashbak/assistants/bucherim/logs/users/<normalized_phone>/
 - inspect profile.json and messages.jsonl
 
-Legacy workflow compatibility:
-- mashbak/scripts/approve-bucherim-member.ps1 still works through legacy allowlist integration for approved senders.
+Using the approval script:
+- Run mashbak/scripts/approve-bucherim-member.ps1 -Phone "+1XXXXXXXXXX" to approve a pending member.
+- Add -ActivateNow for immediate active state on classic membership.
+- The script writes to both the legacy config.json allowlist (read by membership.py fallback) and the canonical approved_numbers.json.
+- It also removes the number from both the legacy pending_requests.jsonl and the new config/pending_requests.json.
