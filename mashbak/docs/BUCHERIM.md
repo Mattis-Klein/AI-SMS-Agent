@@ -10,7 +10,11 @@ Twilio destination for Bucherim:
 Bucherim follows the same core architecture principles as Mashbak:
 - SMS bridge is transport-only and does routing plus payload extraction.
 - Backend is the intelligence layer and owns membership state, conversation handling, and logging.
-- Assistant behavior is implemented in backend module: mashbak/assistants/bucherim/service.py.
+- Assistant behavior is implemented in backend modules under mashbak/assistants/bucherim/:
+- membership.py
+- storage.py
+- bucherim_router.py
+- bucherim_service.py
 
 ## Routing Rules
 
@@ -32,133 +36,85 @@ Exact command matching is case-insensitive after trim:
 - join@bucherim
 
 Deterministic behavior:
-1. @bucherim from allowlisted number:
-- admitted immediately
-- membership status becomes active
-- welcome confirmation is returned
+1. approved number sends any message:
+- routed to Bucherim assistant logic
+- response is generated from model/fallback logic using recent message history
 
-2. @bucherim from non-allowlisted number:
-- not admitted
-- status becomes rejected
-- explicit response instructs user to send join@bucherim
+2. unknown number sends @bucherim:
+- reply: You are not currently approved for Bucherim. Text join@bucherim to request access.
 
-3. join@bucherim from non-member:
-- membership status becomes pending_request
-- request is logged in per-user requests file and global pending list
-- acknowledgement response is returned
+3. unknown number sends join@bucherim:
+- sender is recorded as pending
+- pending request is stored in config/pending_requests.json
+- reply: Your request to join Bucherim has been received and will be reviewed.
 
-4. normal message from active member:
-- routed to Bucherim assistant conversation flow
-- session context is used for coherent follow-up handling
+4. blocked number sends any message:
+- reply with blocked response
 
-5. normal message from non-member:
-- blocked with explicit not-authorized / not-joined response
+5. unknown number sends anything else:
+- reply: Access restricted. Text join@bucherim to request access.
 
 ## Membership State Model
 
 States:
 - unknown
-- pending_request
-- allowlisted
-- active
-- rejected
+- pending
+- approved
 - blocked
-
-Transitions:
-- initial new sender:
-- allowlisted -> allowlisted
-- blocked list -> blocked
-- otherwise -> unknown
-
-- allowlisted sender sends @bucherim -> active
-- non-allowlisted sender sends @bucherim -> rejected
-- non-member sender sends join@bucherim -> pending_request
-- active sender remains active for normal conversation
 
 ## Configuration
 
-Config file:
-- mashbak/assistants/bucherim/config.json
-
-Key fields:
-- assistant_number: E.164 destination number for Bucherim route
-- allowlist: pre-approved E.164 numbers
-- blocked_numbers: explicit denied E.164 numbers
-- responses: customizable user-facing messages
+Membership files:
+- mashbak/assistants/bucherim/config/approved_numbers.json
+- mashbak/assistants/bucherim/config/pending_requests.json
+- mashbak/assistants/bucherim/config/blocked_numbers.json
 
 Number handling:
 - numbers are normalized to E.164 in backend before matching
-- filesystem user paths use sanitized deterministic phone keys
+- per-user directories are keyed by normalized E.164 number
 
 ## Data Storage And Logs
 
 Per-user storage path:
-- mashbak/data/users/bucherim/<normalized_user_key>/
+- mashbak/assistants/bucherim/logs/users/<normalized_phone>/
 
 Current files:
 - profile.json
-- membership.json
-- conversation.jsonl
-- requests.jsonl
-
-Media storage path:
-- mashbak/data/media/bucherim/<normalized_user_key>/index.jsonl
+- messages.jsonl
 
 Global pending list:
-- mashbak/data/users/bucherim/pending_requests.jsonl
+- mashbak/assistants/bucherim/config/pending_requests.json
 
 Logged artifacts include:
 - inbound/outbound text
 - timestamps
 - request/message metadata
-- membership events and transitions
-- media references and processing mode
-- response mode (text, join_request_ack, image_analysis_unavailable, etc.)
-
-## Context Handling
-
-Bucherim keeps per-user session context keyed by sender number.
-
-Session tracking includes:
-- recent turns
-- topic continuity
-- intent continuity markers
-- assistant reply history for follow-up coherence
-- membership status
-- last response type
-- last media presence
-
-Assistant-wide audit log:
-- mashbak/data/logs/bucherim/events.jsonl
+- media references and media_count (media logging ready)
+- routing response mode
 
 ## MMS And Image Support Status
 
 Current implementation:
-- inbound media is detected and logged with references
-- media entries are recorded in conversation and media index logs
-- image analysis and outbound image generation are not fully wired yet
-- assistant responds honestly when image capabilities are unavailable
+- inbound media is parsed, captured, and logged to per-user messages.jsonl
+- routing remains text-first while preserving media metadata for future processors
 
 Planned expansion points:
-- media downloading and local file indexing
-- image analysis model integration
-- outbound MMS image sending
+- media download workers
+- model-based image analysis
+- outbound MMS generation
 
 ## Operations
 
-To add/remove allowlisted users:
-1. Edit mashbak/assistants/bucherim/config.json
-2. Update allowlist with E.164 numbers
-3. Save file (backend reloads config on request)
+To approve a number quickly:
+1. Add number to mashbak/assistants/bucherim/config/approved_numbers.json
+2. Optionally remove same number from pending_requests.json and blocked_numbers.json
 
 To review join requests:
-- inspect mashbak/data/users/bucherim/pending_requests.jsonl
-- inspect per-user requests.jsonl files
+- inspect mashbak/assistants/bucherim/config/pending_requests.json
 
 To review a specific user:
-- open user folder under mashbak/data/users/bucherim/
-- inspect profile, membership, conversation, and requests files
+- open folder under mashbak/assistants/bucherim/logs/users/<normalized_phone>/
+- inspect profile.json and messages.jsonl
 
-To approve a pending member:
-- run mashbak/scripts/approve-bucherim-member.ps1 -Phone "+1XXXXXXXXXX"
-- add -ActivateNow to mark approved users immediately active
+Legacy workflow compatibility:
+- mashbak/scripts/approve-bucherim-member.ps1 still works through legacy allowlist integration for approved senders.

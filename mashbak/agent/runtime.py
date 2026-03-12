@@ -9,7 +9,7 @@ if __package__:
     from .config import Config
     from .config_loader import ConfigLoader
     from .assistant_core import AssistantCore, AssistantMetadata
-    from assistants.bucherim.service import BucherimService, BucherimSmsRequest
+    from assistants.bucherim.bucherim_service import BucherimService, BucherimSmsRequest
     from .logger import StructuredLogger
     from .tools import ToolRegistry
     from .tools.builtin import ALL_BUILTIN_TOOLS
@@ -21,7 +21,7 @@ else:
     from config import Config
     from config_loader import ConfigLoader
     from assistant_core import AssistantCore, AssistantMetadata
-    from assistants.bucherim.service import BucherimService, BucherimSmsRequest
+    from assistants.bucherim.bucherim_service import BucherimService, BucherimSmsRequest
     from logger import StructuredLogger
     from tools import ToolRegistry
     from tools.builtin import ALL_BUILTIN_TOOLS

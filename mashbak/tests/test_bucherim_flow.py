@@ -6,7 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from assistants.bucherim.service import BucherimService, BucherimSmsRequest
+from assistants.bucherim.bucherim_service import BucherimService, BucherimSmsRequest
+from assistants.bucherim.storage import BucherimStorage
 
 
 def make_service(tmp_path: Path, allowlist: list[str] | None = None) -> BucherimService:
@@ -16,24 +17,9 @@ def make_service(tmp_path: Path, allowlist: list[str] | None = None) -> Bucherim
         openai_model="gpt-4.1-mini",
         session_turns=4,
     )
-    config = {
-        "assistant_number": "+18772683048",
-        "allowlist": allowlist or [],
-        "blocked_numbers": [],
-        "responses": {
-            "welcome": "Welcome to Bucherim. You are now connected and can start asking questions.",
-            "not_approved": "You are not currently approved for Bucherim. Text join@bucherim to request access.",
-            "join_ack": "Your request to join Bucherim has been received and will be reviewed.",
-            "already_active": "You are already connected to Bucherim. Ask me anything.",
-            "not_member": "You are not currently a Bucherim member. Text @bucherim if approved, or join@bucherim to request access.",
-            "blocked": "Your access to Bucherim is currently blocked. Text join@bucherim to request a review.",
-            "media_unavailable": "I received your media, but image analysis is not enabled yet. Please describe what you need in text.",
-            "image_generation_unavailable": "I can discuss images, but outbound image generation is not enabled yet.",
-        },
-    }
-    config_path = tmp_path / "assistants" / "bucherim" / "config.json"
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    storage = BucherimStorage(base_dir=tmp_path)
+    for number in allowlist or []:
+        storage.add_approved_number(number)
     return service
 
 
@@ -69,14 +55,10 @@ def test_allowlisted_number_join_command_becomes_active():
         root = Path(tmpdir)
         service = make_service(root, allowlist=["+1 (212) 555-0101"])
 
-        result = run_request(service, "+1 212-555-0101", "@bucherim")
-        assert result["status"] == "active"
-        assert "connected" in result["reply"].lower()
-
-        user_dir = root / "data" / "users" / "bucherim" / "p12125550101"
-        membership = load_json(user_dir / "membership.json")
-        assert membership["status"] == "active"
-        assert membership["source"] == "allowlist"
+        result = run_request(service, "+1 212-555-0101", "hello")
+        assert result["status"] == "approved"
+        assert result["response_mode"] == "approved_ai"
+        assert result["reply"]
 
 
 def test_non_allowlisted_join_command_rejected_with_instructions():
@@ -85,8 +67,9 @@ def test_non_allowlisted_join_command_rejected_with_instructions():
         service = make_service(root, allowlist=[])
 
         result = run_request(service, "+1 646-555-0202", "@bucherim")
-        assert result["status"] == "rejected"
-        assert "join@bucherim" in result["reply"].lower()
+        assert result["status"] == "unknown"
+        assert result["response_mode"] == "not_approved"
+        assert result["reply"] == "You are not currently approved for Bucherim. Text join@bucherim to request access."
 
 
 def test_non_allowlisted_join_request_logged_and_acknowledged():
@@ -95,20 +78,12 @@ def test_non_allowlisted_join_request_logged_and_acknowledged():
         service = make_service(root, allowlist=[])
 
         result = run_request(service, "+1 718-555-0303", "join@bucherim")
-        assert result["status"] == "pending_request"
+        assert result["status"] == "pending"
         assert "received" in result["reply"].lower()
 
-        user_dir = root / "data" / "users" / "bucherim" / "p17185550303"
-        membership = load_json(user_dir / "membership.json")
-        assert membership["status"] == "pending_request"
-
-        request_rows = load_jsonl(user_dir / "requests.jsonl")
-        assert request_rows
-        assert request_rows[-1]["review_state"] == "pending"
-
-        pending_rows = load_jsonl(root / "data" / "users" / "bucherim" / "pending_requests.jsonl")
-        assert pending_rows
-        assert pending_rows[-1]["phone_number"] == "+17185550303"
+        pending_payload = load_json(root / "assistants" / "bucherim" / "config" / "pending_requests.json")
+        assert pending_payload["requests"]
+        assert pending_payload["requests"][-1]["phone_number"] == "+17185550303"
 
 
 def test_active_member_normal_message_is_processed_and_appended():
@@ -116,16 +91,13 @@ def test_active_member_normal_message_is_processed_and_appended():
         root = Path(tmpdir)
         service = make_service(root, allowlist=["+12125550404"])
 
-        join_result = run_request(service, "+1 212-555-0404", "@bucherim")
-        assert join_result["status"] == "active"
-
         message_result = run_request(service, "+1 212-555-0404", "hello bucherim")
-        assert message_result["status"] == "active"
-        assert message_result["response_mode"] == "text"
+        assert message_result["status"] == "approved"
+        assert message_result["response_mode"] == "approved_ai"
 
-        user_dir = root / "data" / "users" / "bucherim" / "p12125550404"
-        rows = load_jsonl(user_dir / "conversation.jsonl")
-        assert len(rows) >= 4
+        user_dir = root / "assistants" / "bucherim" / "logs" / "users" / "+12125550404"
+        rows = load_jsonl(user_dir / "messages.jsonl")
+        assert len(rows) >= 2
         assert rows[-2]["direction"] == "inbound"
         assert rows[-1]["direction"] == "outbound"
 
@@ -136,34 +108,29 @@ def test_non_member_normal_message_is_blocked():
         service = make_service(root, allowlist=[])
 
         result = run_request(service, "+1 332-555-0505", "what is quantum mechanics")
-        assert result["status"] in {"unknown", "rejected", "pending_request", "allowlisted", "blocked"}
-        assert result["response_mode"] == "not_authorized"
-        assert "join@bucherim" in result["reply"].lower()
+        assert result["status"] == "unknown"
+        assert result["response_mode"] == "access_restricted"
+        assert result["reply"] == "Access restricted. Text join@bucherim to request access."
 
 
-def test_context_preserved_with_membership_and_response_metadata():
+def test_blocked_number_gets_blocked_response():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        service = make_service(root, allowlist=["+12125550808"])
+        service = make_service(root, allowlist=[])
+        storage = BucherimStorage(base_dir=root)
+        storage.add_blocked_number("+1 917-555-4444")
 
-        run_request(service, "+1 212-555-0808", "@bucherim")
-        run_request(service, "+1 212-555-0808", "hello")
-        run_request(service, "+1 212-555-0808", "and what about tomorrow?")
-
-        snapshot = service.session_context.get_snapshot("bucherim:12125550808")
-        assert snapshot["last_intent"] == "conversation"
-        assert snapshot["last_topic"] is not None
-        assert snapshot["last_entities"]["membership_status"] == "active"
-        assert snapshot["last_entities"]["last_response_type"] == "text"
-        assert snapshot["last_entities"]["last_media_presence"] is False
-        assert len(snapshot["recent_turns"]) >= 2
+        result = run_request(service, "+1 917-555-4444", "hello")
+        assert result["status"] == "blocked"
+        assert result["response_mode"] == "blocked"
+        assert "blocked" in result["reply"].lower()
 
 
 def test_phone_normalization_to_e164_and_user_key():
     assert BucherimService.normalize_phone_e164("+1 (848) 329-1230") == "+18483291230"
     assert BucherimService.normalize_phone_e164("18483291230") == "+18483291230"
     assert BucherimService.normalize_phone_e164("8483291230") == "+18483291230"
-    assert BucherimService.phone_to_user_key("+18483291230") == "p18483291230"
+    assert BucherimService.phone_to_user_key("+18483291230") == "+18483291230"
 
 
 def test_user_files_created_and_conversation_appends():
@@ -171,18 +138,15 @@ def test_user_files_created_and_conversation_appends():
         root = Path(tmpdir)
         service = make_service(root, allowlist=["+17185550606"])
 
-        run_request(service, "+1 718-555-0606", "@bucherim")
         run_request(service, "+1 718-555-0606", "first message")
         run_request(service, "+1 718-555-0606", "second message")
 
-        user_dir = root / "data" / "users" / "bucherim" / "p17185550606"
+        user_dir = root / "assistants" / "bucherim" / "logs" / "users" / "+17185550606"
         assert (user_dir / "profile.json").exists()
-        assert (user_dir / "membership.json").exists()
-        assert (user_dir / "conversation.jsonl").exists()
-        assert (root / "data" / "media" / "bucherim" / "p17185550606").exists()
+        assert (user_dir / "messages.jsonl").exists()
 
-        rows = load_jsonl(user_dir / "conversation.jsonl")
-        assert len(rows) >= 6
+        rows = load_jsonl(user_dir / "messages.jsonl")
+        assert len(rows) >= 4
 
 
 def test_media_references_are_logged_when_present():
@@ -190,7 +154,6 @@ def test_media_references_are_logged_when_present():
         root = Path(tmpdir)
         service = make_service(root, allowlist=["+16465550707"])
 
-        run_request(service, "+1 646-555-0707", "@bucherim")
         result = run_request(
             service,
             "+1 646-555-0707",
@@ -198,9 +161,8 @@ def test_media_references_are_logged_when_present():
             media=[{"url": "https://example.com/image.jpg", "content_type": "image/jpeg"}],
         )
 
-        assert result["response_mode"] == "image_analysis_unavailable"
-        user_dir = root / "data" / "users" / "bucherim" / "p16465550707"
-        media_rows = load_jsonl(root / "data" / "media" / "bucherim" / "p16465550707" / "index.jsonl")
-        assert media_rows
-        assert media_rows[-1]["media_url"] == "https://example.com/image.jpg"
-        assert media_rows[-1]["download_status"] == "referenced_only"
+        assert result["response_mode"] == "approved_ai"
+        user_dir = root / "assistants" / "bucherim" / "logs" / "users" / "+16465550707"
+        rows = load_jsonl(user_dir / "messages.jsonl")
+        assert rows[-2]["direction"] == "inbound"
+        assert rows[-2]["media"][0]["url"] == "https://example.com/image.jpg"
