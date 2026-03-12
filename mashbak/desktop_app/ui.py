@@ -55,6 +55,7 @@ class DesktopControlApp:
         self.is_unlocked = False
         self.pending_start_index: str | None = None
         self.current_section = StringVar(value="Dashboard")
+        self.compact_tables = BooleanVar(value=False)
 
         self.activity: list[str] = []
         self.chat_history: list[tuple[str, str]] = []
@@ -110,12 +111,22 @@ class DesktopControlApp:
         style.configure("NavTitle.TLabel", background=_NAV_BG, foreground="#e5e7eb", font=("Segoe UI", 11, "bold"))
         style.configure("NavSub.TLabel", background=_NAV_BG, foreground="#94a3b8", font=("Segoe UI", 9))
         style.configure("Nav.TButton", font=("Segoe UI", 10), padding=(12, 10), anchor="w")
-        style.map("Nav.TButton", background=[("active", "#1e293b")], foreground=[("active", "#e2e8f0")])
+        style.map(
+            "Nav.TButton",
+            background=[("active", "#1e293b"), ("pressed", "#334155")],
+            foreground=[("active", "#e2e8f0"), ("pressed", "#f1f5f9")],
+        )
         style.configure("NavActive.TButton", font=("Segoe UI", 10, "bold"), padding=(12, 10), anchor="w")
-        style.map("NavActive.TButton", background=[("!disabled", "#1d4ed8")], foreground=[("!disabled", "#eff6ff")])
+        style.map(
+            "NavActive.TButton",
+            background=[("!disabled", "#1d4ed8"), ("active", "#1e40af")],
+            foreground=[("!disabled", "#eff6ff")],
+        )
 
         style.configure("Ops.Treeview", rowheight=24, font=("Segoe UI", 9), background="#ffffff", fieldbackground="#ffffff")
         style.configure("Ops.Treeview.Heading", font=("Segoe UI", 9, "bold"))
+        style.configure("OpsDense.Treeview", rowheight=20, font=("Segoe UI", 8), background="#ffffff", fieldbackground="#ffffff")
+        style.configure("OpsDense.Treeview.Heading", font=("Segoe UI", 8, "bold"))
 
     def _build_ui(self) -> None:
         self._build_header()
@@ -256,6 +267,12 @@ class DesktopControlApp:
         head = ttk.Frame(frame, style="SectionSurface.TFrame")
         head.pack(fill=X, pady=(2, 10))
         ttk.Label(head, text="Dashboard", style="Section.TLabel").pack(side=LEFT)
+        ttk.Checkbutton(
+            head,
+            text="Compact tables",
+            variable=self.compact_tables,
+            command=lambda: self._set_table_density(self.compact_tables.get()),
+        ).pack(side=RIGHT, padx=(0, 8))
         self.dashboard_refresh_btn = add_refresh_button(head, self.refresh_status, label="Refresh Dashboard")
         self.lock_sensitive_buttons.append(self.dashboard_refresh_btn)
 
@@ -332,6 +349,7 @@ class DesktopControlApp:
     def _create_status_card(self, parent: ttk.Frame, *, key: str, title: str, subtitle: str, icon: str, padx=(0, 0)) -> None:
         card = ttk.Frame(parent, style="Card.TFrame", padding=(10, 10))
         card.pack(side=LEFT, fill=BOTH, expand=True, padx=padx)
+        self._bind_card_hover(card)
 
         top = ttk.Frame(card, style="Card.TFrame")
         top.pack(fill=X)
@@ -347,11 +365,29 @@ class DesktopControlApp:
         status_label.pack(anchor="w", pady=(4, 0))
 
         self.status_cards[key] = {
+            "card": card,
             "indicator": indicator,
             "dot": dot_id,
             "status": status_label,
             "subtitle": subtitle_label,
         }
+
+    def _bind_card_hover(self, widget: ttk.Frame) -> None:
+        def _on_enter(_event):
+            widget.configure(padding=(11, 11))
+
+        def _on_leave(_event):
+            widget.configure(padding=(10, 10))
+
+        widget.bind("<Enter>", _on_enter)
+        widget.bind("<Leave>", _on_leave)
+
+    def _set_table_density(self, compact: bool) -> None:
+        style_name = "OpsDense.Treeview" if compact else "Ops.Treeview"
+        for tree_name in ("dashboard_actions_tree", "dashboard_failures_tree", "activity_tree"):
+            tree = getattr(self, tree_name, None)
+            if tree is not None:
+                tree.configure(style=style_name)
 
     def _set_status_card(self, key: str, status: str, detail: str) -> None:
         card = self.status_cards.get(key)
@@ -382,7 +418,7 @@ class DesktopControlApp:
         body = ttk.Frame(frame)
         body.pack(fill=BOTH, expand=True)
 
-        left = ttk.LabelFrame(body, text="Conversation")
+        left = ttk.LabelFrame(body, text="Conversation", style="Card.TLabelframe")
         left.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
 
         self.chat_text = make_scrolled_text(
@@ -413,7 +449,7 @@ class DesktopControlApp:
         self.send_button = ttk.Button(input_frame, text="Send", command=self.on_send, width=8)
         self.send_button.pack(side=RIGHT)
 
-        right = ttk.LabelFrame(body, text="Trace / Debug")
+        right = ttk.LabelFrame(body, text="Trace / Debug", style="Card.TLabelframe")
         right.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
 
         self.trace_notebook = ttk.Notebook(right)
@@ -487,7 +523,7 @@ class DesktopControlApp:
         return frame
 
     def _build_email_panel(self, parent: ttk.Frame) -> None:
-        form = ttk.LabelFrame(parent, text="Email Configuration")
+        form = ttk.LabelFrame(parent, text="Email Configuration", style="Card.TLabelframe")
         form.pack(fill=X)
 
         grid = ttk.Frame(form)
@@ -534,22 +570,22 @@ class DesktopControlApp:
         top = ttk.Frame(parent)
         top.pack(fill=X)
 
-        left = ttk.LabelFrame(top, text="Allowlist")
+        left = ttk.LabelFrame(top, text="Allowlist", style="Card.TLabelframe")
         left.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
         self.routing_allowlist = Listbox(left, height=10)
         self.routing_allowlist.pack(fill=BOTH, expand=True, padx=8, pady=8)
 
-        mid = ttk.LabelFrame(top, text="Blocked Numbers")
+        mid = ttk.LabelFrame(top, text="Blocked Numbers", style="Card.TLabelframe")
         mid.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
         self.routing_blocked = Listbox(mid, height=10)
         self.routing_blocked.pack(fill=BOTH, expand=True, padx=8, pady=8)
 
-        right = ttk.LabelFrame(top, text="Pending Join Requests")
+        right = ttk.LabelFrame(top, text="Pending Join Requests", style="Card.TLabelframe")
         right.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
         self.routing_pending = Listbox(right, height=10)
         self.routing_pending.pack(fill=BOTH, expand=True, padx=8, pady=8)
 
-        controls = ttk.LabelFrame(parent, text="Member Controls")
+        controls = ttk.LabelFrame(parent, text="Member Controls", style="Card.TLabelframe")
         controls.pack(fill=X, pady=(10, 0))
 
         row = ttk.Frame(controls)
@@ -583,16 +619,16 @@ class DesktopControlApp:
         upper = ttk.Frame(frame)
         upper.pack(fill=BOTH, expand=True)
 
-        allowed_box = ttk.LabelFrame(upper, text="Allowed Directories")
+        allowed_box = ttk.LabelFrame(upper, text="Allowed Directories", style="Card.TLabelframe")
         allowed_box.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
         self.allowed_dirs_list = Listbox(allowed_box, height=16)
         self.allowed_dirs_list.pack(fill=BOTH, expand=True, padx=8, pady=8)
 
-        blocked_box = ttk.LabelFrame(upper, text="Recent Blocked Filesystem Attempts")
+        blocked_box = ttk.LabelFrame(upper, text="Recent Blocked Filesystem Attempts", style="Card.TLabelframe")
         blocked_box.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
         self.blocked_attempts_text = labeled_scroll_text(blocked_box, height=16, font=("Consolas", 9), wrap="none")
 
-        actions = ttk.LabelFrame(frame, text="Policy Controls")
+        actions = ttk.LabelFrame(frame, text="Policy Controls", style="Card.TLabelframe")
         actions.pack(fill=X, pady=(10, 0))
 
         row1 = ttk.Frame(actions)
@@ -645,6 +681,12 @@ class DesktopControlApp:
         head = ttk.Frame(frame)
         head.pack(fill=X, pady=(2, 8))
         ttk.Label(head, text="Activity / Audit", style="Section.TLabel").pack(side=LEFT)
+        ttk.Checkbutton(
+            head,
+            text="Compact tables",
+            variable=self.compact_tables,
+            command=lambda: self._set_table_density(self.compact_tables.get()),
+        ).pack(side=RIGHT, padx=(0, 8))
         self.refresh_activity_button = add_refresh_button(head, self.refresh_activity_audit, label="Refresh")
         self.lock_sensitive_buttons.append(self.refresh_activity_button)
 
