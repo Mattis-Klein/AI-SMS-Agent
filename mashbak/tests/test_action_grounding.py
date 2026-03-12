@@ -239,6 +239,46 @@ def test_make_file_on_desktop_phrase_maps_to_create_file():
     assert path_value.endswith("/Desktop/todo")
 
 
+def test_create_file_on_my_desktop_phrase_maps_to_create_file():
+    interpreter = NaturalLanguageInterpreter()
+    parsed = interpreter.parse_to_dict("create a file on my desktop called notes", context={})
+    assert parsed.get("tool") == "create_file"
+    path_value = str(parsed.get("args", {}).get("path", "")).replace("\\", "/")
+    assert path_value.endswith("/Desktop/notes")
+
+
+def test_contextual_followup_add_file_inside_that_folder_maps_to_real_tool():
+    interpreter = NaturalLanguageInterpreter()
+    ctx = {
+        "last_created_path": "C:/Users/owner/Desktop/TripPack",
+        "last_result": "success",
+        "last_task": "create_folder",
+        "recent_turns": [
+            {"tool": "create_folder", "success": True, "created_path": "C:/Users/owner/Desktop/TripPack"}
+        ],
+    }
+    parsed = interpreter.parse_to_dict("add a file inside that folder", context=ctx)
+    assert parsed.get("tool") == "create_file"
+    parent_path = str(parsed.get("args", {}).get("parent_path", "")).replace("\\", "/")
+    assert parent_path == "C:/Users/owner/Desktop/TripPack"
+
+
+def test_contextual_followup_create_file_in_folder_we_just_made_maps_to_real_tool():
+    interpreter = NaturalLanguageInterpreter()
+    ctx = {
+        "last_created_path": "C:/Users/owner/Desktop/TripPack",
+        "last_result": "success",
+        "last_task": "create_folder",
+        "recent_turns": [
+            {"tool": "create_folder", "success": True, "created_path": "C:/Users/owner/Desktop/TripPack"}
+        ],
+    }
+    parsed = interpreter.parse_to_dict("create a file in the folder we just made", context=ctx)
+    assert parsed.get("tool") == "create_file"
+    parent_path = str(parsed.get("args", {}).get("parent_path", "")).replace("\\", "/")
+    assert parent_path == "C:/Users/owner/Desktop/TripPack"
+
+
 def test_unresolved_that_folder_reference_does_not_invent_path():
     runtime = FakeRuntime()
     assistant = AssistantCore(runtime)
