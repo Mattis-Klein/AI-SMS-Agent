@@ -84,6 +84,8 @@ Examples that map to concrete backend tools:
 
 ```text
 create a folder on my desktop called TripPack
+create a new file on my desktop called Mashbak
+make a file on the desktop called todo
 create a file named notes.txt
 add a file in that folder with all 50 states
 put a file in it
@@ -95,6 +97,9 @@ Context follow-ups are resolved from last verified action state (session memory 
 where is it?
 did you create it?
 add states to that folder
+create a file named states in that folder
 ```
+
+If no prior successful folder creation exists in the current session, follow-ups like "that folder" and "in it" trigger clarification instead of guessing a path.
 
 See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for complete variable reference and restart details.

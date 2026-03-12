@@ -64,3 +64,47 @@ def test_email_missing_config_returns_structured_error():
     assert result.error_type == "missing_configuration"
     assert result.missing_config_fields
     assert "EMAIL_PASSWORD" in result.missing_config_fields
+
+
+def test_session_context_denied_action_not_marked_missing_path():
+    manager = SessionContextManager(max_recent_turns=4)
+
+    manager.update(
+        session_id="desktop:denied",
+        user_message="create file in blocked path",
+        parsed={"intent": "filesystem", "tool": "create_file", "args": {"path": "C:/Windows/system32/test.txt"}, "entities": {"action_requested": True}},
+        result={"success": False, "tool_name": "create_file", "error_type": "denied_action", "error": "Path is not in allowed directories"},
+    )
+
+    snapshot = manager.get_snapshot("desktop:denied")
+    assert snapshot.get("last_failure_type") == "denied_action"
+    assert snapshot.get("missing_parameters") == []
+
+
+def test_session_context_existing_file_not_marked_missing_path():
+    manager = SessionContextManager(max_recent_turns=4)
+
+    manager.update(
+        session_id="desktop:exists",
+        user_message="create file",
+        parsed={"intent": "filesystem", "tool": "create_file", "args": {"path": "inbox/existing.txt"}, "entities": {"action_requested": True}},
+        result={"success": False, "tool_name": "create_file", "error_type": "validation_failure", "error": "File already exists: inbox/existing.txt"},
+    )
+
+    snapshot = manager.get_snapshot("desktop:exists")
+    assert snapshot.get("last_failure_type") == "validation_failure"
+    assert snapshot.get("missing_parameters") == []
+
+
+def test_session_context_truly_missing_path_marks_missing_parameter():
+    manager = SessionContextManager(max_recent_turns=4)
+
+    manager.update(
+        session_id="desktop:missing-path",
+        user_message="create a file",
+        parsed={"intent": "filesystem", "tool": "create_file", "args": {}, "entities": {"action_requested": True}},
+        result={"success": False, "tool_name": "create_file", "error_type": "validation_failure", "error": "Invalid input: Provide either 'path' or both 'parent_path' and 'name'"},
+    )
+
+    snapshot = manager.get_snapshot("desktop:missing-path")
+    assert snapshot.get("missing_parameters") == ["path"]

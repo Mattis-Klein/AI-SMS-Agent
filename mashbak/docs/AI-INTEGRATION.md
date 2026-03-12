@@ -8,6 +8,9 @@ Set in mashbak/.env.master:
 
 - OPENAI_API_KEY
 - OPENAI_MODEL (default gpt-4.1-mini)
+- OPENAI_BASE_URL (default https://api.openai.com/v1)
+- OPENAI_TIMEOUT_SECONDS (default 25)
+- OPENAI_TEMPERATURE (default 0.3)
 - MODEL_RESPONSE_MAX_TOKENS
 
 If OPENAI_API_KEY is missing, backend falls back to deterministic non-AI responses.

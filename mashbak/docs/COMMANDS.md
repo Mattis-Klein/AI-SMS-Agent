@@ -26,6 +26,19 @@ Typical intents map to tools such as:
 - list_processes
 - uptime
 
+Desktop file creation phrases supported:
+- create a new file on my desktop called Mashbak
+- create a file on my desktop called notes
+- make a file on the desktop called todo
+
+Contextual folder follow-ups supported when a real prior folder creation exists in the current session:
+- create a file named states in that folder
+- put a file in it
+- add a file inside that folder
+- create a file in the folder we just made
+
+If there is no execution-backed folder context, Mashbak asks for clarification instead of inventing a path.
+
 ## Email Requests
 
 Examples:

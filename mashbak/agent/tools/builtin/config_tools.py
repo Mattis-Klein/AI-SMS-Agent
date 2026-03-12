@@ -24,6 +24,9 @@ class SetConfigVariableTool(Tool):
         # OpenAI / AI Configuration
         "OPENAI_API_KEY",
         "OPENAI_MODEL",
+        "OPENAI_BASE_URL",
+        "OPENAI_TIMEOUT_SECONDS",
+        "OPENAI_TEMPERATURE",
         
         # Email Configuration - Canonical names
         "EMAIL_PROVIDER",
@@ -151,6 +154,18 @@ class SetConfigVariableTool(Tool):
         "OPENAI_MODEL": (
             lambda v: bool(v.strip()),
             "Model name cannot be empty"
+        ),
+        "OPENAI_BASE_URL": (
+            lambda v: bool(str(v).strip().startswith("http://") or str(v).strip().startswith("https://")),
+            "Must be a valid http/https URL"
+        ),
+        "OPENAI_TIMEOUT_SECONDS": (
+            lambda v: _validate_positive_number(v),
+            "Must be a positive number"
+        ),
+        "OPENAI_TEMPERATURE": (
+            lambda v: _validate_temperature(v),
+            "Must be a number between 0 and 2"
         ),
         "SMS_PHONE_NORMALIZATION_DIGITS": (
             lambda v: str(v).strip().isdigit() and 4 <= int(str(v).strip()) <= 15,
@@ -382,6 +397,14 @@ def _validate_pin(value: str) -> bool:
 def _validate_positive_number(value: str) -> bool:
     try:
         return float(str(value).strip()) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _validate_temperature(value: str) -> bool:
+    try:
+        parsed = float(str(value).strip())
+        return 0.0 <= parsed <= 2.0
     except (TypeError, ValueError):
         return False
 

@@ -359,6 +359,28 @@ def test_session_task_state_isolated_between_sessions():
     assert bob_ctx.get("last_result") is None
 
 
+def test_contextual_named_file_followup_resolves_to_last_real_folder():
+    interp = NaturalLanguageInterpreter()
+    ctx = {
+        "last_task": "create_folder",
+        "last_result": "success",
+        "last_created_path": "C:/Users/owner/Desktop/TripPack",
+        "recent_turns": [
+            {
+                "tool": "create_folder",
+                "success": True,
+                "created_path": "C:/Users/owner/Desktop/TripPack",
+            }
+        ],
+    }
+
+    parsed = interp.parse_to_dict("create a file named states in that folder", context=ctx)
+    assert parsed.get("tool") == "create_file"
+    args = parsed.get("args") or {}
+    assert args.get("name") == "states"
+    assert str(args.get("parent_path", "")).replace("\\", "/") == "C:/Users/owner/Desktop/TripPack"
+
+
 # ---------------------------------------------------------------------------
 # Test 9: record_assistant_reply populates the turn
 # ---------------------------------------------------------------------------

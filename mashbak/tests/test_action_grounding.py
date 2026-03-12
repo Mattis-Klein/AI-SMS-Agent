@@ -221,3 +221,31 @@ def test_contextual_followup_add_states_maps_to_real_tool_with_content():
     assert parsed.get("tool") == "create_file"
     assert parsed.get("args", {}).get("name") == "states.txt"
     assert "Wyoming" in str(parsed.get("args", {}).get("content", ""))
+
+
+def test_desktop_file_creation_phrase_maps_to_create_file():
+    interpreter = NaturalLanguageInterpreter()
+    parsed = interpreter.parse_to_dict("create a new file on my desktop called Mashbak", context={})
+    assert parsed.get("tool") == "create_file"
+    path_value = str(parsed.get("args", {}).get("path", "")).replace("\\", "/")
+    assert path_value.endswith("/Desktop/Mashbak")
+
+
+def test_make_file_on_desktop_phrase_maps_to_create_file():
+    interpreter = NaturalLanguageInterpreter()
+    parsed = interpreter.parse_to_dict("make a file on the desktop called todo", context={})
+    assert parsed.get("tool") == "create_file"
+    path_value = str(parsed.get("args", {}).get("path", "")).replace("\\", "/")
+    assert path_value.endswith("/Desktop/todo")
+
+
+def test_unresolved_that_folder_reference_does_not_invent_path():
+    runtime = FakeRuntime()
+    assistant = AssistantCore(runtime)
+
+    response = _respond(assistant, "create a file named states in that folder")
+
+    assert response["success"] is False
+    assert response["tool_name"] is None
+    reply = str(response.get("assistant_reply") or "").lower()
+    assert "couldn't resolve which folder" in reply

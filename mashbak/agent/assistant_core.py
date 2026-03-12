@@ -7,6 +7,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+from urllib.parse import urljoin
 import uuid
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -27,9 +28,35 @@ class AssistantMetadata:
 
 
 class BackendOpenAIClient:
-    def __init__(self, api_key: str | None, model: str):
+    def __init__(
+        self,
+        api_key: str | None,
+        model: str,
+        *,
+        base_url: str | None = None,
+        timeout_seconds: float = 25.0,
+        temperature: float = 0.3,
+    ):
         self.api_key = api_key or ""
         self.model = model
+        self.base_url = self._normalize_base_url(base_url)
+        self.timeout_seconds = max(1.0, float(timeout_seconds or 25.0))
+        self.temperature = self._normalize_temperature(temperature)
+
+    @staticmethod
+    def _normalize_base_url(value: str | None) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            return "https://api.openai.com/v1"
+        return raw.rstrip("/")
+
+    @staticmethod
+    def _normalize_temperature(value: float | int | str | None) -> float:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return 0.3
+        return min(2.0, max(0.0, numeric))
 
     @property
     def enabled(self) -> bool:
@@ -52,12 +79,14 @@ class BackendOpenAIClient:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "temperature": 0.3,
+            "temperature": self.temperature,
             "max_tokens": max_tokens,
         }
 
+        endpoint = urljoin(f"{self.base_url}/", "chat/completions")
+
         request = urllib.request.Request(
-            "https://api.openai.com/v1/chat/completions",
+            endpoint,
             data=json.dumps(payload).encode("utf-8"),
             method="POST",
             headers={
@@ -67,7 +96,7 @@ class BackendOpenAIClient:
         )
 
         try:
-            with urllib.request.urlopen(request, timeout=25) as response:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 parsed = json.loads(response.read().decode("utf-8", errors="replace"))
             return parsed["choices"][0]["message"]["content"].strip()
         except (KeyError, IndexError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
@@ -160,10 +189,17 @@ class AssistantCore:
         metadata: AssistantMetadata,
         parsed: dict[str, Any],
     ) -> dict[str, Any]:
-        reply = (
-            "I have not executed a filesystem tool yet, so no filesystem change was applied. "
-            "Share an allowed target path and I can run it."
-        )
+        entities = parsed.get("entities") or {}
+        if entities.get("path_reference_unresolved"):
+            reply = (
+                "I couldn't resolve which folder you mean. "
+                "Please provide the full folder path, or create/select the folder first."
+            )
+        else:
+            reply = (
+                "I have not executed a filesystem tool yet, so no filesystem change was applied. "
+                "Share an allowed target path and I can run it."
+            )
         return {
             "success": False,
             "tool_name": None,

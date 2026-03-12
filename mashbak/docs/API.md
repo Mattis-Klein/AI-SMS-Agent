@@ -102,6 +102,9 @@ Common error categories returned in payloads include:
 - execution_failure
 - action_not_executed
 
+`missing_parameters` is reported only when inputs are actually incomplete.
+Permission denials, existence conflicts, and execution failures preserve their real error categories.
+
 ## Trace Grounding Fields
 
 Tool and conversation traces include grounding indicators used by debug panels:

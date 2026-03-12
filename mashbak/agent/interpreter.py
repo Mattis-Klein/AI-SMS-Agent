@@ -19,7 +19,7 @@ class NaturalLanguageInterpreter:
     """Maps natural language requests to tool calls."""
 
     CONFIG_VARIABLES = {
-        "OPENAI_API_KEY", "OPENAI_MODEL",
+        "OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL", "OPENAI_TIMEOUT_SECONDS", "OPENAI_TEMPERATURE",
         "EMAIL_PROVIDER", "EMAIL_IMAP_HOST", "EMAIL_IMAP_PORT",
         "EMAIL_USERNAME", "EMAIL_PASSWORD", "EMAIL_MAILBOX", "EMAIL_USE_SSL",
         "IMAP_SERVER", "IMAP_PORT", "EMAIL_ADDRESS",
@@ -52,6 +52,10 @@ class NaturalLanguageInterpreter:
         "model response max tokens": "MODEL_RESPONSE_MAX_TOKENS",
         "session context max turns": "SESSION_CONTEXT_MAX_TURNS",
         "tool execution timeout": "TOOL_EXECUTION_TIMEOUT",
+        "openai base url": "OPENAI_BASE_URL",
+        "openai timeout": "OPENAI_TIMEOUT_SECONDS",
+        "openai timeout seconds": "OPENAI_TIMEOUT_SECONDS",
+        "openai temperature": "OPENAI_TEMPERATURE",
     }
 
     def __init__(self):
@@ -66,6 +70,7 @@ class NaturalLanguageInterpreter:
             (r"(?:list|show|what.*files?).*(?:in|from)\s+(.+)", "list_files", self._extract_path),
             (r"files?\s+(?:in|from)\s+(.+)", "list_files", self._extract_path),
             (r"(?:create|make)\s+(?:a\s+)?(?:folder|directory)\s+(?:on\s+my\s+desktop|in\s+my\s+desktop|on\s+desktop)\s+(?:called|named)\s+(.+)", "create_folder", self._extract_desktop_named_target),
+            (r"(?:create|make)\s+(?:a\s+)?(?:new\s+)?file\s+(?:on\s+my\s+desktop|on\s+the\s+desktop|in\s+my\s+desktop|on\s+desktop)\s+(?:called|named)\s+(.+)", "create_file", self._extract_desktop_named_file_target),
             (r"(?:create|make)\s+(?:a\s+)?(?:folder|directory)\s+(?:called|named)\s+(.+)", "create_folder", self._extract_named_target),
             (r"(?:create|make)\s+(?:a\s+)?(?:folder|directory)\s+(?:in|at|under)\s+(.+)", "create_folder", self._extract_path),
             (r"(?:create|make)\s+(?:a\s+)?file\s+(?:named|called)\s+(.+?)\s+(?:in|at|under)\s+(.+)", "create_file", self._extract_named_file_target),
@@ -108,6 +113,10 @@ class NaturalLanguageInterpreter:
           missing_config_fields               — outstanding config requirements
         """
         context = context or {}
+
+        unresolved_folder_ref = self._detect_unresolved_folder_reference(message, context)
+        if unresolved_folder_ref:
+            return unresolved_folder_ref
 
         # --- 1. Try context-reference resolution first (elliptical queries) ---
         ref_result = self._resolve_context_reference(message, context)
@@ -174,22 +183,41 @@ class NaturalLanguageInterpreter:
         context: dict[str, Any],
     ) -> tuple[Optional[str], dict[str, Any], float]:
         msg = message.strip().lower()
-        last_path = str(context.get("last_created_path") or "").strip()
-        if not last_path:
+        target_dir = self._resolve_last_real_folder_path(context)
+        if not target_dir:
             return None, {}, 0.0
 
-        target_dir = Path(last_path)
-        if target_dir.suffix:
-            target_dir = target_dir.parent
-
-        if "50 states" in msg and any(token in msg for token in ["that folder", "in it", "to it"]):
+        if "50 states" in msg and self._contains_folder_reference_phrase(msg):
             return "create_file", {
                 "parent_path": str(target_dir),
                 "name": "states.txt",
                 "content": self._all_states_text(),
             }, 0.93
 
-        if any(token in msg for token in ["put a file in it", "put file in it", "add a file in it", "put a file in that folder", "add a file in that folder"]):
+        named_file_match = re.search(
+            r"(?:create|make|add|put)\s+(?:a\s+)?file\s+(?:named|called)\s+(.+?)\s+(?:in|inside|under|at)\s+(?:that\s+folder|the\s+folder|it|inside\s+it|inside\s+that\s+folder|the\s+folder\s+we\s+just\s+made)",
+            msg,
+        )
+        if named_file_match:
+            file_name = self._sanitize_filename(named_file_match.group(1))
+            if file_name:
+                return "create_file", {
+                    "parent_path": str(target_dir),
+                    "name": file_name,
+                }, 0.92
+
+        if any(token in msg for token in [
+            "put a file in it",
+            "put file in it",
+            "add a file in it",
+            "put a file in that folder",
+            "add a file in that folder",
+            "add a file inside that folder",
+            "create a file in the folder we just made",
+            "create a file in that folder",
+            "create a file inside that folder",
+            "add a file inside it",
+        ]):
             return "create_file", {
                 "parent_path": str(target_dir),
                 "name": "note.txt",
@@ -443,14 +471,15 @@ class NaturalLanguageInterpreter:
         return "conversation"
 
     def _select_tool(self, message: str, intent: Optional[str]) -> tuple[Optional[str], Optional[re.Match[str]], float]:
-        msg = message.lower().strip()
+        raw = message.strip()
+        msg = raw.lower()
         if intent == "explanation":
             return None, None, 0.35
 
         action_verb_present = any(token in msg for token in ["create", "make", "add", "save", "delete", "move", "put", "write"])
 
         for pattern, tool_name, _extractor in self.patterns:
-            match = re.search(pattern, msg)
+            match = re.search(pattern, raw, flags=re.IGNORECASE)
             if match:
                 # Action-verb requests should not be misclassified as read-only list_files.
                 if tool_name == "list_files" and action_verb_present:
@@ -527,7 +556,7 @@ class NaturalLanguageInterpreter:
         entities: dict[str, Any] = {}
         if tool_name:
             entities["tool"] = tool_name
-        for key in ("query", "path", "parent_path", "name", "email_id", "limit", "variable_name"):
+        for key in ("query", "path", "parent_path", "name", "email_id", "limit", "variable_name", "path_reference_unresolved"):
             if key in args:
                 entities[key] = args[key]
         return entities
@@ -540,6 +569,10 @@ class NaturalLanguageInterpreter:
     def _extract_desktop_named_target(self, match: re.Match[str]) -> dict[str, Any]:
         folder_name = self._sanitize_filename(match.group(1)) if match.groups() else ""
         return {"path": str(Path.home() / "Desktop" / folder_name)} if folder_name else {}
+
+    def _extract_desktop_named_file_target(self, match: re.Match[str]) -> dict[str, Any]:
+        file_name = self._sanitize_filename(match.group(1)) if match.groups() else ""
+        return {"path": str(Path.home() / "Desktop" / file_name)} if file_name else {}
 
     def _extract_named_target(self, match: re.Match[str]) -> dict[str, Any]:
         target_name = self._sanitize_filename(match.group(1)) if match.groups() else ""
@@ -572,6 +605,62 @@ class NaturalLanguageInterpreter:
             return False
         msg = message.lower()
         return any(token in msg for token in ["create", "make", "add", "save", "delete", "move", "put", "write"])
+
+    def _contains_folder_reference_phrase(self, message: str) -> bool:
+        lowered = str(message or "").lower()
+        return any(token in lowered for token in [
+            "that folder",
+            "the folder",
+            "in it",
+            "inside it",
+            "inside that folder",
+            "the folder we just made",
+        ])
+
+    def _resolve_last_real_folder_path(self, context: dict[str, Any]) -> Optional[Path]:
+        if not isinstance(context, dict):
+            return None
+
+        if context.get("last_task") == "create_folder" and context.get("last_result") == "success":
+            last_path = str(context.get("last_created_path") or "").strip()
+            if last_path:
+                return Path(last_path)
+
+        for turn in reversed(context.get("recent_turns") or []):
+            if turn.get("tool") == "create_folder" and bool(turn.get("success")):
+                created_path = str(turn.get("created_path") or "").strip()
+                if created_path:
+                    return Path(created_path)
+
+        return None
+
+    def _detect_unresolved_folder_reference(self, message: str, context: dict[str, Any]) -> Optional[dict[str, Any]]:
+        msg = str(message or "").strip().lower()
+        if not self._contains_folder_reference_phrase(msg):
+            return None
+
+        if not any(token in msg for token in ["create", "make", "add", "put", "write", "save"]):
+            return None
+
+        if self._resolve_last_real_folder_path(context):
+            return None
+
+        entities = {
+            "path_reference_unresolved": True,
+            "reference_target": "folder_reference",
+            "action_requested": True,
+            "missing_parameters": ["path"],
+        }
+        return {
+            "tool": None,
+            "args": {},
+            "intent": "filesystem",
+            "confidence": 0.89,
+            "mode": "conversation",
+            "topic": "filesystem",
+            "followup_topic": "filesystem",
+            "entities": entities,
+        }
 
     def _all_states_text(self) -> str:
         states = [

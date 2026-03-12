@@ -52,6 +52,9 @@ class AgentRuntime:
         self.api_key = (ConfigLoader.get("AGENT_API_KEY", "") or "").strip()
         self.openai_api_key = (ConfigLoader.get("OPENAI_API_KEY", "") or "").strip()
         self.openai_model = (ConfigLoader.get("OPENAI_MODEL", "gpt-4.1-mini") or "gpt-4.1-mini").strip()
+        self.openai_base_url = (ConfigLoader.get("OPENAI_BASE_URL", "https://api.openai.com/v1") or "https://api.openai.com/v1").strip()
+        self.openai_timeout_seconds = max(1.0, ConfigLoader.get_float("OPENAI_TIMEOUT_SECONDS", 25.0))
+        self.openai_temperature = min(2.0, max(0.0, ConfigLoader.get_float("OPENAI_TEMPERATURE", 0.3)))
         self.model_response_max_tokens = max(64, ConfigLoader.get_int("MODEL_RESPONSE_MAX_TOKENS", 250))
         self.session_context_turns = max(1, ConfigLoader.get_int("SESSION_CONTEXT_MAX_TURNS", 4))
         timeout_override = ConfigLoader.get("TOOL_EXECUTION_TIMEOUT", "").strip()
@@ -89,6 +92,9 @@ class AgentRuntime:
             base_dir=self.base_dir,
             openai_api_key=self.openai_api_key,
             openai_model=self.openai_model,
+            openai_base_url=self.openai_base_url,
+            openai_timeout_seconds=self.openai_timeout_seconds,
+            openai_temperature=self.openai_temperature,
             session_turns=self.session_context_turns,
         )
 
@@ -97,6 +103,9 @@ class AgentRuntime:
         ConfigLoader.load(reload=True)
         self.openai_api_key = (ConfigLoader.get("OPENAI_API_KEY", "") or "").strip()
         self.openai_model = (ConfigLoader.get("OPENAI_MODEL", "gpt-4.1-mini") or "gpt-4.1-mini").strip()
+        self.openai_base_url = (ConfigLoader.get("OPENAI_BASE_URL", "https://api.openai.com/v1") or "https://api.openai.com/v1").strip()
+        self.openai_timeout_seconds = max(1.0, ConfigLoader.get_float("OPENAI_TIMEOUT_SECONDS", 25.0))
+        self.openai_temperature = min(2.0, max(0.0, ConfigLoader.get_float("OPENAI_TEMPERATURE", 0.3)))
         self.model_response_max_tokens = max(64, ConfigLoader.get_int("MODEL_RESPONSE_MAX_TOKENS", 250))
         self.session_context_turns = max(1, ConfigLoader.get_int("SESSION_CONTEXT_MAX_TURNS", self.session_context.max_recent_turns))
         self.session_context.max_recent_turns = self.session_context_turns
@@ -111,15 +120,24 @@ class AgentRuntime:
 
         self.assistant.model_client.api_key = self.openai_api_key
         self.assistant.model_client.model = self.openai_model
+        self.assistant.model_client.base_url = self.openai_base_url.rstrip("/")
+        self.assistant.model_client.timeout_seconds = self.openai_timeout_seconds
+        self.assistant.model_client.temperature = self.openai_temperature
         self.bucherim.update_model_config(
             api_key=self.openai_api_key,
             model=self.openai_model,
+            base_url=self.openai_base_url,
+            timeout_seconds=self.openai_timeout_seconds,
+            temperature=self.openai_temperature,
             session_turns=self.session_context_turns,
         )
 
         return {
             "assistant_ai_enabled": bool(self.openai_api_key),
             "assistant_model": self.openai_model,
+            "assistant_base_url": self.openai_base_url,
+            "assistant_timeout_seconds": self.openai_timeout_seconds,
+            "assistant_temperature": self.openai_temperature,
             "session_context_max_turns": self.session_context_turns,
             "tool_timeout_seconds": self.default_tool_timeout_seconds,
             "model_response_max_tokens": self.model_response_max_tokens,
@@ -428,6 +446,9 @@ class AgentRuntime:
             "registered_tools": self.registry.list_all(),
             "assistant_ai_enabled": bool(self.openai_api_key),
             "assistant_model": self.openai_model,
+            "assistant_base_url": self.openai_base_url,
+            "assistant_timeout_seconds": self.openai_timeout_seconds,
+            "assistant_temperature": self.openai_temperature,
             "model_response_max_tokens": self.model_response_max_tokens,
             "session_context_max_turns": self.session_context_turns,
             "log_level": (ConfigLoader.get("LOG_LEVEL", "INFO") or "INFO").upper(),

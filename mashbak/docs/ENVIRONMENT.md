@@ -10,7 +10,7 @@ Chat-based config updates also persist to mashbak/.env.master.
 ## Loading Rules
 
 - Backend loads from .env.master through ConfigLoader.
-- Bridge loads from .env.master at startup.
+- Bridge loads from .env.master at startup using dotenv-compatible parsing.
 - Shell environment variables can override values for the active process.
 
 ## Required Baseline Variables
@@ -24,6 +24,9 @@ Chat-based config updates also persist to mashbak/.env.master.
 
 - OPENAI_API_KEY
 - OPENAI_MODEL
+- OPENAI_BASE_URL
+- OPENAI_TIMEOUT_SECONDS
+- OPENAI_TEMPERATURE
 - MODEL_RESPONSE_MAX_TOKENS
 
 ## Email Variables
@@ -86,6 +89,9 @@ Main keys:
 Reloaded in-process by backend runtime:
 - OPENAI_API_KEY
 - OPENAI_MODEL
+- OPENAI_BASE_URL
+- OPENAI_TIMEOUT_SECONDS
+- OPENAI_TEMPERATURE
 - MODEL_RESPONSE_MAX_TOKENS
 - SESSION_CONTEXT_MAX_TURNS
 - TOOL_EXECUTION_TIMEOUT

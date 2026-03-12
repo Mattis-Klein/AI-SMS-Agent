@@ -85,6 +85,33 @@ class SessionContextManager:
             self._sessions[session_id] = context
         return context
 
+    def _infer_missing_parameters_from_failure(
+        self,
+        *,
+        tool_name: str | None,
+        error_type: str | None,
+        error_message: str | None,
+        parsed_args: dict[str, Any],
+    ) -> list[str]:
+        if not tool_name or error_type != "validation_failure":
+            return []
+
+        text = str(error_message or "").lower()
+        if tool_name == "create_file":
+            has_path = bool(str(parsed_args.get("path", "")).strip())
+            has_parent = bool(str(parsed_args.get("parent_path", "")).strip())
+            has_name = bool(str(parsed_args.get("name", "")).strip())
+            if not has_path and not (has_parent and has_name):
+                if "provide either 'path'" in text or "missing" in text or "invalid input" in text:
+                    return ["path"]
+
+        if tool_name == "create_folder":
+            has_path = bool(str(parsed_args.get("path", "")).strip())
+            if not has_path and ("path" in text or "missing" in text or "invalid input" in text):
+                return ["path"]
+
+        return []
+
     def get_snapshot(self, session_id: str) -> dict[str, Any]:
         return self.get(session_id).snapshot()
 
@@ -143,7 +170,7 @@ class SessionContextManager:
             if action_requested and not tool_name:
                 context.pending_task = "filesystem_action"
                 context.pending_parameters = {}
-                if not context.missing_parameters:
+                if not context.missing_parameters and not context.last_failure_type:
                     context.missing_parameters = ["path"]
 
             # Clear pending task once executed (success or failure).
@@ -160,8 +187,13 @@ class SessionContextManager:
                 else:
                     context.pending_task = tool_name
                     context.pending_parameters = dict(parsed.get("args") or {})
-                    if not context.missing_parameters:
-                        context.missing_parameters = ["path"]
+                    inferred_missing = self._infer_missing_parameters_from_failure(
+                        tool_name=tool_name,
+                        error_type=result.get("error_type"),
+                        error_message=result.get("error"),
+                        parsed_args=dict(parsed.get("args") or {}),
+                    )
+                    context.missing_parameters = inferred_missing
 
             # Capture missing parameters surfaced by failed tool execution.
             tool_missing_params = result.get("missing_parameters")

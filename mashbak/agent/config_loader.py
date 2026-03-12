@@ -98,6 +98,14 @@ class ConfigLoader:
         except (ValueError, TypeError):
             return default
 
+    @classmethod
+    def get_float(cls, key: str, default: float = 0.0) -> float:
+        """Get a float configuration variable."""
+        try:
+            return float(cls.get(key) or default)
+        except (ValueError, TypeError):
+            return default
+
 
 def get_config(key: str, default: Optional[str] = None) -> Optional[str]:
     """
@@ -118,6 +126,11 @@ def get_config_bool(key: str, default: bool = False) -> bool:
 def get_config_int(key: str, default: int = 0) -> int:
     """Get an integer configuration variable."""
     return ConfigLoader.get_int(key, default)
+
+
+def get_config_float(key: str, default: float = 0.0) -> float:
+    """Get a float configuration variable."""
+    return ConfigLoader.get_float(key, default)
 
 
 # Initialize config on import

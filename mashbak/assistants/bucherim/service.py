@@ -50,6 +50,9 @@ class BucherimService:
         base_dir: Path,
         openai_api_key: str,
         openai_model: str,
+        openai_base_url: str = "https://api.openai.com/v1",
+        openai_timeout_seconds: float = 25.0,
+        openai_temperature: float = 0.3,
         session_turns: int = 4,
     ):
         self.base_dir = base_dir.resolve()
@@ -66,12 +69,30 @@ class BucherimService:
         self.audit_root.mkdir(parents=True, exist_ok=True)
         self.pending_requests_file.parent.mkdir(parents=True, exist_ok=True)
 
-        self.model_client = BackendOpenAIClient(openai_api_key or "", openai_model or "gpt-4.1-mini")
+        self.model_client = BackendOpenAIClient(
+            openai_api_key or "",
+            openai_model or "gpt-4.1-mini",
+            base_url=openai_base_url,
+            timeout_seconds=openai_timeout_seconds,
+            temperature=openai_temperature,
+        )
         self.session_context = SessionContextManager(max_recent_turns=max(1, int(session_turns or 4)))
 
-    def update_model_config(self, *, api_key: str, model: str, session_turns: int) -> None:
+    def update_model_config(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        base_url: str,
+        timeout_seconds: float,
+        temperature: float,
+        session_turns: int,
+    ) -> None:
         self.model_client.api_key = api_key or ""
         self.model_client.model = model or "gpt-4.1-mini"
+        self.model_client.base_url = self.model_client._normalize_base_url(base_url)
+        self.model_client.timeout_seconds = max(1.0, float(timeout_seconds or self.model_client.timeout_seconds))
+        self.model_client.temperature = self.model_client._normalize_temperature(temperature)
         self.session_context.max_recent_turns = max(1, int(session_turns or self.session_context.max_recent_turns))
 
     @staticmethod
