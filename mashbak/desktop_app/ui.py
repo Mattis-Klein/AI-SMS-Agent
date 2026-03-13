@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
-from tkinter import BOTH, END, LEFT, RIGHT, X, Y, BooleanVar, Canvas, Listbox, StringVar, Text, Tk
+from tkinter import BOTH, END, HORIZONTAL, LEFT, RIGHT, X, Y, BooleanVar, Canvas, Listbox, StringVar, Text, Tk
 from tkinter import ttk
 
 from widgets import add_refresh_button, labeled_scroll_text, make_scrolled_text, set_text
@@ -26,10 +26,10 @@ _AMBER = "#9a6700"
 _SLATE = "#57606a"
 _YELLOW = "#b98900"
 _UNKNOWN = "#6b7280"
-_BG = "#f3f4f7"
+_BG = "#eef2f7"
 _CARD = "#ffffff"
 _NAV_BG = "#121722"
-_SURFACE = "#eaedf3"
+_SURFACE = "#e7ecf4"
 
 
 class DesktopControlApp:
@@ -93,60 +93,70 @@ class DesktopControlApp:
         style.configure("App.TFrame", background=_BG)
         style.configure("Surface.TFrame", background=_SURFACE)
         style.configure("SectionSurface.TFrame", background=_SURFACE)
-        style.configure("Card.TFrame", background=_CARD)
-        style.configure("CardSoft.TFrame", background="#f8fafc")
-        style.configure("Card.TLabelframe", background=_CARD, borderwidth=1, relief="groove")
-        style.configure("Card.TLabelframe.Label", background=_CARD, foreground="#111827", font=("Segoe UI", 10, "bold"))
+        style.configure("Card.TFrame", background=_CARD, relief="flat", borderwidth=0)
+        style.configure("CardSoft.TFrame", background="#f8fafc", relief="flat", borderwidth=0)
+        style.configure("Card.TLabelframe", background=_CARD, relief="flat", borderwidth=0, padding=(4, 2))
+        style.configure("Card.TLabelframe.Label", background=_CARD, foreground="#0f172a", font=("Segoe UI Semibold", 10, "bold"))
 
-        style.configure("Header.TFrame", background="#0f1623")
-        style.configure("Header.TLabel", background="#0f1623", foreground="#d1d8e2", font=("Segoe UI", 10))
-        style.configure("HeaderBadge.TLabel", background="#1d2636", foreground="#dde4ee", font=("Segoe UI", 9, "bold"), padding=(10, 4))
-        style.configure("AppTitle.TLabel", background="#0f1623", foreground="#f8fafc", font=("Segoe UI Semibold", 18, "bold"))
-        style.configure("SubTitle.TLabel", background="#0f1623", foreground="#9dadc1", font=("Segoe UI", 9))
+        style.configure("Header.TFrame", background="#101826")
+        style.configure("Header.TLabel", background="#101826", foreground="#d9e1ec", font=("Segoe UI", 9))
+        style.configure("HeaderBadge.TLabel", background="#1a2638", foreground="#e6edf5", font=("Segoe UI", 9, "bold"), padding=(10, 6))
+        style.configure("HeaderState.TLabel", background="#101826", foreground="#94a3b8", font=("Segoe UI", 9))
+        style.configure("AppTitle.TLabel", background="#101826", foreground="#f8fafc", font=("Segoe UI Semibold", 18, "bold"))
+        style.configure("SubTitle.TLabel", background="#101826", foreground="#9dadc1", font=("Segoe UI", 9))
         style.configure("Section.TLabel", background=_SURFACE, font=("Segoe UI", 12, "bold"), foreground="#111827")
         style.configure("Muted.TLabel", background=_SURFACE, foreground=_SLATE, font=("Segoe UI", 9))
-        style.configure("CardTitle.TLabel", background=_CARD, foreground="#111827", font=("Segoe UI Semibold", 10, "bold"))
-        style.configure("CardBody.TLabel", background=_CARD, foreground="#334155", font=("Segoe UI", 9))
+        style.configure("CardTitle.TLabel", background=_CARD, foreground="#0f172a", font=("Segoe UI Semibold", 10, "bold"))
+        style.configure("CardBody.TLabel", background=_CARD, foreground="#334155", font=("Segoe UI", 10))
         style.configure("CardMeta.TLabel", background=_CARD, foreground="#64748b", font=("Segoe UI", 8))
         style.configure("StatusBar.TLabel", font=("Segoe UI", 8), foreground="#6b7280")
         style.configure("StatusDot.TLabel", font=("Segoe UI", 8, "bold"))
+        style.configure("ChipOk.TLabel", background="#e9f7ef", foreground="#17683a", font=("Segoe UI", 8, "bold"), padding=(8, 3))
+        style.configure("ChipWarn.TLabel", background="#fff5db", foreground="#8a5a00", font=("Segoe UI", 8, "bold"), padding=(8, 3))
+        style.configure("ChipErr.TLabel", background="#ffebe9", foreground="#9f1239", font=("Segoe UI", 8, "bold"), padding=(8, 3))
 
         style.configure("NavPane.TFrame", background=_NAV_BG)
-        style.configure("NavTitle.TLabel", background=_NAV_BG, foreground="#e5e7eb", font=("Segoe UI Semibold", 11, "bold"))
+        style.configure("NavTitle.TLabel", background=_NAV_BG, foreground="#e5e7eb", font=("Segoe UI Semibold", 12, "bold"))
         style.configure("NavSub.TLabel", background=_NAV_BG, foreground="#94a3b8", font=("Segoe UI", 9))
-        style.configure("Nav.TButton", font=("Segoe UI", 10), padding=(12, 10), anchor="w", relief="flat")
+        style.configure("Nav.TButton", font=("Segoe UI", 10), padding=(14, 10), anchor="w", relief="flat")
         style.map(
             "Nav.TButton",
-            background=[("active", "#1a2334"), ("pressed", "#23304a")],
+            background=[("active", "#1a2437"), ("pressed", "#22314b")],
             foreground=[("active", "#e2e8f0"), ("pressed", "#f1f5f9")],
         )
-        style.configure("NavActive.TButton", font=("Segoe UI", 10, "bold"), padding=(12, 10), anchor="w", relief="flat")
+        style.configure("NavActive.TButton", font=("Segoe UI", 10, "bold"), padding=(14, 10), anchor="w", relief="flat")
         style.map(
             "NavActive.TButton",
-            background=[("!disabled", "#2157bf"), ("active", "#1d4ea9")],
+            background=[("!disabled", "#0f4fbf"), ("active", "#0b45aa")],
             foreground=[("!disabled", "#f8fbff")],
         )
 
-        style.configure("Primary.TButton", font=("Segoe UI", 9, "bold"), padding=(10, 6))
-        style.configure("Subtle.TButton", font=("Segoe UI", 9), padding=(8, 6))
+        style.configure("Primary.TButton", font=("Segoe UI", 9, "bold"), padding=(12, 8))
+        style.configure("Subtle.TButton", font=("Segoe UI", 9), padding=(10, 7))
+        style.configure("Quick.TButton", font=("Segoe UI", 9, "bold"), padding=(10, 7))
+        style.map(
+            "Quick.TButton",
+            background=[("active", "#dbeafe")],
+            foreground=[("active", "#1e3a8a")],
+        )
 
-        style.configure("Ops.Treeview", rowheight=24, font=("Segoe UI", 9), background="#ffffff", fieldbackground="#ffffff")
+        style.configure("Ops.Treeview", rowheight=28, font=("Segoe UI", 9), background="#ffffff", fieldbackground="#ffffff")
         style.configure("Ops.Treeview.Heading", font=("Segoe UI", 9, "bold"))
-        style.configure("OpsDense.Treeview", rowheight=20, font=("Segoe UI", 8), background="#ffffff", fieldbackground="#ffffff")
+        style.configure("OpsDense.Treeview", rowheight=22, font=("Segoe UI", 8), background="#ffffff", fieldbackground="#ffffff")
         style.configure("OpsDense.Treeview.Heading", font=("Segoe UI", 8, "bold"))
 
     def _build_ui(self) -> None:
         self._build_header()
 
         shell = ttk.Frame(self.root, style="App.TFrame")
-        shell.pack(fill=BOTH, expand=True, padx=10, pady=(8, 0))
+        shell.pack(fill=BOTH, expand=True, padx=14, pady=(12, 0))
 
-        nav = ttk.Frame(shell, style="NavPane.TFrame", width=250)
+        nav = ttk.Frame(shell, style="NavPane.TFrame", width=276)
         nav.pack(side=LEFT, fill=Y)
         nav.pack_propagate(False)
         self._build_sidebar(nav)
 
-        ttk.Separator(shell, orient="vertical").pack(side=LEFT, fill=Y, padx=10)
+        ttk.Separator(shell, orient="vertical").pack(side=LEFT, fill=Y, padx=12)
 
         self.content_root = ttk.Frame(shell, style="Surface.TFrame")
         self.content_root.pack(side=LEFT, fill=BOTH, expand=True)
@@ -157,46 +167,49 @@ class DesktopControlApp:
         self._build_statusbar()
 
     def _build_header(self) -> None:
-        header = ttk.Frame(self.root, style="Header.TFrame", padding=(14, 10))
+        header = ttk.Frame(self.root, style="Header.TFrame", padding=(18, 12))
         header.pack(fill=X)
 
         title_col = ttk.Frame(header, style="Header.TFrame")
         title_col.pack(side=LEFT)
         ttk.Label(title_col, text="Mashbak Control Board", style="AppTitle.TLabel").pack(anchor="w")
-        ttk.Label(title_col, text="Private local operations console", style="SubTitle.TLabel").pack(anchor="w")
+        ttk.Label(title_col, text="Private local operations console.", style="SubTitle.TLabel").pack(anchor="w", pady=(2, 0))
 
-        self.backend_status_label = ttk.Label(header, text="Starting backend", style="Header.TLabel")
-        self.backend_status_label.pack(side=LEFT, padx=(22, 0))
+        self.header_state_label = ttk.Label(header, text="System starting", style="HeaderState.TLabel")
+        self.header_state_label.pack(side=LEFT, padx=(24, 0), anchor="s")
 
         badges = ttk.Frame(header, style="Header.TFrame")
-        badges.pack(side=RIGHT, padx=(0, 14))
+        badges.pack(side=RIGHT)
         self.agent_badge = ttk.Label(badges, text="Backend: Starting", style="HeaderBadge.TLabel")
         self.agent_badge.pack(side=LEFT, padx=(0, 8))
         self.bridge_badge = ttk.Label(badges, text="Bridge: Checking", style="HeaderBadge.TLabel")
         self.bridge_badge.pack(side=LEFT, padx=(0, 8))
         self.email_badge = ttk.Label(badges, text="Email: Unknown", style="HeaderBadge.TLabel")
-        self.email_badge.pack(side=LEFT, padx=(0, 8))
+        self.email_badge.pack(side=LEFT, padx=(0, 12))
 
         lock_bar = ttk.Frame(badges, style="Header.TFrame")
-        lock_bar.pack(side=RIGHT)
+        lock_bar.pack(side=LEFT)
 
-        self.lock_icon_label = ttk.Label(lock_bar, text="Lock", style="Header.TLabel")
-        self.lock_icon_label.pack(side=LEFT, padx=(0, 4))
-        self.lock_status = ttk.Label(lock_bar, text="Locked", style="Header.TLabel")
+        self.lock_icon_label = ttk.Label(lock_bar, text="Control Board", style="Header.TLabel")
+        self.lock_icon_label.pack(side=LEFT, padx=(0, 6))
+        self.lock_status = ttk.Label(lock_bar, text="Locked", style="ChipErr.TLabel")
         self.lock_status.pack(side=LEFT, padx=(0, 8))
-        self.pin_entry = ttk.Entry(lock_bar, width=9, show="*", font=("Segoe UI", 10))
-        self.pin_entry.pack(side=LEFT, padx=(0, 4))
+        self.pin_entry = ttk.Entry(lock_bar, width=10, show="*", font=("Segoe UI", 10))
+        self.pin_entry.pack(side=LEFT, ipady=2, padx=(0, 6))
         self.pin_entry.bind("<Return>", lambda _e: self.unlock_app())
-        self.unlock_button = ttk.Button(lock_bar, text="Unlock", command=self.unlock_app, width=7)
+        self.unlock_button = ttk.Button(lock_bar, text="Unlock", command=self.unlock_app, width=9, style="Primary.TButton")
         self.unlock_button.pack(side=LEFT, padx=(0, 6))
-        self.lock_button = ttk.Button(lock_bar, text="Lock", command=self.lock_app, width=7, state="disabled")
-        self.lock_button.pack(side=LEFT, padx=(0, 16))
+        self.lock_button = ttk.Button(lock_bar, text="Lock", command=self.lock_app, width=8, state="disabled", style="Subtle.TButton")
+        self.lock_button.pack(side=LEFT)
 
         
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
-        ttk.Label(parent, text="CONTROL BOARD", style="NavTitle.TLabel").pack(anchor="w", padx=12, pady=(14, 2))
-        ttk.Label(parent, text="Operator Navigation", style="NavSub.TLabel").pack(anchor="w", padx=12, pady=(0, 10))
+        ttk.Label(parent, text="CONTROL BOARD", style="NavTitle.TLabel").pack(anchor="w", padx=16, pady=(18, 2))
+        ttk.Label(parent, text="Operator Navigation", style="NavSub.TLabel").pack(anchor="w", padx=16, pady=(0, 14))
+
+        nav_list = ttk.Frame(parent, style="NavPane.TFrame")
+        nav_list.pack(fill=X, padx=10)
 
         sections = [
             ("Dashboard", "Dashboard"),
@@ -210,27 +223,27 @@ class DesktopControlApp:
 
         for label, section in sections:
             btn = ttk.Button(
-                parent,
+                nav_list,
                 text=label,
                 style="Nav.TButton",
                 command=lambda s=section: self._show_section(s),
             )
-            btn.pack(fill=X, padx=10, pady=3)
+            btn.pack(fill=X, pady=3)
             self.section_buttons[section] = btn
             self.lock_sensitive_buttons.append(btn)
 
-        ttk.Separator(parent, orient="horizontal").pack(fill=X, padx=10, pady=12)
+        ttk.Separator(parent, orient="horizontal").pack(fill=X, padx=12, pady=14)
 
         quick_panel = ttk.LabelFrame(parent, text="Quick Commands", style="Card.TLabelframe")
-        quick_panel.pack(fill=X, padx=10, pady=(0, 10))
+        quick_panel.pack(fill=X, padx=12, pady=(0, 12))
         for label, message in [
             ("System Info", "system info"),
             ("CPU Usage", "How busy is my computer right now?"),
             ("Recent Emails", "Do I have any new emails?"),
             ("Current Time", "what time is it"),
         ]:
-            btn = ttk.Button(quick_panel, text=label, command=lambda m=message: self._send_quick_command(m), width=24, style="Subtle.TButton")
-            btn.pack(fill=X, padx=8, pady=3)
+            btn = ttk.Button(quick_panel, text=label, command=lambda m=message: self._send_quick_command(m), style="Quick.TButton")
+            btn.pack(fill=X, padx=8, pady=4)
             self.quick_buttons.append(btn)
 
     def _build_sections(self, parent: ttk.Frame) -> None:
@@ -243,7 +256,7 @@ class DesktopControlApp:
         self.section_frames["Activity / Audit"] = self._build_activity_section(parent)
 
     def _new_section_frame(self, parent: ttk.Frame) -> ttk.Frame:
-        frame = ttk.Frame(parent, style="SectionSurface.TFrame", padding=(12, 10))
+        frame = ttk.Frame(parent, style="SectionSurface.TFrame", padding=(14, 12))
         frame.pack(fill=BOTH, expand=True)
         return frame
 
@@ -259,7 +272,7 @@ class DesktopControlApp:
             button.configure(style="NavActive.TButton" if name == section else "Nav.TButton")
 
     def _build_statusbar(self) -> None:
-        bar = ttk.Frame(self.root, relief="sunken", padding=(8, 2))
+        bar = ttk.Frame(self.root, style="App.TFrame", padding=(10, 4))
         bar.pack(fill=X, side="bottom")
         self.statusbar_label = ttk.Label(bar, text="Mashbak Control Board  |  locked", style="StatusBar.TLabel")
         self.statusbar_label.pack(side=LEFT)
@@ -277,33 +290,37 @@ class DesktopControlApp:
         head.pack(fill=X, pady=(2, 10))
         ttk.Label(head, text="Dashboard", style="Section.TLabel").pack(side=LEFT)
         ttk.Label(head, text="System health, attention queue, and operator activity", style="Muted.TLabel").pack(side=LEFT, padx=(10, 0))
-        ttk.Checkbutton(
-            head,
-            text="Compact tables",
-            variable=self.compact_tables,
-            command=lambda: self._set_table_density(self.compact_tables.get()),
-        ).pack(side=RIGHT, padx=(0, 8))
         self.dashboard_refresh_btn = add_refresh_button(head, self.refresh_status, label="Refresh Dashboard")
+        self.dashboard_refresh_btn.configure(style="Subtle.TButton")
         self.lock_sensitive_buttons.append(self.dashboard_refresh_btn)
 
         cards = ttk.Frame(frame, style="SectionSurface.TFrame")
         cards.pack(fill=X, pady=(0, 12))
 
-        self._create_status_card(cards, key="backend", title="Backend", subtitle="Connection status", icon="[BE]", padx=(0, 6))
-        self._create_status_card(cards, key="bridge", title="Bridge", subtitle="SMS transport status", icon="[BR]", padx=6)
-        self._create_status_card(cards, key="email", title="Email", subtitle="Configuration health", icon="[EM]", padx=6)
-        self._create_status_card(cards, key="assistant", title="Active Assistant", subtitle="Current primary assistant", icon="[AS]", padx=(6, 0))
+        self._create_status_card(cards, key="backend", title="Backend", subtitle="Connection status", padx=(0, 6))
+        self._create_status_card(cards, key="bridge", title="Bridge", subtitle="SMS transport status", padx=6)
+        self._create_status_card(cards, key="email", title="Email", subtitle="Configuration health", padx=6)
+        self._create_status_card(cards, key="assistant", title="Active Assistant", subtitle="Current primary assistant", padx=(6, 0))
 
         lower = ttk.Frame(frame, style="SectionSurface.TFrame")
         lower.pack(fill=BOTH, expand=True, pady=(10, 0))
 
         attention = ttk.LabelFrame(lower, text="Attention Queue", style="Card.TLabelframe")
-        attention.pack(side=LEFT, fill=BOTH, expand=False, padx=(0, 6))
+        attention.pack(side=LEFT, fill=BOTH, expand=False, padx=(0, 8))
         self.attention_summary = ttk.Label(attention, text="No alerts.", style="CardBody.TLabel")
-        self.attention_summary.pack(anchor="w", padx=8, pady=(8, 2))
+        self.attention_summary.pack(anchor="w", padx=10, pady=(10, 4))
+
+        attention_controls = ttk.Frame(attention, style="Card.TFrame")
+        attention_controls.pack(fill=X, padx=10, pady=(0, 4))
+        ttk.Checkbutton(
+            attention_controls,
+            text="Compact tables",
+            variable=self.compact_tables,
+            command=lambda: self._set_table_density(self.compact_tables.get()),
+        ).pack(side=LEFT)
 
         recent_actions = ttk.LabelFrame(lower, text="Recent Activity", style="Card.TLabelframe")
-        recent_actions.pack(side=LEFT, fill=BOTH, expand=True, padx=6)
+        recent_actions.pack(side=LEFT, fill=BOTH, expand=True, padx=8)
         self.dashboard_actions_tree = ttk.Treeview(
             recent_actions,
             columns=("timestamp", "assistant", "action", "result", "status"),
@@ -313,19 +330,19 @@ class DesktopControlApp:
         )
         for col, width in [
             ("timestamp", 130),
-            ("assistant", 100),
-            ("action", 170),
-            ("result", 110),
-            ("status", 90),
+            ("assistant", 120),
+            ("action", 210),
+            ("result", 150),
+            ("status", 110),
         ]:
             self.dashboard_actions_tree.heading(col, text=col.title())
             self.dashboard_actions_tree.column(col, width=width, anchor="w")
-        self.dashboard_actions_tree.tag_configure("odd", background="#f8fafc")
+        self.dashboard_actions_tree.tag_configure("odd", background="#f7fafd")
         self.dashboard_actions_tree.tag_configure("even", background="#ffffff")
-        self.dashboard_actions_tree.pack(fill=BOTH, expand=True, padx=8, pady=8)
+        self.dashboard_actions_tree.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
         recent_failures = ttk.LabelFrame(attention, text="Pending or Failed", style="Card.TLabelframe")
-        recent_failures.pack(fill=BOTH, expand=True, padx=8, pady=(2, 8))
+        recent_failures.pack(fill=BOTH, expand=True, padx=10, pady=(2, 10))
         self.dashboard_failures_tree = ttk.Treeview(
             recent_failures,
             columns=("timestamp", "assistant", "action", "result", "status"),
@@ -335,19 +352,19 @@ class DesktopControlApp:
         )
         for col, width in [
             ("timestamp", 130),
-            ("assistant", 100),
-            ("action", 160),
-            ("result", 120),
-            ("status", 90),
+            ("assistant", 120),
+            ("action", 190),
+            ("result", 190),
+            ("status", 100),
         ]:
             self.dashboard_failures_tree.heading(col, text=col.title())
             self.dashboard_failures_tree.column(col, width=width, anchor="w")
-        self.dashboard_failures_tree.tag_configure("odd", background="#fff7ed")
+        self.dashboard_failures_tree.tag_configure("odd", background="#fff9f2")
         self.dashboard_failures_tree.tag_configure("even", background="#ffffff")
-        self.dashboard_failures_tree.pack(fill=BOTH, expand=True, padx=8, pady=8)
+        self.dashboard_failures_tree.pack(fill=BOTH, expand=True, padx=10, pady=10)
 
         quick_actions = ttk.LabelFrame(lower, text="Operator Actions", style="Card.TLabelframe")
-        quick_actions.pack(side=LEFT, fill=BOTH, expand=False, padx=(6, 0))
+        quick_actions.pack(side=LEFT, fill=BOTH, expand=False, padx=(8, 0))
         qa = ttk.Frame(quick_actions)
         qa.pack(fill=BOTH, expand=True, padx=10, pady=10)
         for label, msg in [
@@ -355,20 +372,20 @@ class DesktopControlApp:
             ("Check Emails", "list recent emails"),
             ("Show Processes", "show running processes"),
         ]:
-            btn = ttk.Button(qa, text=label, command=lambda m=msg: self._send_quick_command(m), width=22, style="Subtle.TButton")
+            btn = ttk.Button(qa, text=label, command=lambda m=msg: self._send_quick_command(m), style="Quick.TButton")
             btn.pack(fill=X, pady=4)
             self.quick_buttons.append(btn)
 
         return frame
 
-    def _create_status_card(self, parent: ttk.Frame, *, key: str, title: str, subtitle: str, icon: str, padx=(0, 0)) -> None:
-        card = ttk.Frame(parent, style="Card.TFrame", padding=(10, 10))
+    def _create_status_card(self, parent: ttk.Frame, *, key: str, title: str, subtitle: str, padx=(0, 0)) -> None:
+        card = ttk.Frame(parent, style="Card.TFrame", padding=(12, 12))
         card.pack(side=LEFT, fill=BOTH, expand=True, padx=padx)
         self._bind_card_hover(card)
 
         top = ttk.Frame(card, style="Card.TFrame")
         top.pack(fill=X)
-        ttk.Label(top, text=f"{icon}  {title}", style="CardTitle.TLabel").pack(side=LEFT)
+        ttk.Label(top, text=title, style="CardTitle.TLabel").pack(side=LEFT)
 
         indicator = Canvas(top, width=10, height=10, highlightthickness=0, bd=0, bg=_CARD)
         indicator.pack(side=RIGHT)
@@ -376,7 +393,7 @@ class DesktopControlApp:
 
         subtitle_label = ttk.Label(card, text=subtitle, style="CardBody.TLabel")
         subtitle_label.pack(anchor="w", pady=(6, 0))
-        status_label = ttk.Label(card, text="Unknown", style="CardBody.TLabel")
+        status_label = ttk.Label(card, text="Unknown", style="CardTitle.TLabel")
         status_label.pack(anchor="w", pady=(4, 0))
         stamp_label = ttk.Label(card, text="Updated: --", style="CardMeta.TLabel")
         stamp_label.pack(anchor="w", pady=(4, 0))
@@ -392,10 +409,10 @@ class DesktopControlApp:
 
     def _bind_card_hover(self, widget: ttk.Frame) -> None:
         def _on_enter(_event):
-            widget.configure(padding=(11, 11))
+            widget.configure(padding=(13, 13))
 
         def _on_leave(_event):
-            widget.configure(padding=(10, 10))
+            widget.configure(padding=(12, 12))
 
         widget.bind("<Enter>", _on_enter)
         widget.bind("<Leave>", _on_leave)
@@ -422,71 +439,85 @@ class DesktopControlApp:
             color = _UNKNOWN
         canvas: Canvas = card["indicator"]
         canvas.itemconfigure(card["dot"], fill=color, outline=color)
-        card["status"].configure(text=detail)
+        normalized = status.title() if status else "Unknown"
+        detail_text = self._condense_detail(detail)
+        card["status"].configure(text=normalized)
+        card["subtitle"].configure(text=detail_text)
         card["stamp"].configure(text=f"Updated: {datetime.now().strftime('%H:%M:%S')}")
 
     def _build_chat_section(self, parent: ttk.Frame) -> ttk.Frame:
         frame = self._new_section_frame(parent)
 
-        top = ttk.Frame(frame)
-        top.pack(fill=X, pady=(2, 6))
+        top = ttk.Frame(frame, style="SectionSurface.TFrame")
+        top.pack(fill=X, pady=(2, 8))
         ttk.Label(top, text="Chat / Console", style="Section.TLabel").pack(side=LEFT)
         ttk.Label(top, text="Operational conversation and execution trace", style="Muted.TLabel").pack(side=LEFT, padx=(10, 0))
         self.chat_state_label = ttk.Label(top, text="Waiting for unlock", foreground=_SLATE)
         self.chat_state_label.pack(side=LEFT, padx=(10, 0))
-        self.verification_state_label = ttk.Label(top, text="Verification: Local-only", foreground=_SLATE)
-        self.verification_state_label.pack(side=RIGHT)
 
-        helper_strip = ttk.Frame(frame, style="SectionSurface.TFrame")
-        helper_strip.pack(fill=X, pady=(0, 8))
+        helper_group = ttk.LabelFrame(frame, text="Quick Commands", style="Card.TLabelframe")
+        helper_group.pack(fill=X, pady=(0, 8))
+        helper_strip = ttk.Frame(helper_group, style="Card.TFrame")
+        helper_strip.pack(fill=X, padx=8, pady=8)
         for label, cmd in [
             ("System snapshot", "system info"),
             ("Recent inbox", "list files in inbox"),
             ("Check bridge", "check bridge health"),
         ]:
-            btn = ttk.Button(helper_strip, text=label, style="Subtle.TButton", command=lambda m=cmd: self._send_quick_command(m))
+            btn = ttk.Button(helper_strip, text=label, style="Quick.TButton", command=lambda m=cmd: self._send_quick_command(m))
             btn.pack(side=LEFT, padx=(0, 6))
             self.quick_buttons.append(btn)
 
-        body = ttk.Frame(frame)
+        body = ttk.Panedwindow(frame, orient=HORIZONTAL)
         body.pack(fill=BOTH, expand=True)
 
         left = ttk.LabelFrame(body, text="Conversation", style="Card.TLabelframe")
-        left.pack(side=LEFT, fill=BOTH, expand=True, padx=(0, 6))
+        right = ttk.LabelFrame(body, text="Trace / Debug", style="Card.TLabelframe")
+        body.add(left, weight=4)
+        body.add(right, weight=3)
+        self.chat_split_pane = body
+        self.root.after(120, self._set_chat_split_default)
 
+        conversation_body = ttk.Frame(left, style="Card.TFrame")
+        conversation_body.pack(fill=BOTH, expand=True, padx=8, pady=8)
         self.chat_text = make_scrolled_text(
-            left,
+            conversation_body,
             wrap="word",
             font=("Segoe UI", 10),
             state="disabled",
             relief="flat",
             bd=0,
-            spacing1=3,
-            spacing3=3,
+            spacing1=5,
+            spacing3=6,
             padx=6,
             pady=6,
         )
-        self.chat_text.tag_configure("user_meta", foreground=_SLATE, font=("Segoe UI", 8, "bold"), justify="right")
-        self.chat_text.tag_configure("assistant_meta", foreground=_SLATE, font=("Segoe UI", 8, "bold"), justify="left")
-        self.chat_text.tag_configure("user_bubble", foreground="#0a3069", background="#dceeff", font=("Segoe UI", 10), lmargin1=210, lmargin2=210, rmargin=14, spacing3=10, justify="right")
-        self.chat_text.tag_configure("assistant_bubble", foreground="#111827", background="#f4f6f8", font=("Segoe UI", 10), lmargin1=14, lmargin2=14, rmargin=210, spacing3=10)
-        self.chat_text.tag_configure("error_bubble", foreground="#8c2f39", background="#fff1f0", font=("Segoe UI", 10), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
-        self.chat_text.tag_configure("system_bubble", foreground="#57606a", background="#f3f4f6", font=("Segoe UI", 10, "italic"), lmargin1=70, lmargin2=70, rmargin=70, spacing3=12, justify="center")
-        self.chat_text.tag_configure("pending_bubble", foreground="#57606a", background="#f6f8fa", font=("Segoe UI", 10, "italic"), lmargin1=12, lmargin2=12, rmargin=190, spacing3=10)
+        self.chat_text.tag_configure("user_meta", foreground="#7a8698", font=("Segoe UI", 8), justify="right", spacing1=2)
+        self.chat_text.tag_configure("assistant_meta", foreground="#7a8698", font=("Segoe UI", 8), justify="left", spacing1=2)
+        self.chat_text.tag_configure("user_bubble", foreground="#0a3069", background="#dceeff", font=("Segoe UI", 10), lmargin1=300, lmargin2=300, rmargin=22, spacing3=12, justify="right")
+        self.chat_text.tag_configure("assistant_bubble", foreground="#111827", background="#f4f6f8", font=("Segoe UI", 10), lmargin1=22, lmargin2=22, rmargin=300, spacing3=12)
+        self.chat_text.tag_configure("error_bubble", foreground="#8c2f39", background="#fff1f0", font=("Segoe UI", 10), lmargin1=22, lmargin2=22, rmargin=300, spacing3=12)
+        self.chat_text.tag_configure("system_bubble", foreground="#57606a", background="#f3f4f6", font=("Segoe UI", 10, "italic"), lmargin1=90, lmargin2=90, rmargin=90, spacing3=12, justify="center")
 
-        input_frame = ttk.LabelFrame(left, text="Operator Input", style="Card.TLabelframe")
-        input_frame.pack(fill=X, padx=8, pady=8)
+        self.processing_label = ttk.Label(conversation_body, text="", style="Muted.TLabel")
+        self.processing_label.pack(fill=X, padx=8, pady=(0, 6))
+
+        input_frame = ttk.Frame(conversation_body, style="CardSoft.TFrame", padding=(8, 8))
+        input_frame.pack(fill=X, padx=2, pady=(2, 4))
         self.message_entry = ttk.Entry(input_frame, font=("Segoe UI", 11))
-        self.message_entry.pack(side=LEFT, fill=X, expand=True, ipady=4, padx=(8, 6), pady=8)
+        self.message_entry.pack(side=LEFT, fill=X, expand=True, ipady=6, padx=(0, 8))
         self.message_entry.bind("<Return>", lambda _e: self.on_send())
         self.send_button = ttk.Button(input_frame, text="Send", command=self.on_send, width=10, style="Primary.TButton")
-        self.send_button.pack(side=RIGHT, padx=(0, 8), pady=8)
+        self.send_button.pack(side=RIGHT)
 
-        right = ttk.LabelFrame(body, text="Trace / Debug", style="Card.TLabelframe")
-        right.pack(side=LEFT, fill=BOTH, expand=True, padx=(6, 0))
+        trace_head = ttk.Frame(right, style="Card.TFrame")
+        trace_head.pack(fill=X, padx=8, pady=(8, 2))
+        ttk.Label(trace_head, text="Execution Trace", style="CardTitle.TLabel").pack(side=LEFT)
+        self.verification_state_label = ttk.Label(trace_head, text="Verification: Local-only", style="CardMeta.TLabel")
+        self.verification_state_label.pack(side=RIGHT)
 
         self.trace_notebook = ttk.Notebook(right)
-        self.trace_notebook.pack(fill=BOTH, expand=True)
+        self.trace_notebook.pack(fill=BOTH, expand=True, padx=8, pady=(0, 8))
 
         details_tab = ttk.Frame(self.trace_notebook)
         activity_tab = ttk.Frame(self.trace_notebook)
@@ -514,6 +545,7 @@ class DesktopControlApp:
         self.copy_trace_button = ttk.Button(chat_actions, text="Copy Raw Trace", command=self.copy_raw_trace, style="Subtle.TButton")
         self.copy_trace_button.pack(side=LEFT, padx=(6, 0))
         self.refresh_logs_button = add_refresh_button(chat_actions, self.refresh_logs, label="Refresh Logs")
+        self.refresh_logs_button.configure(style="Subtle.TButton")
 
         self.lock_sensitive_buttons.extend([
             self.message_entry,
@@ -526,6 +558,12 @@ class DesktopControlApp:
         ])
 
         return frame
+
+    def _set_chat_split_default(self) -> None:
+        try:
+            self.chat_split_pane.sashpos(0, int(self.root.winfo_width() * 0.62))
+        except Exception:
+            pass
 
     def _build_assistants_section(self, parent: ttk.Frame) -> ttk.Frame:
         frame = self._new_section_frame(parent)
@@ -772,21 +810,22 @@ class DesktopControlApp:
         self.chat_text.insert("1.0", "Mashbak is locked.\nEnter your PIN to unlock the control board.", "system_bubble")
         self.chat_text.configure(state="disabled")
         self.pending_start_index = None
+        self.processing_label.configure(text="")
 
     def unlock_app(self) -> None:
         candidate = self.pin_entry.get().strip()
         self.pin_entry.delete(0, END)
 
         if candidate != self.local_app_pin:
-            self.lock_status.configure(text="Wrong PIN", foreground=_RED)
+            self.lock_status.configure(text="Wrong PIN", style="ChipErr.TLabel")
             self.statusbar_label.configure(text="Mashbak Control Board  |  locked (wrong PIN)")
             self._lock_ui("Control board locked. Enter PIN to unlock.")
-            self.root.after(2000, lambda: self.lock_status.configure(text="Locked", foreground="#d1d5db"))
+            self.root.after(2000, lambda: self.lock_status.configure(text="Locked", style="ChipErr.TLabel"))
             return
 
         self.is_unlocked = True
-        self.lock_icon_label.configure(text="Unlock")
-        self.lock_status.configure(text="Unlocked", foreground=_GREEN)
+        self.lock_icon_label.configure(text="Control Board")
+        self.lock_status.configure(text="Unlocked", style="ChipOk.TLabel")
         self.unlock_button.configure(state="disabled")
         self.lock_button.configure(state="normal")
         self.pin_entry.configure(state="disabled")
@@ -811,8 +850,8 @@ class DesktopControlApp:
 
     def _lock_ui(self, details_message: str) -> None:
         self.is_unlocked = False
-        self.lock_icon_label.configure(text="LOCK")
-        self.lock_status.configure(text="Locked", foreground="#d1d5db")
+        self.lock_icon_label.configure(text="Control Board")
+        self.lock_status.configure(text="Locked", style="ChipErr.TLabel")
         self.statusbar_label.configure(text="Mashbak Control Board  |  locked")
         self.unlock_button.configure(state="normal")
         self.lock_button.configure(state="disabled")
@@ -861,7 +900,7 @@ class DesktopControlApp:
         self.send_button.configure(state="disabled")
         self.message_entry.delete(0, END)
         self._append_message("user", message)
-        self._append_message("pending", "Mashbak is thinking...")
+        self.processing_label.configure(text="Mashbak is thinking...")
         self.chat_state_label.configure(text="Waiting for Mashbak reply")
         set_text(self.details_text, "Mashbak is processing your message...")
 
@@ -892,31 +931,12 @@ class DesktopControlApp:
             if has_prior:
                 self.chat_text.insert(END, "\n\n")
             self.chat_text.insert(END, text, "system_bubble")
-        else:
-            self.chat_text.mark_set("pending_msg_start", "end")
-            self.chat_text.mark_gravity("pending_msg_start", "left")
-            self.pending_start_index = "pending_msg_start"
-            if has_prior:
-                self.chat_text.insert(END, "\n\n")
-            self.chat_text.insert(END, f"Mashbak  |  {timestamp}\n", "assistant_meta")
-            self.chat_text.insert(END, text, "pending_bubble")
 
         self.chat_text.configure(state="disabled")
         self.chat_text.see(END)
 
-    def _replace_last_pending(self, text: str, tag: str = "assistant") -> None:
-        self.chat_text.configure(state="normal")
-        if self.pending_start_index:
-            self.chat_text.delete(self.pending_start_index, END)
-            self.pending_start_index = None
-            if self.chat_text.get("1.0", END).strip():
-                self.chat_text.insert(END, "\n\n")
-            timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
-            self.chat_text.insert(END, f"Mashbak  |  {timestamp}\n", "assistant_meta")
-            bubble_tag = "assistant_bubble" if tag == "assistant" else "error_bubble"
-            self.chat_text.insert(END, text, bubble_tag)
-        self.chat_text.configure(state="disabled")
-        self.chat_text.see(END)
+    def _append_assistant_response(self, text: str, is_error: bool = False) -> None:
+        self._append_message("error" if is_error else "assistant", text)
 
     def _run_message(self, message: str) -> None:
         try:
@@ -927,6 +947,7 @@ class DesktopControlApp:
 
     def _display_result(self, message: str, result: dict) -> None:
         self.send_button.configure(state="normal")
+        self.processing_label.configure(text="")
         self.chat_state_label.configure(text="Connected and ready")
 
         trace = result.get("trace") or {}
@@ -980,7 +1001,7 @@ class DesktopControlApp:
         self.verification_state_label.configure(text=f"Verification: {verification_state}", foreground=verify_color)
 
         response_tag = "assistant" if result.get("success") else "error"
-        self._replace_last_pending(final_text, response_tag)
+        self._append_assistant_response(final_text, is_error=(response_tag == "error"))
 
         self.chat_history.append(("user", message))
         self.chat_history.append((response_tag, final_text))
@@ -999,12 +1020,13 @@ class DesktopControlApp:
 
     def _display_error(self, error_text: str) -> None:
         self.send_button.configure(state="normal")
+        self.processing_label.configure(text="")
         self.chat_state_label.configure(text="Connection problem")
         self.verification_state_label.configure(text="Verification: Unverified", foreground=_RED)
         set_text(self.details_text, f"Error:\n{error_text}")
         self.last_response_text = str(error_text)
         self.last_trace_payload = {"error": str(error_text)}
-        self._replace_last_pending(error_text, "error")
+        self._append_assistant_response(error_text, is_error=True)
 
         self.chat_history.append(("user", "[message failed]"))
         self.chat_history.append(("error", error_text))
@@ -1034,12 +1056,12 @@ class DesktopControlApp:
         self._set_status_card(
             "backend",
             "connected" if agent_status["running"] else "error",
-            ("Connected" if agent_status["running"] else "Disconnected") + f" | {agent_status['detail'][:80]}",
+            agent_status["detail"][:90],
         )
         self._set_status_card(
             "bridge",
             "connected" if bridge_status["running"] else "error",
-            ("Connected" if bridge_status["running"] else "Disconnected") + f" | {bridge_status['detail'][:80]}",
+            bridge_status["detail"][:90],
         )
         self._set_status_card(
             "email",
@@ -1076,17 +1098,17 @@ class DesktopControlApp:
         self._set_status_card(
             "backend",
             "connected" if backend.get("connected") else "error",
-            ("Connected" if backend.get("connected") else "Disconnected") + f" | model {backend.get('model')}",
+            f"Model: {backend.get('model') or 'unknown'}",
         )
         self._set_status_card(
             "bridge",
             "connected" if bridge.get("connected") else "error",
-            "Connected" if bridge.get("connected") else "Disconnected",
+            str(bridge.get("detail") or "Bridge health endpoint"),
         )
         self._set_status_card(
             "email",
             "configured" if email.get("configured") else "warning",
-            "Configured" if email.get("configured") else "Not configured",
+            ("Credentials and inbox ready" if email.get("configured") else "Configuration required"),
         )
 
         for item in self.dashboard_actions_tree.get_children():
@@ -1095,8 +1117,8 @@ class DesktopControlApp:
             assistant = row.get("assistant") or "desktop"
             action = row.get("requested_action") or row.get("selected_tool") or "-"
             result = row.get("result") or "-"
-            status = row.get("state") or "-"
-            values = (row.get("timestamp") or "", assistant, action, result, status)
+            status = (row.get("state") or "-").title()
+            values = (row.get("timestamp") or "", assistant, self._condense_detail(str(action), 58), self._condense_detail(str(result), 38), status)
             tag = "even" if idx % 2 == 0 else "odd"
             self.dashboard_actions_tree.insert("", END, values=values, tags=(tag,))
 
@@ -1106,12 +1128,25 @@ class DesktopControlApp:
         self.attention_summary.configure(text=(f"Attention items: {len(failures)}" if failures else "No items require attention."))
         for idx, row in enumerate(failures):
             ts = row.get("timestamp") or ""
-            assistant = "backend"
-            action = row.get("tool") or "-"
-            result = row.get("error") or "failure"
-            values = (ts, assistant, action, result[:80], "failure")
+            assistant = str(row.get("assistant") or "backend")
+            action = self._condense_detail(str(row.get("tool") or row.get("requested_action") or "-"), 48)
+            result = self._condense_detail(str(row.get("error") or row.get("details") or "Action failed"), 78)
+            state_raw = str(row.get("state") or row.get("result") or "failure").lower()
+            if "warn" in state_raw:
+                state = "Warning"
+            elif "fail" in state_raw or "error" in state_raw:
+                state = "Failure"
+            else:
+                state = "Needs review"
+            values = (ts, assistant, action, result, state)
             tag = "even" if idx % 2 == 0 else "odd"
             self.dashboard_failures_tree.insert("", END, values=values, tags=(tag,))
+
+    def _condense_detail(self, text: str, max_len: int = 84) -> str:
+        cleaned = " ".join(str(text or "").split())
+        if len(cleaned) <= max_len:
+            return cleaned or "-"
+        return cleaned[: max_len - 3].rstrip() + "..."
 
     def refresh_assistants(self) -> None:
         if not self.is_unlocked:
@@ -1437,8 +1472,9 @@ class DesktopControlApp:
             label.configure(text=f"{name}: Error", foreground=_RED)
 
     def _set_backend_status(self, level: str, text: str) -> None:
-        color = {"starting": _AMBER, "connected": _GREEN, "error": _RED}.get(level, "#d1d5db")
-        self.backend_status_label.configure(text=text, foreground=color)
+        color = {"starting": _AMBER, "connected": _GREEN, "error": _RED}.get(level, "#9ca3af")
+        state = {"starting": "System starting", "connected": "System ready", "error": "System issue"}.get(level, "System")
+        self.header_state_label.configure(text=state, foreground=color)
 
     def _tail_file(self, path: Path, max_lines: int = 40) -> list[str]:
         if not path.exists():
