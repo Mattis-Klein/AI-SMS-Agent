@@ -8,7 +8,9 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from tkinter import Tk
+
+# PySide6 imports
+from PySide6.QtWidgets import QApplication
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     # Prefer repo root when running dist/Mashbak.exe in-place, otherwise use bundle temp dir.
@@ -30,7 +32,7 @@ from agent.runtime import create_runtime  # noqa: E402
 from agent.config_loader import ConfigLoader  # noqa: E402
 from agent_client import AgentClient  # noqa: E402
 from agent_service import AgentService  # noqa: E402
-from ui import DesktopControlApp  # noqa: E402
+from ui_pyside6 import DesktopControlApp  # noqa: E402
 
 
 def _resolve_setting(key: str, default: str | None = None) -> str | None:
@@ -46,12 +48,6 @@ def _resolve_setting(key: str, default: str | None = None) -> str | None:
     return None
 
 
-def schedule_refresh(app: DesktopControlApp) -> None:
-    app.refresh_status()
-    app.refresh_logs()
-    app.root.after(15000, schedule_refresh, app)
-
-
 def run_smoke_test() -> int:
     os.environ.setdefault("AGENT_API_KEY", "desktop-smoke-key")
     runtime = create_runtime(AGENT_DIR)
@@ -61,10 +57,11 @@ def run_smoke_test() -> int:
 
 
 def run_ui_smoke() -> int:
-    root = Tk()
-    root.title("Mashbak UI Smoke")
-    root.after(500, root.destroy)
-    root.mainloop()
+    qapp = QApplication.instance()
+    if qapp is None:
+        qapp = QApplication(sys.argv)
+    qapp.quit()
+    qapp.processEvents()
     print("ui-ok")
     return 0
 
@@ -84,7 +81,7 @@ def run_service_smoke() -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Mashbak Desktop")
     parser.add_argument("--smoke-test", action="store_true", help="Run local dispatcher smoke test and exit")
-    parser.add_argument("--ui-smoke", action="store_true", help="Launch Tk root briefly and exit")
+    parser.add_argument("--ui-smoke", action="store_true", help="Launch UI briefly and exit")
     parser.add_argument("--service-smoke-test", action="store_true", help="Start embedded agent service and run local client test")
     args = parser.parse_args()
 
@@ -104,17 +101,29 @@ def main() -> None:
     runtime = create_runtime(AGENT_DIR)
     client = AgentClient(base_url=service.base_url, api_key=service.api_key)
 
-    root = Tk()
+    # Initialize QApplication for PySide6
+    qapp = QApplication.instance()
+    if qapp is None:
+        qapp = QApplication(sys.argv)
+    
     app = DesktopControlApp(
-        root,
         client,
         runtime.summary(),
         local_app_pin=local_app_pin,
     )
-    root.after(15000, schedule_refresh, app)
+    
+    # Schedule periodic refresh
+    from PySide6.QtCore import QTimer
+    refresh_timer = QTimer()
+    refresh_timer.timeout.connect(lambda: (app.refresh_status(), app.refresh_logs()))
+    refresh_timer.start(15000)
+    
+    app.show()
+    
     try:
-        root.mainloop()
+        qapp.exec()
     finally:
+        refresh_timer.stop()
         service.stop()
 
 
