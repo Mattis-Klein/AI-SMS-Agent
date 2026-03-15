@@ -1,45 +1,137 @@
-# Mashbak Assistant
+# Mashbak
 
-Mashbak is a desktop-first assistant with one shared backend reasoning engine.
+Private operator assistant. Not for public distribution.
 
-- Desktop UI is transport and presentation only.
-- SMS bridge is transport and access-control only.
-- Tool execution runs only through backend interpreter, dispatcher, and tool registry.
-- Desktop app is a multi-section control board that reads/updates backend-owned state through backend APIs.
+## Architecture
 
-## Control Board UX
+Strict boundaries:
+- **Backend** (`agent/`): single reasoning engine for all surfaces. All tool execution flows through interpreter → dispatcher → tool registry.
+- **Desktop** (`desktop_app/`): UI and presentation only. No local reasoning or tool execution.
+- **SMS bridge** (`sms_bridge/`): transport and access-control only. No reasoning.
+- **Bucherim** (`assistants/bucherim/`): separate SMS assistant flow with independent membership state and logs.
 
-The desktop app now provides a full local operations shell with sections:
+### Runtime Topology
 
-- Dashboard: service health, failures, actions
-- Chat / Console: natural-language operation execution and trace visibility
-- Assistants: Mashbak/Bucherim runtime settings visibility
-- Communications: email setup/test and routing/member controls
-- Files & Permissions: allowed directories and policy test tools
-- Projects / Files: recent file/project operation view
-- Activity / Audit: tool execution audit timeline
+```
+Desktop UI (desktop_app/) ─────────────────────┐
+                                                ├──► FastAPI backend (agent/agent.py :8787)
+SMS bridge (sms_bridge/) ──────────────────────┘
 
-Bucherim is now implemented as a separate SMS assistant flow inside this project:
-- Destination Twilio number: +18772683048
-- Bridge routing stays transport-only and forwards Bucherim payloads to backend endpoint /bucherim/sms
-- Backend module `assistants/bucherim/service.py` owns membership gating, per-user logs, and conversational behavior
+/execute-nl request path:
+  AgentRuntime → AssistantCore → NLInterpreter → Dispatcher → ToolRegistry → Tool
 
-## Run
+Bucherim SMS path:
+  Twilio (+18772683048) → sms_bridge → POST /bucherim/sms → AgentRuntime → BucherimService
+```
 
-From repository root:
+### Backend Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | /health | Health check |
+| GET | /tools | Tool list |
+| POST | /execute | Structured tool call |
+| POST | /execute-nl | Natural language execution |
+| POST | /voice | Twilio voice webhook |
+| POST | /bucherim/sms | Bucherim SMS flow |
+
+Headers: `x-api-key` required on protected endpoints.
+
+## Directory Layout
+
+```
+mashbak/
+├── agent/                 # FastAPI backend + reasoning engine
+│   ├── agent.py               # App entry and route handlers
+│   ├── runtime.py             # Runtime wiring, config reload, source handling
+│   ├── assistant_core.py      # Reasoning and response shaping
+│   ├── interpreter.py         # NL and config assignment parsing
+│   ├── dispatcher.py          # Tool validation/execution path
+│   ├── session_context.py     # In-memory context tracking
+│   ├── voice_handler.py       # Twilio voice webhook and caller allowlist
+│   ├── config_loader.py       # .env.master reader
+│   ├── logger.py              # Logging setup
+│   ├── redaction.py           # Redaction helpers
+│   └── tools/                 # Tool registry + built-in implementations
+├── assistants/
+│   └── bucherim/          # Bucherim SMS assistant subsystem
+│       ├── service.py         # Conversation and membership logic
+│       ├── membership.py      # State transitions
+│       ├── storage.py         # File-based persistence
+│       ├── bucherim_router.py # Routing layer
+│       └── config/            # approved/blocked/pending number lists
+├── desktop_app/           # Windows control board UI (PySide6)
+│   ├── main.py                # Entry point and PIN lock
+│   ├── ui.py                  # Control board layout
+│   ├── agent_service.py       # Backend process management
+│   └── agent_client.py        # HTTP client to backend
+├── sms_bridge/            # Node.js Twilio SMS bridge
+│   ├── sms-server.js          # Express server + webhook handler
+│   ├── access-control-config.js  # Sender allowlist/deny logic
+│   ├── env-loader.js          # Bridge env reader
+│   └── redaction.js           # Log redaction
+├── tests/                 # pytest suite (agent) + jest suite (bridge)
+├── scripts/               # Operational PowerShell scripts
+├── data/                  # Runtime data (logs, workspace, user state)
+└── .env.master            # Runtime configuration (local only, gitignored)
+```
+
+## Starting Services
+
+Backend (port 8787):
+```powershell
+python -m uvicorn agent.agent:app --app-dir mashbak --host 127.0.0.1 --port 8787
+```
+
+SMS bridge (port 34567):
+```powershell
+cd mashbak/sms_bridge ; npm start
+```
+
+Desktop:
+```powershell
+cd mashbak ; python desktop_app/main.py
+```
+
+Or use `scripts/start-agent.ps1`, `scripts/start-bridge.ps1`.
+
+## Configuration
+
+Runtime config lives in `mashbak/.env.master` (local only, gitignored). Config changes via chat use the `set_config_variable` tool which writes directly to this file.
+
+Reload behavior:
+- Backend/OpenAI/email/runtime tuning: reload in-process.
+- Bridge access-control and transport values: require bridge restart.
+- `AGENT_API_KEY` change: requires restart of all active clients.
+
+## Built-in Tools
+
+System/File: `dir_inbox`, `dir_outbox`, `list_files`, `create_folder`, `create_file`, `delete_file`, `system_info`, `cpu_usage`, `disk_space`, `current_time`, `network_status`, `list_processes`, `uptime`
+
+Email: `list_recent_emails`, `summarize_inbox`, `search_emails`, `read_email_thread`
+
+Config: `set_config_variable`
+
+All tools: grounded execution — completion claims only after confirmed successful tool run. `create_folder` and `create_file` must return `data.created_path`.
+
+## Bucherim
+
+Dedicated SMS assistant on Twilio number +18772683048. Membership states: `unknown → pending → approved / blocked`. Config: `assistants/bucherim/config/`. Admin tool: `scripts/approve-bucherim-member.ps1`.
+
+## Voice
+
+Voice webhook at `/voice`. Caller allowlist enforced via `VOICE_ALLOWED_NUMBERS` in `.env.master`. Non-allowlisted callers receive rejection TwiML and hangup.
+
+## Health Checks
 
 ```powershell
-# Backend (FastAPI)
-python -m uvicorn agent.agent:app --app-dir mashbak --host 127.0.0.1 --port 8787
-
-# SMS bridge
-cd mashbak/sms_bridge
-npm start
-
-# Desktop UI
-cd ..
-python desktop_app/main.py
+# Backend
+Invoke-RestMethod -Uri http://127.0.0.1:8787/health -Headers @{"x-api-key"="<key>"}
+# Bridge
+Invoke-RestMethod -Uri http://127.0.0.1:34567/health
 ```
+
+Logs: `data/logs/agent.log`, `data/logs/bridge.log`.
 
 ## Build Desktop Executable
 
@@ -47,90 +139,4 @@ python desktop_app/main.py
 .\mashbak\scripts\build-app.ps1 -Clean
 ```
 
-Output:
-- `mashbak/dist/Mashbak.exe` for one-file mode (default)
-- `mashbak/dist/Mashbak/` for one-dir mode (`-OneDir`)
-
-## Configuration
-
-Canonical configuration files:
-- Runtime source: `mashbak/.env.master`
-- Committed template: `mashbak/.env.master.example`
-
-Create local runtime config:
-
-```powershell
-Copy-Item mashbak/.env.master.example mashbak/.env.master
-notepad mashbak/.env.master
-```
-
-Config updates through chat use the same backend path as all requests and write to `mashbak/.env.master` via `set_config_variable`.
-
-Accepted assignment styles include:
-
-```text
-EMAIL_PASSWORD = app-password
-set MODEL_RESPONSE_MAX_TOKENS to 250
-and password is app-password   (when continuing a config thread)
-```
-
-Reload behavior:
-- Backend/OpenAI/email/runtime tuning values reload in-process.
-- Bridge transport and access-control values are startup-loaded and require bridge restart.
-- `AGENT_API_KEY` change requires callers to use the new key and typically restart active clients.
-
-Bucherim-specific behavior:
-- allowlist and responses are configured in `mashbak/assistants/bucherim/config.json`
-- per-user Bucherim logs are stored in `mashbak/data/users/bucherim/`
-- pending join requests are stored in `mashbak/data/users/bucherim/pending_requests.jsonl`
-- admin approval utility: `mashbak/scripts/approve-bucherim-member.ps1`
-
-## Filesystem Action Grounding
-
-Mashbak now enforces hard grounding for filesystem actions in backend runtime:
-
-- Action completion language is allowed only after a real successful tool execution.
-- If no tool is selected, validation is skipped, or execution fails, Mashbak will not claim changes were applied.
-- Successful filesystem mutation tools must return a resolved verified path (`created_path` for create, `deleted_path` for delete).
-- Filesystem tools now verify effects post-execution (create confirms exists, delete confirms missing) before success is reported.
-
-Examples that map to concrete backend tools:
-
-```text
-create a folder on my desktop called TripPack
-create a new file on my desktop called Mashbak
-make a file on the desktop called todo
-create a file named notes.txt
-add a file in that folder with all 50 states
-put a file in it
-delete that file
-```
-
-Context follow-ups are resolved from last verified action state (session memory only, reset on restart):
-
-```text
-where is it?
-did you create it?
-add states to that folder
-create a file named states in that folder
-delete that file
-```
-
-If no prior successful filesystem action exists in the current session, follow-ups like "that folder" or "delete that file" trigger clarification instead of guessing a path.
-
-See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for complete variable reference and restart details.
-
-## Voice Assistant (Twilio)
-
-Mashbak supports Twilio voice webhooks directly in backend runtime:
-
-- `POST /voice` answers calls and starts speech gather.
-- `POST /process_voice` receives recognized speech, runs it through the same assistant/runtime pipeline, speaks the reply, and gathers again.
-
-This keeps voice, desktop, and SMS on one shared reasoning engine and one tool execution path.
-
-Required Python packages for voice:
-- `twilio`
-- `python-multipart`
-
-They are included in [agent/requirements.txt](agent/requirements.txt).
+Output: `mashbak/dist/Mashbak.exe`
