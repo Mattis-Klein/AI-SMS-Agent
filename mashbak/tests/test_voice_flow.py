@@ -57,6 +57,25 @@ def _with_no_twilio_token(monkeypatch):
     def _fake_get(cls, key, default=""):
         if key == "TWILIO_AUTH_TOKEN":
             return ""
+        if key == "VOICE_ALLOWED_NUMBERS":
+            return ""
+        return original(key, default)
+
+    monkeypatch.setattr(ConfigLoader, "get", classmethod(_fake_get))
+
+
+def _with_voice_access(monkeypatch, allowlist: str, reject_msg: str = ""):
+    original = ConfigLoader.get
+
+    def _fake_get(cls, key, default=""):
+        if key == "TWILIO_AUTH_TOKEN":
+            return ""
+        if key == "VOICE_ALLOWED_NUMBERS":
+            return allowlist
+        if key == "VOICE_REJECTED_RESPONSE":
+            return reject_msg
+        if key == "SMS_PHONE_NORMALIZATION_DIGITS":
+            return "10"
         return original(key, default)
 
     monkeypatch.setattr(ConfigLoader, "get", classmethod(_fake_get))
@@ -157,4 +176,44 @@ def test_process_voice_runtime_error_recovers(monkeypatch):
     assert response.status_code == 200
     xml = response.text
     assert "hit an error" in xml.lower()
+    assert "<Gather" in xml
+
+
+def test_voice_rejects_number_not_in_allowlist(monkeypatch):
+    _with_voice_access(monkeypatch, allowlist="8483291230,8457017405")
+    runtime = _FakeRuntime()
+    client = _build_client(runtime)
+
+    response = client.post(
+        "/voice",
+        data={
+            "CallSid": "CAdeny",
+            "From": "+19175551234",
+            "To": "+15550009999",
+        },
+    )
+
+    assert response.status_code == 200
+    xml = response.text
+    assert "not authorized" in xml.lower()
+    assert "<Hangup" in xml
+
+
+def test_voice_allows_number_in_allowlist(monkeypatch):
+    _with_voice_access(monkeypatch, allowlist="8483291230,8457017405")
+    runtime = _FakeRuntime()
+    client = _build_client(runtime)
+
+    response = client.post(
+        "/voice",
+        data={
+            "CallSid": "CAok",
+            "From": "+18483291230",
+            "To": "+15550009999",
+        },
+    )
+
+    assert response.status_code == 200
+    xml = response.text
+    assert "Hello, this is Mashbak" in xml
     assert "<Gather" in xml
