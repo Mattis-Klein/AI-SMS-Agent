@@ -60,6 +60,36 @@ Request body:
 
 owner_unlocked is used by desktop lock policy flow.
 
+## POST /voice
+
+Twilio Voice webhook entrypoint. Mashbak answers the call, speaks a short greeting,
+and starts speech gathering.
+
+Expected form fields from Twilio include:
+- CallSid
+- From
+- To
+
+Response: TwiML VoiceResponse with greeting and Gather(action=/process_voice).
+
+## POST /process_voice
+
+Twilio speech callback endpoint. Reads speech recognition output, sends text through
+the existing backend assistant runtime, speaks the reply, and gathers again to keep
+the conversation going.
+
+Expected form fields include:
+- CallSid
+- From
+- To
+- SpeechResult
+- Confidence
+
+Behavior:
+- Empty or missing speech -> ask caller to repeat and gather again.
+- Low confidence recognition -> ask caller to repeat and gather again.
+- Runtime/tool failures -> short spoken apology and continue listening.
+
 ## POST /bucherim/sms
 
 Dedicated Bucherim SMS entry point used by bridge routing for Twilio number +18772683048.

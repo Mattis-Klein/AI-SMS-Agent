@@ -175,16 +175,28 @@ class AgentRuntime:
             return "sms"
         return "desktop"
 
-    def _format_output_for_source(self, value: Optional[str], source: str, max_sms_chars: int = 320) -> Optional[str]:
+    def _format_output_for_source(
+        self,
+        value: Optional[str],
+        source: str,
+        max_sms_chars: int = 320,
+        max_voice_chars: int = 420,
+    ) -> Optional[str]:
         if value is None:
             return None
-        if source != "sms":
-            return value
 
         compact = " ".join(str(value).split())
-        if len(compact) <= max_sms_chars:
-            return compact
-        return f"{compact[: max_sms_chars - 3]}..."
+        if source == "sms":
+            if len(compact) <= max_sms_chars:
+                return compact
+            return f"{compact[: max_sms_chars - 3]}..."
+
+        if source == "voice":
+            if len(compact) <= max_voice_chars:
+                return compact
+            return f"{compact[: max_voice_chars - 3]}..."
+
+        return value
 
     def _normalize_sender_key(self, sender: str) -> str:
         sender_text = str(sender or "unknown").strip().lower()

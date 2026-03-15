@@ -3,3 +3,5 @@ uvicorn
 pydantic
 python-dotenv
 psutil
+twilio
+python-multipart

@@ -119,3 +119,18 @@ delete that file
 If no prior successful filesystem action exists in the current session, follow-ups like "that folder" or "delete that file" trigger clarification instead of guessing a path.
 
 See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for complete variable reference and restart details.
+
+## Voice Assistant (Twilio)
+
+Mashbak supports Twilio voice webhooks directly in backend runtime:
+
+- `POST /voice` answers calls and starts speech gather.
+- `POST /process_voice` receives recognized speech, runs it through the same assistant/runtime pipeline, speaks the reply, and gathers again.
+
+This keeps voice, desktop, and SMS on one shared reasoning engine and one tool execution path.
+
+Required Python packages for voice:
+- `twilio`
+- `python-multipart`
+
+They are included in [agent/requirements.txt](agent/requirements.txt).

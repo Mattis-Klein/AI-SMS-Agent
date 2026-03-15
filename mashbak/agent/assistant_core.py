@@ -291,7 +291,7 @@ class AssistantCore:
 
         # Search failed or returned no usable results - refuse to answer
         return (
-            "I tried searching for current information on that, but I couldn't retrieve reliable results. "
+            "I tried searching for current information on that, but I couldn't retrieve reliable results and cannot verify it safely. "
             "Rather than guess, I'd rather you check a trusted source directly for the most up-to-date information.",
             "Unverified",
             "Dynamic fact query attempted web search but no reliable results were available.",
@@ -690,10 +690,15 @@ class AssistantCore:
         return self._fallback_tool_reply(result.get("tool_name"), result.get("output"), result.get("data"))
 
     def _build_system_prompt(self, metadata: AssistantMetadata) -> str:
-        source_guidance = (
-            "Keep the reply brief and compact for SMS." if metadata.source == "sms"
-            else "Sound like a calm personal desktop assistant."
-        )
+        if metadata.source == "sms":
+            source_guidance = "Keep the reply brief and compact for SMS."
+        elif metadata.source == "voice":
+            source_guidance = (
+                "You are speaking over a phone call. Keep replies short and natural, "
+                "avoid formatting-heavy output, and prioritize spoken clarity."
+            )
+        else:
+            source_guidance = "Sound like a calm personal desktop assistant."
         return (
             "You are Mashbak, the single assistant core for the user's desktop and SMS access. "
             "Use natural language, avoid raw debug formatting, and stay faithful to the actual tool results. "

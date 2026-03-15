@@ -3,13 +3,17 @@
 import asyncio
 import sys
 from pathlib import Path
+import pytest
 
 # Setup path for imports
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
-from mashbak.agent.runtime import AgentRuntime, create_runtime
-from mashbak.agent.assistant_core import AssistantMetadata
+from agent.runtime import create_runtime
+from agent.assistant_core import AssistantMetadata
+
+
+pytestmark = pytest.mark.anyio
 
 
 async def test_web_search_tool():

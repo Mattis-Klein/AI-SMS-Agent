@@ -19,8 +19,10 @@ from pydantic import BaseModel, Field
 
 if __package__:
     from .runtime import create_runtime
+    from .voice_handler import create_voice_router
 else:
     from runtime import create_runtime
+    from voice_handler import create_voice_router
 
 
 # ============================================================================
@@ -29,6 +31,7 @@ else:
 
 app = FastAPI(title="Mashbak", version="2.0.0")
 runtime = create_runtime()
+app.include_router(create_voice_router(runtime))
 
 
 # ============================================================================

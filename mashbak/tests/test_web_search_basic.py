@@ -6,7 +6,7 @@ from pathlib import Path
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
-from mashbak.agent.tools.builtin.web_search import WebSearchTool
+from agent.tools.builtin.web_search import WebSearchTool
 
 def test_web_search():
     """Test web search tool."""
@@ -36,20 +36,11 @@ def test_web_search():
     except Exception as e:
         print(f"   Error: {e}")
     
-    # Test query formulation
-    print("\n3. Testing query extraction from message:")
-    test_messages = [
-        "Who is the current president of the United States?",
-        "What are the latest election results?",
-        "Tell me about the stock market today",
-    ]
-    
-    assistant = type('obj', (object,), {'_formulate_search_query': WebSearchTool._formulate_search_query})()
-    for msg in test_messages:
-        query = tool._formulate_search_query = lambda m: " ".join([w for w in m.lower().split() if len(w) > 2 and w not in {"the", "and", "for"}])
-        # Actually we'll just show what the current implementation would do
-        print(f"   Message: '{msg}'")
-        print(f"   Would search for key terms")
+    # Test text cleanup helper for basic parsing behavior
+    print("\n3. Testing HTML cleanup helper:")
+    cleaned = tool._clean_html("<b>Current &amp; Verified</b>")
+    print(f"   Cleaned text: {cleaned}")
+    assert cleaned == "Current & Verified"
     
     print("\n✓ Basic web search tests passed")
 
