@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from typing import Optional
 
@@ -48,6 +49,20 @@ def create_voice_router(runtime) -> APIRouter:
             from_number=from_number or None,
             to_number=to_number or None,
         )
+
+        if not _is_voice_number_allowed(from_number):
+            reject_text = _voice_rejected_response()
+            runtime.logger.log(
+                request_id=request_id,
+                event_type="voice_access_denied",
+                source="voice",
+                call_sid=call_sid or None,
+                from_number=from_number or None,
+            )
+            twiml = VoiceResponse()
+            twiml.say(reject_text, voice="alice", language="en-US")
+            twiml.hangup()
+            return Response(content=str(twiml), media_type="application/xml")
 
         twiml = VoiceResponse()
         twiml.say(
@@ -188,6 +203,41 @@ def _to_voice_text(value: str, max_chars: int = 420) -> str:
     if len(compact) <= max_chars:
         return compact
     return f"{compact[: max_chars - 3]}..."
+
+
+def _normalize_phone(value: str, digits: int = 10) -> str:
+    cleaned = re.sub(r"\D", "", str(value or ""))
+    if len(cleaned) > digits:
+        return cleaned[-digits:]
+    return cleaned
+
+
+def _is_voice_number_allowed(from_number: str) -> bool:
+    raw_allowlist = (ConfigLoader.get("VOICE_ALLOWED_NUMBERS", "") or "").strip()
+    if not raw_allowlist:
+        # Empty allowlist means allow all; explicit values enforce filtering.
+        return True
+
+    raw_digits = ConfigLoader.get("SMS_PHONE_NORMALIZATION_DIGITS", "10") or "10"
+    try:
+        digits = max(6, min(15, int(str(raw_digits).strip())))
+    except ValueError:
+        digits = 10
+
+    allowed = {
+        _normalize_phone(item, digits)
+        for item in str(raw_allowlist).split(",")
+        if _normalize_phone(item, digits)
+    }
+    normalized_from = _normalize_phone(from_number, digits)
+    return bool(normalized_from) and normalized_from in allowed
+
+
+def _voice_rejected_response() -> str:
+    value = (ConfigLoader.get("VOICE_REJECTED_RESPONSE", "") or "").strip()
+    if value:
+        return value
+    return "Sorry, this phone number is not authorized to use Mashbak voice access."
 
 
 async def _is_valid_twilio_request(request: Request) -> bool:
