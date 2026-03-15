@@ -14,6 +14,7 @@ from .config_tools import SetConfigVariableTool
 from .create_folder import CreateFolderTool
 from .create_file import CreateFileTool
 from .delete_file import DeleteFileTool
+from .web_search import WebSearchTool
 
 ALL_BUILTIN_TOOLS = [
     DirInboxTool(),
@@ -34,6 +35,7 @@ ALL_BUILTIN_TOOLS = [
     CreateFolderTool(),
     CreateFileTool(),
     DeleteFileTool(),
+    WebSearchTool(),
 ]
 
 __all__ = ["ALL_BUILTIN_TOOLS"]

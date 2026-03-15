@@ -228,7 +228,13 @@ class AssistantCore:
         return any(token in lower for token in date_time_tokens)
 
     async def _dynamic_fact_reply(self, message: str, metadata: AssistantMetadata) -> tuple[str, str, str, str]:
-        """Return reply + verification metadata for dynamic factual questions."""
+        """Return reply + verification metadata for dynamic factual questions.
+        
+        Strategy:
+        1. For time/date queries: use local current_time tool
+        2. For other fact queries: perform web search first, then generate grounded response
+        3. If search fails or returns nothing: refuse to answer rather than guess
+        """
         if self._is_time_or_date_query(message):
             result = await self.runtime.execute_tool(
                 tool_name="current_time",
@@ -252,11 +258,43 @@ class AssistantCore:
                 "policy",
             )
 
+        # For non-time-based fact queries: attempt web search
+        search_query = self._formulate_search_query(message)
+        search_result = await self.runtime.execute_tool(
+            tool_name="web_search",
+            args={"query": search_query},
+            sender=metadata.sender,
+            request_id=metadata.request_id,
+            source=metadata.source,
+        )
+
+        if search_result.get("success"):
+            # Web search succeeded - generate response grounded in the results
+            search_output = search_result.get("output", "")
+            search_data = search_result.get("data", {})
+            
+            # Build a context for the LLM that includes search results
+            grounded_reply = await self._generate_search_grounded_response(
+                user_message=message,
+                metadata=metadata,
+                search_output=search_output,
+                search_data=search_data,
+            )
+            
+            if grounded_reply:
+                return (
+                    grounded_reply,
+                    "Web-verified",
+                    f"Grounded in web search results for: {search_query}",
+                    "web_search",
+                )
+
+        # Search failed or returned no usable results - refuse to answer
         return (
-            "I can't verify that time-sensitive fact right now with the tools currently available. "
-            "I don't want to guess or provide stale information.",
+            "I tried searching for current information on that, but I couldn't retrieve reliable results. "
+            "Rather than guess, I'd rather you check a trusted source directly for the most up-to-date information.",
             "Unverified",
-            "Dynamic fact query blocked because no live retrieval/web verification path is available.",
+            "Dynamic fact query attempted web search but no reliable results were available.",
             "policy",
         )
 
@@ -906,6 +944,107 @@ class AssistantCore:
             return compact
         return f"{compact[: max_length - 3]}..."
 
+    def _formulate_search_query(self, message: str) -> str:
+        """Extract key terms from user message to form a focused search query.
+        
+        Removes common filler words and keeps substantive terms for searching.
+        """
+        stop_words = {
+            "what", "who", "where", "when", "how", "why", "is", "are", "do", "does",
+            "the", "a", "an", "and", "or", "but", "can", "will", "should", "could",
+            "have", "has", "had", "be", "been", "was", "were", "i", "you", "he", "she",
+            "it", "we", "they", "this", "that", "these", "those", "my", "your", "his", "her",
+        }
+        
+        # Remove punctuation and split into words
+        words = []
+        current_word = ""
+        for char in message.lower():
+            if char.isalnum():
+                current_word += char
+            else:
+                if current_word and current_word not in stop_words and len(current_word) > 1:
+                    words.append(current_word)
+                current_word = ""
+        if current_word and current_word not in stop_words and len(current_word) > 1:
+            words.append(current_word)
+        
+        # Build query from kept words (up to 10 words for reasonable search)
+        query = " ".join(words[:10]).strip()
+        
+        # If query is too short, just use original message reduced
+        if len(query) < 3:
+            query = message[:100].strip()
+        
+        return query
+
+    async def _generate_search_grounded_response(
+        self,
+        user_message: str,
+        metadata: AssistantMetadata,
+        search_output: str,
+        search_data: dict[str, Any],
+    ) -> str | None:
+        """Generate a response grounded in web search results.
+        
+        Uses the LLM to synthesize search results into a natural, factual answer.
+        Falls back to returning search results directly if LLM fails.
+        """
+        if not self.model_client.enabled:
+            # Fallback: return search results in structured format
+            results = search_data.get("results", [])
+            if results:
+                lines = [f"I found {len(results)} sources on that:"]
+                for i, result in enumerate(results[:3], 1):
+                    title = result.get("title", "Source")
+                    snippet = result.get("snippet", "")
+                    url = result.get("url", "")
+                    lines.append(f"{i}. {title}")
+                    if snippet:
+                        lines.append(f"   {snippet[:150]}...")
+                    if url:
+                        lines.append(f"   {url}")
+                return "\n".join(lines)
+            return None
+        
+        # Use LLM to synthesize search results
+        system_prompt = self._build_system_prompt(metadata)
+        
+        results = search_data.get("results", [])
+        results_text = "\n".join([
+            f"- {r.get('title', 'Source')}: {r.get('snippet', '')[:150]}"
+            for r in results[:5]
+        ])
+        
+        prompt = (
+            f"The user asked: {user_message}\n\n"
+            f"Here are current web search results:\n{results_text}\n\n"
+            "Use these results to provide a direct, accurate answer. "
+            "If results don't directly answer the question, say so. "
+            "Always cite or reference the sources you're using. "
+            "Keep the answer concise and factual."
+        )
+        
+        ai_reply = await self.model_client.complete(
+            system_prompt=system_prompt,
+            user_prompt=prompt,
+            max_tokens=min(self.runtime.model_response_max_tokens, 250 if metadata.source == "sms" else self.runtime.model_response_max_tokens),
+        )
+        
+        if ai_reply:
+            # Add indication that this was search-verified
+            if metadata.source != "sms":  # Desktop can show more context
+                return ai_reply
+            return ai_reply
+
+        # Fallback if LLM fails
+        return None
+
+    def _safe_json(self, value: Any) -> str:
+        try:
+            return self._trim_text(json.dumps(value, ensure_ascii=True), max_length=1800)
+        except TypeError:
+            return self._trim_text(str(value), max_length=1800)
     def _safe_json(self, value: Any) -> str:
         try:
             return self._trim_text(json.dumps(value, ensure_ascii=True), max_length=1800)

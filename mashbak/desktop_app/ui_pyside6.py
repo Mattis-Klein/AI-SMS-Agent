@@ -986,8 +986,33 @@ class DesktopControlApp:
             f"Validation:     {trace.get('validation_status')}",
             f"Exec status:    {trace.get('execution_status')}",
             "",
-            f"Args: {json.dumps(safe_trace_args, ensure_ascii=True)[:200]}",
         ]
+        
+        # Add verification reason for better transparency
+        verification_reason = trace.get("verification_reason")
+        if verification_reason:
+            detail_lines.append(f"Verification reason: {str(verification_reason)[:150]}")
+            detail_lines.append("")
+        
+        # If web search was performed, show search results
+        if verification_state.lower() == "web-verified" and trace.get("tool_data"):
+            try:
+                tool_data = trace.get("tool_data")
+                if isinstance(tool_data, dict) and "results" in tool_data:
+                    results = tool_data.get("results", [])
+                    if results:
+                        detail_lines.append("WEB SEARCH RESULTS:")
+                        for i, res in enumerate(results[:3], 1):
+                            title = res.get("title", "Result")[:80]
+                            detail_lines.append(f"  {i}. {title}")
+                            if res.get("url"):
+                                detail_lines.append(f"     {res['url']}")
+                        detail_lines.append("")
+            except Exception:
+                pass
+        
+        detail_lines.append(f"Args: {json.dumps(safe_trace_args, ensure_ascii=True)[:200]}")
+        
         if safe_raw_tool_output:
             detail_lines.append(f"Tool output: {str(safe_raw_tool_output)[:200]}")
         
@@ -995,10 +1020,17 @@ class DesktopControlApp:
         
         # Update verification
         verify_color = _SLATE
-        if verification_state.lower() in {"verified", "tool-assisted"}:
+        if verification_state.lower() in {"verified", "tool-assisted", "web-verified"}:
             verify_color = _GREEN
         elif verification_state.lower() == "unverified":
             verify_color = _RED
+        
+        # Add visual indicator for web-based answers
+        verify_text = f"Verification: {verification_state}"
+        if verification_state.lower() == "web-verified":
+            verify_text += " 🌐"
+        chat_page.verification_label.setText(verify_text)
+        chat_page.verification_label.setStyleSheet(f"color: {verify_color};")
         chat_page.verification_label.setText(f"Verification: {verification_state}")
         chat_page.verification_label.setStyleSheet(f"color: {verify_color};")
         
