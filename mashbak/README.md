@@ -130,6 +130,35 @@ Config: `set_config_variable`
 
 All tools: grounded execution — completion claims only after confirmed successful tool run. `create_folder` and `create_file` must return `data.created_path`.
 
+Additional action-capable tools now include:
+- Filesystem: `edit_file`, `copy_file`, `move_file`, `search_files`
+- System control: `launch_program`, `open_target`, `run_project_command`, `capture_screenshot`
+- Creative/project: `generate_homepage`
+- Email actions: `send_email`, `draft_email_reply`
+
+## Agent Orchestration and Safety
+
+- Single shared runtime remains the source of truth for desktop/SMS/voice.
+- Orchestration flow separates: interpretation -> planning -> policy/approval checks -> tool execution -> response summarization.
+- Sensitive actions are policy-gated and can require desktop unlock and explicit approval.
+- Task tracking is persisted and visible via control-board APIs.
+- Tool permissions are editable at runtime via control-board APIs (no manual config edits required).
+
+New control-board APIs:
+- `GET /control-board/tools-permissions`
+- `POST /control-board/tools-permissions/update`
+- `GET /control-board/approvals`
+- `POST /control-board/approvals/approve-run`
+- `POST /control-board/approvals/reject`
+- `GET /control-board/tasks`
+- `GET /control-board/personal-context`
+- `POST /control-board/personal-context/save`
+
+Desktop UI additions:
+- Dedicated lock-screen mode (no operational pages visible while locked)
+- Personal Context page (profile/people/routines/projects/preferences)
+- Tools & Permissions page (tool policy controls, approvals, and task visibility)
+
 ## Bucherim
 
 Dedicated SMS assistant on Twilio number +18772683048. Membership states: `approved`, `pending`, and `blocked` (with legacy migration support in storage). Canonical state/config lives under `assistants/bucherim/config/`. Admin tool: `scripts/approve-bucherim-member.ps1`.

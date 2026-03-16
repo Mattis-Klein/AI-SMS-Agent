@@ -28,6 +28,7 @@ def create_execution_router(runtime) -> APIRouter:
             sender=x_sender or "unknown",
             request_id=x_request_id,
             source=x_source,
+            owner_unlocked=req.owner_unlocked,
         )
         if result["tool_name"] is None and "not found" in (result.get("error") or ""):
             raise HTTPException(status_code=404, detail=result["error"])

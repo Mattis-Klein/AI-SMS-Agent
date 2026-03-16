@@ -55,6 +55,47 @@ class AgentClient:
     def get_assistants(self) -> dict:
         return self._request("GET", "/control-board/assistants", include_auth=True)
 
+    def get_tasks(self, limit: int = 80, status: str = "") -> dict:
+        tail = f"?limit={int(limit)}"
+        if status:
+            tail += f"&status={urllib.parse.quote(str(status))}"
+        return self._request("GET", "/control-board/tasks" + tail, include_auth=True)
+
+    def get_approvals(self, limit: int = 80, status: str = "pending") -> dict:
+        tail = f"?limit={int(limit)}"
+        if status:
+            tail += f"&status={urllib.parse.quote(str(status))}"
+        return self._request("GET", "/control-board/approvals" + tail, include_auth=True)
+
+    def approve_and_run(self, approval_id: str, reviewer: str = "operator") -> dict:
+        return self._request(
+            "POST",
+            "/control-board/approvals/approve-run",
+            include_auth=True,
+            body={"approval_id": approval_id, "reviewer": reviewer},
+        )
+
+    def reject_approval(self, approval_id: str, reviewer: str = "operator") -> dict:
+        return self._request(
+            "POST",
+            "/control-board/approvals/reject",
+            include_auth=True,
+            body={"approval_id": approval_id, "reviewer": reviewer},
+        )
+
+    def get_personal_context(self) -> dict:
+        return self._request("GET", "/control-board/personal-context", include_auth=True)
+
+    def save_personal_context(self, payload: dict) -> dict:
+        return self._request("POST", "/control-board/personal-context/save", include_auth=True, body=payload)
+
+    def get_tools_permissions(self) -> dict:
+        return self._request("GET", "/control-board/tools-permissions", include_auth=True)
+
+    def update_tool_permission(self, tool_name: str, settings: dict) -> dict:
+        body = {"tool_name": tool_name, **settings}
+        return self._request("POST", "/control-board/tools-permissions/update", include_auth=True, body=body)
+
     def get_routing(self) -> dict:
         return self._request("GET", "/control-board/routing", include_auth=True)
 

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class ExecuteToolRequest(BaseModel):
     tool_name: str
     args: dict = {}
+    owner_unlocked: bool | None = None
 
 
 class ExecuteNaturalLanguageRequest(BaseModel):
@@ -59,3 +60,25 @@ class RoutingApproveRequest(BaseModel):
 
 class RoutingDeactivateRequest(BaseModel):
     phone_number: str
+
+
+class ToolPermissionUpdateRequest(BaseModel):
+    tool_name: str
+    enabled: bool | None = None
+    allowed_sources: list[str] | None = None
+    requires_approval: bool | None = None
+    requires_unlocked_desktop: bool | None = None
+    scope: str | None = None
+
+
+class ApprovalActionRequest(BaseModel):
+    approval_id: str
+    reviewer: str = "operator"
+
+
+class PersonalContextSaveRequest(BaseModel):
+    profile: dict = Field(default_factory=dict)
+    people: list[dict] = Field(default_factory=list)
+    routines: list[dict] = Field(default_factory=list)
+    projects: list[dict] = Field(default_factory=list)
+    preferences: dict = Field(default_factory=dict)

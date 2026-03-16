@@ -14,6 +14,16 @@ from .config_tools import SetConfigVariableTool
 from .create_folder import CreateFolderTool
 from .create_file import CreateFileTool
 from .delete_file import DeleteFileTool
+from .edit_file import EditFileTool
+from .copy_file import CopyFileTool
+from .move_file import MoveFileTool
+from .search_files import SearchFilesTool
+from .launch_program import LaunchProgramTool
+from .open_target import OpenTargetTool
+from .run_project_command import RunProjectCommandTool
+from .capture_screenshot import CaptureScreenshotTool
+from .generate_homepage import GenerateHomepageTool
+from .email_send import SendEmailTool, DraftReplyTool
 from .web_search import WebSearchTool
 
 ALL_BUILTIN_TOOLS = [
@@ -35,6 +45,17 @@ ALL_BUILTIN_TOOLS = [
     CreateFolderTool(),
     CreateFileTool(),
     DeleteFileTool(),
+    EditFileTool(),
+    CopyFileTool(),
+    MoveFileTool(),
+    SearchFilesTool(),
+    LaunchProgramTool(),
+    OpenTargetTool(),
+    RunProjectCommandTool(),
+    CaptureScreenshotTool(),
+    GenerateHomepageTool(),
+    SendEmailTool(),
+    DraftReplyTool(),
     WebSearchTool(),
 ]
 

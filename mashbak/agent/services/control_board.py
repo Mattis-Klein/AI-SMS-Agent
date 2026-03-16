@@ -209,6 +209,8 @@ class ControlBoardService:
 
     def overview(self) -> dict[str, Any]:
         summary = self.runtime.summary()
+        pending_approvals = self.runtime.approval_store.list(limit=500, status="pending").get("count", 0)
+        running_tasks = self.runtime.task_store.list_tasks(limit=500, status="running").get("count", 0)
         return {
             "backend": {
                 "connected": True,
@@ -222,6 +224,8 @@ class ControlBoardService:
                 "accounts": len(self.email_accounts.list_accounts()),
             },
             "active_assistant": "mashbak",
+            "pending_approvals": pending_approvals,
+            "running_tasks": running_tasks,
             "recent_failures": self.recent_failures(limit=10),
             "recent_actions": self.recent_tool_actions(limit=12),
         }
@@ -356,3 +360,51 @@ class ControlBoardService:
 
     def routing_member(self, phone_number: str) -> dict[str, Any]:
         return self.bucherim_admin.member_detail(phone_number)
+
+    def tools_permissions(self) -> dict[str, Any]:
+        info = self.runtime.registry.get_all_info()
+        payload = self.runtime.tool_permissions.list(info)
+        return {
+            "tools": payload.get("tools") or {},
+            "tool_info": info,
+            "count": len(info),
+        }
+
+    def update_tool_permission(self, tool_name: str, settings: dict[str, Any]) -> dict[str, Any]:
+        info = self.runtime.registry.get_all_info()
+        updated = self.runtime.tool_permissions.set_tool(tool_name, settings, info)
+        return {"success": True, "tool_name": tool_name, "settings": updated}
+
+    def approvals(self, limit: int = 80, status: str = "") -> dict[str, Any]:
+        return self.runtime.approval_store.list(limit=limit, status=status)
+
+    async def approve_and_run(self, approval_id: str, reviewer: str = "operator") -> dict[str, Any]:
+        approval = self.runtime.approval_store.get(approval_id)
+        if not approval:
+            return {"success": False, "error": "Approval not found"}
+        self.runtime.approval_store.set_status(approval_id, "approved", reviewer=reviewer)
+        result = await self.runtime.execute_tool(
+            tool_name=str(approval.get("tool_name") or ""),
+            args=approval.get("args") if isinstance(approval.get("args"), dict) else {},
+            sender=str(approval.get("sender") or "operator"),
+            source="desktop",
+            owner_unlocked=True,
+            approval_id=approval_id,
+            approved_by=reviewer,
+        )
+        return {"success": True, "approval_id": approval_id, "result": result}
+
+    def reject_approval(self, approval_id: str, reviewer: str = "operator") -> dict[str, Any]:
+        row = self.runtime.approval_store.set_status(approval_id, "rejected", reviewer=reviewer)
+        if not row:
+            return {"success": False, "error": "Approval not found"}
+        return {"success": True, "approval": row}
+
+    def tasks(self, limit: int = 80, status: str = "") -> dict[str, Any]:
+        return self.runtime.task_store.list_tasks(limit=limit, status=status)
+
+    def get_personal_context(self) -> dict[str, Any]:
+        return self.runtime.personal_context.read()
+
+    def save_personal_context(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.runtime.personal_context.save(payload)

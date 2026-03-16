@@ -126,12 +126,13 @@ class AssistantCore:
         is_action_request = bool((parsed.get("entities") or {}).get("action_requested"))
 
         if parsed.get("tool"):
-            result = await self.runtime.execute_tool(
-                tool_name=parsed["tool"],
-                args=parsed.get("args") or {},
+            result = await self.runtime.orchestrator.execute_plan(
+                message=message,
+                parsed=parsed,
                 sender=metadata.sender,
-                request_id=request_id,
                 source=metadata.source,
+                request_id=request_id,
+                owner_unlocked=metadata.owner_unlocked,
             )
             finalized = await self._finalize_tool_response(message, metadata, parsed, result)
             latest_context = self.runtime.session_context.update(
@@ -503,6 +504,7 @@ class AssistantCore:
         system_prompt = self._build_system_prompt(metadata)
         if self.model_client.enabled:
             recent_turns_text = self._format_recent_turns_for_prompt(context_snapshot)
+            personal_context_text = self._personal_context_summary()
             prompt = (
                 f"Request type: {parsed.get('mode') or 'conversation'}\n"
                 f"User message: {sanitize_for_logging(message)}\n"
@@ -510,6 +512,8 @@ class AssistantCore:
             )
             if recent_turns_text:
                 prompt += f"Recent conversation:\n{recent_turns_text}\n"
+            if personal_context_text:
+                prompt += f"Personal context:\n{personal_context_text}\n"
             prompt += "Reply naturally. Do not mention internal tools unless the user asked for technical detail."
             ai_reply = await self.model_client.complete(
                 system_prompt=system_prompt,
@@ -629,6 +633,7 @@ class AssistantCore:
         if self.model_client.enabled:
             context_snapshot = self.runtime.session_context.get_snapshot(metadata.session_id)
             recent_turns_text = self._format_recent_turns_for_prompt(context_snapshot)
+            personal_context_text = self._personal_context_summary()
             system_prompt = self._build_system_prompt(metadata)
             prompt = (
                 "You are summarizing the result of a backend tool for the user.\n"
@@ -640,6 +645,8 @@ class AssistantCore:
             )
             if recent_turns_text:
                 prompt += f"Recent conversation:\n{recent_turns_text}\n"
+            if personal_context_text:
+                prompt += f"Personal context:\n{personal_context_text}\n"
             prompt += (
                 "Write a natural reply. Keep it concise, helpful, and grounded strictly in the tool result above. "
                 "Do not claim anything was created, saved, or completed unless the tool data confirms it."
@@ -789,6 +796,33 @@ class AssistantCore:
             if path_str:
                 return f"Done — I deleted {self._humanize_path(path_str)}."
             return "The file was deleted."
+
+        if tool_name == "edit_file" and isinstance(data, dict):
+            return f"Done — I updated {self._humanize_path(str(data.get('path') or 'the file'))}."
+
+        if tool_name in {"copy_file", "move_file"} and isinstance(data, dict):
+            destination = str(data.get("destination") or "")
+            action = "copied" if tool_name == "copy_file" else "moved"
+            if destination:
+                return f"Done — I {action} the file to {self._humanize_path(destination)}."
+
+        if tool_name == "search_files" and isinstance(data, dict):
+            count = int(data.get("count") or 0)
+            return f"I found {count} matching file(s)."
+
+        if tool_name == "generate_homepage" and isinstance(data, dict):
+            entry = str(data.get("entry_file") or "index.html")
+            return f"Done — I generated a homepage at {entry}."
+
+        if tool_name == "capture_screenshot" and isinstance(data, dict):
+            path = str(data.get("path") or "")
+            return f"Screenshot captured at {path}."
+
+        if tool_name == "send_email" and isinstance(data, dict):
+            return f"Email sent to {data.get('to')}."
+
+        if tool_name == "draft_email_reply" and isinstance(data, dict):
+            return f"Draft saved at {data.get('path')}."
 
         if tool_name == "cpu_usage":
             cpu_value = self._extract_percentage(output)
@@ -1015,8 +1049,23 @@ class AssistantCore:
             return self._trim_text(json.dumps(value, ensure_ascii=True), max_length=1800)
         except TypeError:
             return self._trim_text(str(value), max_length=1800)
-    def _safe_json(self, value: Any) -> str:
+
+    def _personal_context_summary(self) -> str:
         try:
-            return self._trim_text(json.dumps(value, ensure_ascii=True), max_length=1800)
-        except TypeError:
-            return self._trim_text(str(value), max_length=1800)
+            ctx = self.runtime.personal_context.read()
+        except Exception:
+            return ""
+        profile = ctx.get("profile") if isinstance(ctx, dict) else {}
+        preferences = ctx.get("preferences") if isinstance(ctx, dict) else {}
+        people = ctx.get("people") if isinstance(ctx, dict) else []
+        projects = ctx.get("projects") if isinstance(ctx, dict) else []
+        lines = []
+        if isinstance(profile, dict) and profile:
+            lines.append(f"Profile: {self._trim_text(json.dumps(profile, ensure_ascii=True), max_length=320)}")
+        if isinstance(preferences, dict) and preferences:
+            lines.append(f"Preferences: {self._trim_text(json.dumps(preferences, ensure_ascii=True), max_length=320)}")
+        if isinstance(people, list) and people:
+            lines.append(f"People: {self._trim_text(json.dumps(people[:5], ensure_ascii=True), max_length=320)}")
+        if isinstance(projects, list) and projects:
+            lines.append(f"Projects: {self._trim_text(json.dumps(projects[:5], ensure_ascii=True), max_length=320)}")
+        return "\n".join(lines)

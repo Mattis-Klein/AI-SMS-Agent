@@ -88,6 +88,19 @@ class NaturalLanguageInterpreter:
             (r"(?:check|show).*uptime", "uptime", lambda m: {}),
             (r"(?:delete|remove|erase)\s+(?:the\s+)?file\s+(?:called|named)\s+(.+)", "delete_file", lambda m: {"path": m.group(1).strip()}),
             (r"(?:delete|remove|erase)\s+(?:the\s+file\s+at|file)\s+(.+)", "delete_file", lambda m: {"path": m.group(1).strip()}),
+            (r"(?:edit|update|rewrite)\s+file\s+(.+?)\s+(?:with|to)\s+(.+)", "edit_file", lambda m: {"path": m.group(1).strip(), "content": m.group(2).strip(), "mode": "replace"}),
+            (r"(?:append|add)\s+to\s+file\s+(.+?)\s*:\s*(.+)", "edit_file", lambda m: {"path": m.group(1).strip(), "content": m.group(2).strip(), "mode": "append"}),
+            (r"(?:copy)\s+file\s+(.+?)\s+(?:to|into)\s+(.+)", "copy_file", lambda m: {"source_path": m.group(1).strip(), "destination_path": m.group(2).strip()}),
+            (r"(?:move)\s+file\s+(.+?)\s+(?:to|into)\s+(.+)", "move_file", lambda m: {"source_path": m.group(1).strip(), "destination_path": m.group(2).strip()}),
+            (r"(?:search|find)\s+files\s+(?:in|under)\s+(.+?)\s+(?:for|matching)\s+(.+)", "search_files", lambda m: {"root_path": m.group(1).strip(), "pattern": m.group(2).strip()}),
+            (r"(?:launch|start|open app)\s+(.+)", "launch_program", lambda m: {"program": m.group(1).strip()}),
+            (r"(?:open url|open website|open link)\s+(.+)", "open_target", lambda m: {"target": m.group(1).strip()}),
+            (r"(?:open folder|open path)\s+(.+)", "open_target", lambda m: {"target": m.group(1).strip()}),
+            (r"(?:run command|run project command)\s+(.+?)\s+(?:in|under)\s+(.+)", "run_project_command", lambda m: {"command": m.group(1).strip(), "working_directory": m.group(2).strip()}),
+            (r"(?:take|capture).*(?:screenshot)", "capture_screenshot", lambda m: {}),
+            (r"(?:send email)\s+to\s+(.+?)\s+subject\s+(.+?)\s+body\s+(.+)", "send_email", lambda m: {"to": m.group(1).strip(), "subject": m.group(2).strip(), "body": m.group(3).strip()}),
+            (r"(?:draft email|draft reply)\s+to\s+(.+?)\s+subject\s+(.+?)\s+body\s+(.+)", "draft_email_reply", lambda m: {"to": m.group(1).strip(), "subject": m.group(2).strip(), "body": m.group(3).strip()}),
+            (r"(?:create|generate|make).*(?:html|homepage|website).*(?:for|about)\s+(.+)", "generate_homepage", lambda m: {"project_path": "workspace/generated-site", "title": "Generated Homepage", "prompt": m.group(1).strip()}),
         ]
 
     def parse(self, message: str) -> ParsedRequest:

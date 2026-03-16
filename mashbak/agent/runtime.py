@@ -10,6 +10,10 @@ if __package__:
     from .config_loader import ConfigLoader
     from .assistant_core import AssistantCore, AssistantMetadata
     from .services.email_accounts import EmailAccountStore
+    from .services.approval_store import ApprovalStore
+    from .services.personal_context import PersonalContextStore
+    from .services.task_store import TaskStore
+    from .services.tool_permissions import ToolPermissionsStore
     from assistants.bucherim.bucherim_service import BucherimService, BucherimSmsRequest
     from .logger import StructuredLogger
     from .tools import ToolRegistry
@@ -17,12 +21,17 @@ if __package__:
     from .dispatcher import Dispatcher, RequestContext
     from .interpreter import NaturalLanguageInterpreter
     from .session_context import SessionContextManager
+    from .orchestration import ActionOrchestrator
     from .redaction import sanitize_for_logging, sanitize_trace
 else:
     from config import Config
     from config_loader import ConfigLoader
     from assistant_core import AssistantCore, AssistantMetadata
     from services.email_accounts import EmailAccountStore
+    from services.approval_store import ApprovalStore
+    from services.personal_context import PersonalContextStore
+    from services.task_store import TaskStore
+    from services.tool_permissions import ToolPermissionsStore
     from assistants.bucherim.bucherim_service import BucherimService, BucherimSmsRequest
     from logger import StructuredLogger
     from tools import ToolRegistry
@@ -30,6 +39,7 @@ else:
     from dispatcher import Dispatcher, RequestContext
     from interpreter import NaturalLanguageInterpreter
     from session_context import SessionContextManager
+    from orchestration import ActionOrchestrator
     from redaction import sanitize_for_logging, sanitize_trace
 
 
@@ -83,6 +93,12 @@ class AgentRuntime:
         self.interpreter = NaturalLanguageInterpreter()
         self.dispatcher = Dispatcher(self.registry, self.interpreter, self.logger)
         self.session_context = SessionContextManager(max_recent_turns=self.session_context_turns)
+        self.task_store = TaskStore(self.base_dir)
+        self.approval_store = ApprovalStore(self.base_dir)
+        self.tool_permissions = ToolPermissionsStore(self.base_dir)
+        self.personal_context = PersonalContextStore(self.base_dir)
+        self.tool_permissions.ensure_registry(self.registry.get_all_info())
+        self.orchestrator = ActionOrchestrator(self)
         self.default_tool_timeout_seconds = self.config.get_tool_timeout_seconds()
         if timeout_override:
             try:
@@ -248,6 +264,9 @@ class AgentRuntime:
         sender: str = "unknown",
         request_id: Optional[str] = None,
         source: Optional[str] = None,
+        owner_unlocked: Optional[bool] = None,
+        approved_by: Optional[str] = None,
+        approval_id: Optional[str] = None,
     ) -> dict:
         """Execute a specific tool through the same validation/execution path used by the API."""
         args = args or {}
@@ -271,6 +290,100 @@ class AgentRuntime:
             context.request_id = request_id
 
         context.tool_timeout_seconds = self.default_tool_timeout_seconds
+
+        policy = self.tool_permissions.get(tool_name, self.registry.get_all_info())
+        if not bool(policy.get("enabled", True)):
+            return {
+                "success": False,
+                "tool_name": tool_name,
+                "output": None,
+                "error": f"Tool '{tool_name}' is disabled by policy",
+                "error_type": "denied_action",
+                "request_id": context.request_id,
+                "trace": {
+                    "raw_request": safe_raw_request,
+                    "session_id": context.session_id,
+                    "source": request_source,
+                    "selected_tool": tool_name,
+                    "validation_status": "failed",
+                    "execution_status": "blocked",
+                    "policy": policy,
+                },
+            }
+
+        allowed_sources = [str(v).lower() for v in (policy.get("allowed_sources") or [])]
+        if allowed_sources and request_source not in allowed_sources:
+            return {
+                "success": False,
+                "tool_name": tool_name,
+                "output": None,
+                "error": f"Tool '{tool_name}' is blocked for {request_source}",
+                "error_type": "denied_action",
+                "request_id": context.request_id,
+                "trace": {
+                    "raw_request": safe_raw_request,
+                    "session_id": context.session_id,
+                    "source": request_source,
+                    "selected_tool": tool_name,
+                    "validation_status": "failed",
+                    "execution_status": "blocked",
+                    "policy": policy,
+                },
+            }
+
+        if bool(policy.get("requires_unlocked_desktop")) and request_source == "desktop" and owner_unlocked is not True:
+            return {
+                "success": False,
+                "tool_name": tool_name,
+                "output": None,
+                "error": f"Tool '{tool_name}' requires unlocked desktop",
+                "error_type": "denied_action",
+                "request_id": context.request_id,
+                "trace": {
+                    "raw_request": safe_raw_request,
+                    "session_id": context.session_id,
+                    "source": request_source,
+                    "selected_tool": tool_name,
+                    "validation_status": "failed",
+                    "execution_status": "blocked",
+                    "policy": policy,
+                },
+            }
+
+        if bool(policy.get("requires_approval")):
+            approved = False
+            if approval_id:
+                approval = self.approval_store.get(approval_id)
+                if approval and str(approval.get("status")) == "approved":
+                    approved = True
+            if approved_by:
+                approved = True
+            if not approved:
+                pending = self.approval_store.create(
+                    tool_name=tool_name,
+                    args=safe_args,
+                    source=request_source,
+                    sender=sender,
+                    reason=f"{tool_name} requires operator approval",
+                )
+                return {
+                    "success": False,
+                    "tool_name": tool_name,
+                    "output": None,
+                    "error": f"Approval required for '{tool_name}'",
+                    "error_type": "approval_required",
+                    "request_id": context.request_id,
+                    "data": {"approval": pending},
+                    "trace": {
+                        "raw_request": safe_raw_request,
+                        "session_id": context.session_id,
+                        "source": request_source,
+                        "selected_tool": tool_name,
+                        "validation_status": "pending_approval",
+                        "execution_status": "blocked",
+                        "policy": policy,
+                    },
+                }
 
         if not self.registry.exists(tool_name):
             self.logger.log_error(
@@ -368,6 +481,13 @@ class AgentRuntime:
             "logger": self.logger,
         }
 
+        task = self.task_store.create_task(
+            title=f"Run {tool_name}",
+            source=request_source,
+            sender=sender,
+            steps=[{"tool_name": tool_name, "args": safe_args, "status": "running"}],
+        )
+
         started = time.perf_counter()
         try:
             result = await asyncio.wait_for(
@@ -407,6 +527,7 @@ class AgentRuntime:
                     "execution_status": "failed",
                     "execution_time_ms": elapsed_ms,
                 },
+                "data": {"task": self.task_store.update_task(task["task_id"], status="failed", result={"error": f"timeout after {context.tool_timeout_seconds:.0f}s"})},
             }
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -423,6 +544,21 @@ class AgentRuntime:
             sender=context.sender,
         )
 
+        task_state = "completed" if result.success else "failed"
+        task_payload = self.task_store.update_task(
+            task["task_id"],
+            status=task_state,
+            steps=[{"tool_name": tool_name, "args": safe_args, "status": task_state}],
+            result={
+                "success": result.success,
+                "tool_name": tool_name,
+                "error": result.error,
+            },
+        )
+
+        merged_data = result.data if isinstance(result.data, dict) else ({"value": result.data} if result.data is not None else {})
+        merged_data["task"] = task_payload
+
         return {
             "success": result.success,
             "tool_name": tool_name,
@@ -433,7 +569,7 @@ class AgentRuntime:
             "remediation": result.remediation,
             "request_id": context.request_id,
             "source": request_source,
-            "data": result.data,
+            "data": merged_data,
             "trace": {
                 "raw_request": safe_raw_request,
                 "session_id": context.session_id,

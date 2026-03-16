@@ -754,6 +754,112 @@ class ActivityAuditPage(QWidget):
         layout.addWidget(self.activity_detail, 0)
 
 
+class PersonalContextPage(QWidget):
+    """Personal context editor page."""
+
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(create_label("Personal Context", 12, bold=True))
+        header_layout.addStretch()
+        header_layout.addWidget(create_button("Refresh", self.app.refresh_personal_context, style="subtle"))
+        header_layout.addWidget(create_button("Save", self.app.save_personal_context))
+        layout.addLayout(header_layout)
+
+        self.profile_text = QPlainTextEdit()
+        self.profile_text.setPlaceholderText("Profile JSON: name, preferred_tone, response_style, notes")
+        self.people_text = QPlainTextEdit()
+        self.people_text.setPlaceholderText("People JSON array")
+        self.routines_text = QPlainTextEdit()
+        self.routines_text.setPlaceholderText("Routines JSON array")
+        self.projects_text = QPlainTextEdit()
+        self.projects_text.setPlaceholderText("Projects JSON array")
+        self.preferences_text = QPlainTextEdit()
+        self.preferences_text.setPlaceholderText("Preferences JSON")
+
+        layout.addWidget(create_label("Profile", 10, bold=True))
+        layout.addWidget(self.profile_text)
+        layout.addWidget(create_label("People", 10, bold=True))
+        layout.addWidget(self.people_text)
+        layout.addWidget(create_label("Routines", 10, bold=True))
+        layout.addWidget(self.routines_text)
+        layout.addWidget(create_label("Projects", 10, bold=True))
+        layout.addWidget(self.projects_text)
+        layout.addWidget(create_label("Preferences", 10, bold=True))
+        layout.addWidget(self.preferences_text)
+        self.status_label = create_label("", 9, color=_SLATE)
+        layout.addWidget(self.status_label)
+
+
+class ToolsPermissionsPage(QWidget):
+    """Tool permissions and approvals/tasks panel."""
+
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+
+        header = QHBoxLayout()
+        header.addWidget(create_label("Tools & Permissions", 12, bold=True))
+        header.addStretch()
+        header.addWidget(create_button("Refresh", self.app.refresh_tools_permissions, style="subtle"))
+        layout.addLayout(header)
+
+        self.tools_table = QTableWidget()
+        self.tools_table.setColumnCount(6)
+        self.tools_table.setHorizontalHeaderLabels(["Tool", "Enabled", "Sources", "Approval", "Unlock", "Scope"])
+        self.tools_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tools_table.itemSelectionChanged.connect(self.app.on_tool_permission_selected)
+        layout.addWidget(self.tools_table)
+
+        controls = QHBoxLayout()
+        self.tool_enabled = QCheckBox("Enabled")
+        self.tool_requires_approval = QCheckBox("Requires approval")
+        self.tool_requires_unlock = QCheckBox("Requires unlocked desktop")
+        self.tool_sources = QLineEdit()
+        self.tool_sources.setPlaceholderText("desktop,sms,voice")
+        controls.addWidget(self.tool_enabled)
+        controls.addWidget(self.tool_requires_approval)
+        controls.addWidget(self.tool_requires_unlock)
+        controls.addWidget(self.tool_sources, 1)
+        controls.addWidget(create_button("Apply", self.app.save_selected_tool_permission, style="subtle"))
+        layout.addLayout(controls)
+
+        split = QHBoxLayout()
+        self.approvals_table = QTableWidget()
+        self.approvals_table.setColumnCount(5)
+        self.approvals_table.setHorizontalHeaderLabels(["ID", "Tool", "Source", "Sender", "Status"])
+        self.approvals_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.approvals_table.itemSelectionChanged.connect(self.app.on_approval_selected)
+        split.addWidget(self.approvals_table, 2)
+
+        right = QVBoxLayout()
+        right.addWidget(create_button("Approve & Run", self.app.approve_selected_action))
+        right.addWidget(create_button("Reject", self.app.reject_selected_action, style="subtle"))
+        self.tasks_table = QTableWidget()
+        self.tasks_table.setColumnCount(4)
+        self.tasks_table.setHorizontalHeaderLabels(["Task ID", "Title", "Status", "Updated"])
+        self.tasks_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        right.addWidget(self.tasks_table, 1)
+        split.addLayout(right, 3)
+
+        layout.addLayout(split, 1)
+        self.result_text = QPlainTextEdit()
+        self.result_text.setReadOnly(True)
+        layout.addWidget(self.result_text)
+
+
 class DesktopControlApp:
     """Main Mashbak Control Board application using PySide6."""
     
@@ -776,6 +882,10 @@ class DesktopControlApp:
         self.last_trace_payload: dict = {}
         self.activity_rows: list[dict[str, Any]] = []
         self.project_rows: list[dict[str, Any]] = []
+        self.tool_permission_rows: list[tuple[str, dict[str, Any]]] = []
+        self.approval_rows: list[dict[str, Any]] = []
+        self.selected_tool_name: str | None = None
+        self.selected_approval_id: str | None = None
         
         workspace = Path(runtime_summary.get("workspace") or "")
         platform_root = workspace.parent.parent if workspace else Path.cwd()
@@ -795,28 +905,56 @@ class DesktopControlApp:
         """Build main UI."""
         central = QWidget()
         self.window.setCentralWidget(central)
-        
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        
-        # Header
+
+        self.root_stack = QStackedWidget()
+        main_layout.addWidget(self.root_stack, 1)
+
+        # Lock screen
+        self.lock_screen = QWidget()
+        lock_layout = QVBoxLayout(self.lock_screen)
+        lock_layout.setContentsMargins(30, 30, 30, 30)
+        lock_layout.addStretch()
+        card = QFrame()
+        card.setMaximumWidth(560)
+        card.setStyleSheet("background-color: white; border-radius: 10px; padding: 16px;")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(10)
+        title = create_label("Mashbak", 22, bold=True)
+        msg = create_label("System is locked. Enter your PIN to unlock.", 10, color=_SLATE)
+        self.lock_pin_input = QLineEdit()
+        self.lock_pin_input.setEchoMode(QLineEdit.Password)
+        self.lock_pin_input.setPlaceholderText("PIN")
+        self.lock_pin_input.returnPressed.connect(self.unlock_app)
+        unlock_btn = create_button("Unlock", self.unlock_app)
+        card_layout.addWidget(title)
+        card_layout.addWidget(msg)
+        card_layout.addWidget(self.lock_pin_input)
+        card_layout.addWidget(unlock_btn)
+        lock_layout.addWidget(card, alignment=Qt.AlignHCenter)
+        lock_layout.addStretch()
+
+        # Control board shell
+        self.app_shell = QWidget()
+        app_layout = QVBoxLayout(self.app_shell)
+        app_layout.setContentsMargins(0, 0, 0, 0)
+        app_layout.setSpacing(0)
+
         self._build_header()
-        main_layout.addWidget(self.header_widget, 0)
-        
-        # Body (nav + pages)
+        app_layout.addWidget(self.header_widget, 0)
+
         body_layout = QHBoxLayout()
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
-        
-        # Sidebar
+
         self._build_sidebar()
         body_layout.addWidget(self.sidebar_widget, 0)
-        
-        # Pages
+
         self.stacked_widget = QStackedWidget()
         self.pages = {}
-        
+
         for page_class, name in [
             (DashboardPage, "Dashboard"),
             (ChatConsolePage, "Chat / Console"),
@@ -825,17 +963,23 @@ class DesktopControlApp:
             (FilesPermissionsPage, "Files & Permissions"),
             (ProjectsFilesPage, "Projects / Files"),
             (ActivityAuditPage, "Activity / Audit"),
+            (PersonalContextPage, "Personal Context"),
+            (ToolsPermissionsPage, "Tools & Permissions"),
         ]:
             page = page_class(self)
             self.pages[name] = page
             self.stacked_widget.addWidget(page)
-        
+
         self.stacked_widget.setCurrentWidget(self.pages["Dashboard"])
         body_layout.addWidget(self.stacked_widget, 1)
-        
+
         body_widget = QWidget()
         body_widget.setLayout(body_layout)
-        main_layout.addWidget(body_widget, 1)
+        app_layout.addWidget(body_widget, 1)
+
+        self.root_stack.addWidget(self.lock_screen)
+        self.root_stack.addWidget(self.app_shell)
+        self.root_stack.setCurrentWidget(self.lock_screen)
         
         # Statusbar
         self.statusbar = self.window.statusBar()
@@ -936,6 +1080,8 @@ class DesktopControlApp:
             ("Files and Permissions", "Files & Permissions"),
             ("Projects and Files", "Projects / Files"),
             ("Activity and Audit", "Activity / Audit"),
+            ("Personal Context", "Personal Context"),
+            ("Tools and Permissions", "Tools & Permissions"),
         ]:
             btn = QPushButton(label)
             btn.setFont(QFont("Segoe UI", 10))
@@ -998,8 +1144,9 @@ class DesktopControlApp:
     
     def unlock_app(self):
         """Unlock the application."""
-        candidate = self.pin_input.text().strip()
+        candidate = self.pin_input.text().strip() or self.lock_pin_input.text().strip()
         self.pin_input.clear()
+        self.lock_pin_input.clear()
         
         if candidate != self.local_app_pin:
             self.lock_status.setText("Wrong PIN")
@@ -1014,6 +1161,7 @@ class DesktopControlApp:
         self.unlock_button.setEnabled(False)
         self.lock_button.setEnabled(True)
         self.pin_input.setEnabled(False)
+        self.root_stack.setCurrentWidget(self.app_shell)
         self.statusbar.showMessage("Mashbak Control Board  |  unlocked")
         
         # Enable controls
@@ -1027,6 +1175,8 @@ class DesktopControlApp:
         self.refresh_files_policy()
         self.refresh_activity_audit()
         self.refresh_projects()
+        self.refresh_personal_context()
+        self.refresh_tools_permissions()
         
         # Get chat page and show welcome
         chat_page = self.pages.get("Chat / Console")
@@ -1042,6 +1192,7 @@ class DesktopControlApp:
     def _lock_ui(self, message: str):
         """Lock the UI and show lock message."""
         self.is_unlocked = False
+        self.root_stack.setCurrentWidget(self.lock_screen)
         self.lock_status.setText("Locked")
         self.lock_status.setStyleSheet("background-color: #ffebe9; color: #9f1239; padding: 6px 10px; border-radius: 4px;")
         self.unlock_button.setEnabled(True)
@@ -1058,8 +1209,8 @@ class DesktopControlApp:
             chat_page.chat_display.clear()
             chat_page.chat_display.setPlainText("Mashbak is locked.\nEnter your PIN to unlock the control board.")
             chat_page.details_text.setPlainText(message)
-        
-        self.pin_input.setFocus()
+
+        self.lock_pin_input.setFocus()
     
     def _set_interaction_enabled(self, enabled: bool):
         """Enable/disable interactive controls."""
@@ -1652,6 +1803,159 @@ class DesktopControlApp:
             return
         selected = self.activity_rows[row]
         page.activity_detail.setPlainText(json.dumps(selected, indent=2, ensure_ascii=True))
+
+    def refresh_personal_context(self):
+        """Load personal context data from backend."""
+        if not self.is_unlocked:
+            return
+        page = self.pages.get("Personal Context")
+        if not page:
+            return
+        payload = self.client.get_personal_context()
+        if not isinstance(payload, dict):
+            return
+        page.profile_text.setPlainText(json.dumps(payload.get("profile") or {}, indent=2, ensure_ascii=True))
+        page.people_text.setPlainText(json.dumps(payload.get("people") or [], indent=2, ensure_ascii=True))
+        page.routines_text.setPlainText(json.dumps(payload.get("routines") or [], indent=2, ensure_ascii=True))
+        page.projects_text.setPlainText(json.dumps(payload.get("projects") or [], indent=2, ensure_ascii=True))
+        page.preferences_text.setPlainText(json.dumps(payload.get("preferences") or {}, indent=2, ensure_ascii=True))
+        page.status_label.setText("Loaded personal context.")
+        page.status_label.setStyleSheet(f"color: {_GREEN};")
+
+    def save_personal_context(self):
+        """Save personal context from editor widgets."""
+        page = self.pages.get("Personal Context")
+        if not page:
+            return
+        try:
+            payload = {
+                "profile": json.loads(page.profile_text.toPlainText() or "{}"),
+                "people": json.loads(page.people_text.toPlainText() or "[]"),
+                "routines": json.loads(page.routines_text.toPlainText() or "[]"),
+                "projects": json.loads(page.projects_text.toPlainText() or "[]"),
+                "preferences": json.loads(page.preferences_text.toPlainText() or "{}"),
+            }
+        except json.JSONDecodeError as exc:
+            page.status_label.setText(f"Invalid JSON: {exc}")
+            page.status_label.setStyleSheet(f"color: {_RED};")
+            return
+        result = self.client.save_personal_context(payload)
+        page.status_label.setText("Personal context saved." if isinstance(result, dict) else "Save failed")
+        page.status_label.setStyleSheet(f"color: {_GREEN if isinstance(result, dict) else _RED};")
+
+    def refresh_tools_permissions(self):
+        """Refresh tools permissions, pending approvals, and recent tasks."""
+        if not self.is_unlocked:
+            return
+        page = self.pages.get("Tools & Permissions")
+        if not page:
+            return
+
+        payload = self.client.get_tools_permissions()
+        tools = (payload or {}).get("tools") or {}
+        self.tool_permission_rows = list(sorted(tools.items(), key=lambda item: item[0]))
+        page.tools_table.setRowCount(0)
+        for idx, (name, cfg) in enumerate(self.tool_permission_rows):
+            page.tools_table.insertRow(idx)
+            values = [
+                name,
+                str(bool(cfg.get("enabled", True))),
+                ",".join(cfg.get("allowed_sources") or []),
+                str(bool(cfg.get("requires_approval", False))),
+                str(bool(cfg.get("requires_unlocked_desktop", False))),
+                str(cfg.get("scope") or "default"),
+            ]
+            for col, value in enumerate(values):
+                page.tools_table.setItem(idx, col, QTableWidgetItem(value))
+
+        approvals = self.client.get_approvals(limit=80, status="pending")
+        self.approval_rows = list((approvals or {}).get("approvals") or [])
+        page.approvals_table.setRowCount(0)
+        for idx, row in enumerate(self.approval_rows):
+            page.approvals_table.insertRow(idx)
+            values = [
+                str(row.get("approval_id") or ""),
+                str(row.get("tool_name") or ""),
+                str(row.get("source") or ""),
+                str(row.get("sender") or ""),
+                str(row.get("status") or ""),
+            ]
+            for col, value in enumerate(values):
+                page.approvals_table.setItem(idx, col, QTableWidgetItem(value))
+
+        tasks = self.client.get_tasks(limit=80)
+        task_rows = list((tasks or {}).get("tasks") or [])
+        page.tasks_table.setRowCount(0)
+        for idx, row in enumerate(task_rows):
+            page.tasks_table.insertRow(idx)
+            values = [
+                str(row.get("task_id") or ""),
+                self._condense_detail(str(row.get("title") or ""), 70),
+                str(row.get("status") or ""),
+                str(row.get("updated_at") or ""),
+            ]
+            for col, value in enumerate(values):
+                page.tasks_table.setItem(idx, col, QTableWidgetItem(value))
+
+    def on_tool_permission_selected(self):
+        page = self.pages.get("Tools & Permissions")
+        if not page:
+            return
+        idx = page.tools_table.currentRow()
+        if idx < 0 or idx >= len(self.tool_permission_rows):
+            return
+        name, cfg = self.tool_permission_rows[idx]
+        self.selected_tool_name = name
+        page.tool_enabled.setChecked(bool(cfg.get("enabled", True)))
+        page.tool_requires_approval.setChecked(bool(cfg.get("requires_approval", False)))
+        page.tool_requires_unlock.setChecked(bool(cfg.get("requires_unlocked_desktop", False)))
+        page.tool_sources.setText(",".join(cfg.get("allowed_sources") or []))
+        page.result_text.setPlainText(json.dumps({"tool": name, "settings": cfg}, indent=2, ensure_ascii=True))
+
+    def save_selected_tool_permission(self):
+        page = self.pages.get("Tools & Permissions")
+        if not page or not self.selected_tool_name:
+            return
+        sources = [value.strip() for value in page.tool_sources.text().split(",") if value.strip()]
+        result = self.client.update_tool_permission(
+            self.selected_tool_name,
+            {
+                "enabled": bool(page.tool_enabled.isChecked()),
+                "requires_approval": bool(page.tool_requires_approval.isChecked()),
+                "requires_unlocked_desktop": bool(page.tool_requires_unlock.isChecked()),
+                "allowed_sources": sources,
+            },
+        )
+        page.result_text.setPlainText(json.dumps(result, indent=2, ensure_ascii=True))
+        self.refresh_tools_permissions()
+
+    def on_approval_selected(self):
+        page = self.pages.get("Tools & Permissions")
+        if not page:
+            return
+        idx = page.approvals_table.currentRow()
+        if idx < 0 or idx >= len(self.approval_rows):
+            return
+        row = self.approval_rows[idx]
+        self.selected_approval_id = str(row.get("approval_id") or "")
+        page.result_text.setPlainText(json.dumps(row, indent=2, ensure_ascii=True))
+
+    def approve_selected_action(self):
+        page = self.pages.get("Tools & Permissions")
+        if not page or not self.selected_approval_id:
+            return
+        result = self.client.approve_and_run(self.selected_approval_id)
+        page.result_text.setPlainText(json.dumps(result, indent=2, ensure_ascii=True))
+        self.refresh_tools_permissions()
+        self.refresh_activity_audit()
+
+    def reject_selected_action(self):
+        page = self.pages.get("Tools & Permissions")
+        if not page or not self.selected_approval_id:
+            return
+        result = self.client.reject_approval(self.selected_approval_id)
+        page.result_text.setPlainText(json.dumps(result, indent=2, ensure_ascii=True))
+        self.refresh_tools_permissions()
     
     def refresh_logs(self):
         """Refresh logs display."""

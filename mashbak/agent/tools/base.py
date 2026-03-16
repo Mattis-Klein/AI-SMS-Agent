@@ -43,10 +43,23 @@ class ComparisonContext:
 class Tool(ABC):
     """Base class for all tools"""
     
-    def __init__(self, name: str, description: str, requires_args: bool = False):
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        requires_args: bool = False,
+        category: str = "general",
+        input_schema: Optional[Dict[str, Any]] = None,
+        output_schema: Optional[Dict[str, Any]] = None,
+        safety: Optional[Dict[str, Any]] = None,
+    ):
         self.name = name
         self.description = description
         self.requires_args = requires_args
+        self.category = category
+        self.input_schema = input_schema or {}
+        self.output_schema = output_schema or {}
+        self.safety = safety or {}
     
     @abstractmethod
     def validate_args(self, args: Dict[str, Any]) -> tuple[bool, str]:
@@ -74,4 +87,8 @@ class Tool(ABC):
             "name": self.name,
             "description": self.description,
             "requires_args": self.requires_args,
+            "category": self.category,
+            "input_schema": self.input_schema,
+            "output_schema": self.output_schema,
+            "safety": self.safety,
         }
