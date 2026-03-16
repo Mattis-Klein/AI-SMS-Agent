@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from urllib.parse import urlencode
 from typing import Optional
 
 from fastapi import APIRouter, Form, Request, Response
@@ -70,7 +71,7 @@ def create_voice_router(runtime) -> APIRouter:
             voice="alice",
             language="en-US",
         )
-        _append_speech_gather(twiml, action_url=str(request.url_for("process_voice_webhook")))
+        _append_speech_gather(twiml, action_url=str(request.url_for("process_voice_webhook")), attempt=0)
         twiml.say("I did not catch that. Please say your request again.", voice="alice", language="en-US")
         twiml.redirect(str(request.url_for("voice_webhook")), method="POST")
         return Response(content=str(twiml), media_type="application/xml")
@@ -101,6 +102,9 @@ def create_voice_router(runtime) -> APIRouter:
 
         spoken_text = (speech_result or "").strip()
         confidence_val = _parse_confidence(confidence)
+        attempt = _parse_attempt(request.query_params.get("attempt"))
+        min_confidence = _voice_min_confidence()
+        max_reprompts = _voice_max_reprompts()
 
         runtime.logger.log(
             request_id=request_id,
@@ -111,21 +115,46 @@ def create_voice_router(runtime) -> APIRouter:
             to_number=to_number or None,
             speech_result=spoken_text,
             speech_confidence=confidence_val,
+            reprompt_attempt=attempt,
         )
 
         twiml = VoiceResponse()
         process_url = str(request.url_for("process_voice_webhook"))
 
-        if not spoken_text:
-            twiml.say("I did not hear anything. Please say your request again.", voice="alice", language="en-US")
-            _append_speech_gather(twiml, action_url=process_url)
-            twiml.redirect(process_url, method="POST")
+        if _is_end_call_command(spoken_text):
+            twiml.say("Goodbye.", voice="alice", language="en-US")
+            twiml.hangup()
             return Response(content=str(twiml), media_type="application/xml")
 
-        if confidence_val is not None and confidence_val < 0.35:
+        if attempt >= max_reprompts and not spoken_text:
+            twiml.say(
+                "I still could not hear a request. Please send a text message if that is easier. Goodbye.",
+                voice="alice",
+                language="en-US",
+            )
+            twiml.hangup()
+            return Response(content=str(twiml), media_type="application/xml")
+
+        if not spoken_text:
+            twiml.say("I did not hear anything. Please say your request again.", voice="alice", language="en-US")
+            next_attempt = min(attempt + 1, max_reprompts)
+            _append_speech_gather(twiml, action_url=process_url, attempt=next_attempt)
+            twiml.redirect(_voice_process_action(process_url, next_attempt), method="POST")
+            return Response(content=str(twiml), media_type="application/xml")
+
+        if confidence_val is not None and confidence_val < min_confidence:
+            if attempt >= max_reprompts:
+                twiml.say(
+                    "I am still having trouble understanding clearly. Please send a text message so I can help. Goodbye.",
+                    voice="alice",
+                    language="en-US",
+                )
+                twiml.hangup()
+                return Response(content=str(twiml), media_type="application/xml")
             twiml.say("I am not fully sure what you said. Please repeat that clearly.", voice="alice", language="en-US")
-            _append_speech_gather(twiml, action_url=process_url)
-            twiml.redirect(process_url, method="POST")
+            next_attempt = min(attempt + 1, max_reprompts)
+            _append_speech_gather(twiml, action_url=process_url, attempt=next_attempt)
+            twiml.redirect(_voice_process_action(process_url, next_attempt), method="POST")
             return Response(content=str(twiml), media_type="application/xml")
 
         sender_identity = f"call:{call_sid or from_number or 'unknown'}"
@@ -154,9 +183,9 @@ def create_voice_router(runtime) -> APIRouter:
             )
 
             twiml.say(assistant_text, voice="alice", language="en-US")
-            _append_speech_gather(twiml, action_url=process_url)
+            _append_speech_gather(twiml, action_url=process_url, attempt=0)
             twiml.say("What would you like to do next?", voice="alice", language="en-US")
-            twiml.redirect(process_url, method="POST")
+            twiml.redirect(_voice_process_action(process_url, 0), method="POST")
             return Response(content=str(twiml), media_type="application/xml")
         except Exception as exc:
             runtime.logger.log_error(
@@ -168,17 +197,17 @@ def create_voice_router(runtime) -> APIRouter:
                 from_number=from_number or None,
             )
             twiml.say("Sorry, I hit an error. Please try that again.", voice="alice", language="en-US")
-            _append_speech_gather(twiml, action_url=process_url)
-            twiml.redirect(process_url, method="POST")
+            _append_speech_gather(twiml, action_url=process_url, attempt=0)
+            twiml.redirect(_voice_process_action(process_url, 0), method="POST")
             return Response(content=str(twiml), media_type="application/xml")
 
     return router
 
 
-def _append_speech_gather(response: VoiceResponse, action_url: str) -> Gather:
+def _append_speech_gather(response: VoiceResponse, action_url: str, attempt: int = 0) -> Gather:
     gather = Gather(
         input="speech",
-        action=action_url,
+        action=_voice_process_action(action_url, attempt),
         method="POST",
         language="en-US",
         speech_timeout="auto",
@@ -198,7 +227,64 @@ def _parse_confidence(value: str) -> Optional[float]:
         return None
 
 
-def _to_voice_text(value: str, max_chars: int = 420) -> str:
+def _parse_attempt(value: Optional[str]) -> int:
+    try:
+        parsed = int(str(value or "0").strip())
+    except ValueError:
+        return 0
+    return max(0, parsed)
+
+
+def _voice_process_action(action_url: str, attempt: int) -> str:
+    query = urlencode({"attempt": max(0, int(attempt))})
+    return f"{action_url}?{query}"
+
+
+def _voice_min_confidence() -> float:
+    raw = (ConfigLoader.get("VOICE_MIN_CONFIDENCE", "0.35") or "0.35").strip()
+    try:
+        parsed = float(raw)
+    except ValueError:
+        return 0.35
+    return max(0.0, min(1.0, parsed))
+
+
+def _voice_max_reprompts() -> int:
+    raw = (ConfigLoader.get("VOICE_MAX_REPROMPTS", "2") or "2").strip()
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return 2
+    return max(0, min(5, parsed))
+
+
+def _voice_max_reply_chars() -> int:
+    raw = (ConfigLoader.get("VOICE_MAX_REPLY_CHARS", "320") or "320").strip()
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return 320
+    return max(120, min(1200, parsed))
+
+
+def _is_end_call_command(spoken_text: str) -> bool:
+    normalized = " ".join(str(spoken_text or "").lower().split())
+    if not normalized:
+        return False
+    return normalized in {
+        "goodbye",
+        "bye",
+        "hang up",
+        "stop",
+        "nothing else",
+        "that is all",
+        "that's all",
+        "end call",
+    }
+
+
+def _to_voice_text(value: str) -> str:
+    max_chars = _voice_max_reply_chars()
     compact = " ".join(str(value or "").split())
     if len(compact) <= max_chars:
         return compact

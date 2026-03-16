@@ -156,6 +156,52 @@ def test_process_voice_runs_runtime_and_continues_loop(monkeypatch):
     assert "<Gather" in xml
 
 
+def test_process_voice_low_confidence_reprompts_without_runtime(monkeypatch):
+    _with_no_twilio_token(monkeypatch)
+    runtime = _FakeRuntime()
+    client = _build_client(runtime)
+
+    response = client.post(
+        "/process_voice?attempt=0",
+        data={
+            "CallSid": "CAlow",
+            "From": "+15551230000",
+            "To": "+15550009999",
+            "SpeechResult": "open my inbox",
+            "Confidence": "0.10",
+        },
+    )
+
+    assert response.status_code == 200
+    xml = response.text
+    assert "not fully sure" in xml.lower()
+    assert "<Gather" in xml
+    assert not runtime.calls
+
+
+def test_process_voice_end_call_command_hangs_up(monkeypatch):
+    _with_no_twilio_token(monkeypatch)
+    runtime = _FakeRuntime()
+    client = _build_client(runtime)
+
+    response = client.post(
+        "/process_voice",
+        data={
+            "CallSid": "CAbye",
+            "From": "+15551230000",
+            "To": "+15550009999",
+            "SpeechResult": "goodbye",
+            "Confidence": "0.99",
+        },
+    )
+
+    assert response.status_code == 200
+    xml = response.text
+    assert "Goodbye." in xml
+    assert "<Hangup" in xml
+    assert not runtime.calls
+
+
 def test_process_voice_runtime_error_recovers(monkeypatch):
     _with_no_twilio_token(monkeypatch)
     runtime = _FakeRuntime()
