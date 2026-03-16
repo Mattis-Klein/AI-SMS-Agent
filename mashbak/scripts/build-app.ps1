@@ -42,7 +42,6 @@ try {
                 "--hidden-import" "email.policy" `
                 "--hidden-import" "email.parser" `
                 "--add-data" "agent/config.json;agent" `
-                "--add-data" "agent/.env.example;agent" `
                 "--add-data" "data/workspace/inbox/.gitkeep;data/workspace/inbox" `
                 "--add-data" "data/workspace/outbox/.gitkeep;data/workspace/outbox" `
                 "--add-data" "data/workspace/logs/.gitkeep;data/workspace/logs" `
@@ -64,7 +63,6 @@ try {
                 "--hidden-import" "email.policy" `
                 "--hidden-import" "email.parser" `
                 "--add-data" "agent/config.json;agent" `
-                "--add-data" "agent/.env.example;agent" `
                 "--add-data" "data/workspace/inbox/.gitkeep;data/workspace/inbox" `
                 "--add-data" "data/workspace/outbox/.gitkeep;data/workspace/outbox" `
                 "--add-data" "data/workspace/logs/.gitkeep;data/workspace/logs" `
