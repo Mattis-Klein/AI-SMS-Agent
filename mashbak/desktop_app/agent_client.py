@@ -2,6 +2,7 @@
 
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -29,8 +30,27 @@ class AgentClient:
     def get_overview(self) -> dict:
         return self._request("GET", "/control-board/overview", include_auth=True)
 
-    def get_activity(self, limit: int = 100) -> dict:
-        return self._request("GET", f"/control-board/activity?limit={int(limit)}", include_auth=True)
+    def get_activity(
+        self,
+        limit: int = 100,
+        event_types: str = "",
+        sources: str = "",
+        tool_name: str = "",
+        state: str = "",
+        query: str = "",
+    ) -> dict:
+        params = [f"limit={int(limit)}"]
+        if event_types:
+            params.append(f"event_types={urllib.parse.quote(str(event_types))}")
+        if sources:
+            params.append(f"sources={urllib.parse.quote(str(sources))}")
+        if tool_name:
+            params.append(f"tool_name={urllib.parse.quote(str(tool_name))}")
+        if state:
+            params.append(f"state={urllib.parse.quote(str(state))}")
+        if query:
+            params.append(f"query={urllib.parse.quote(str(query))}")
+        return self._request("GET", "/control-board/activity?" + "&".join(params), include_auth=True)
 
     def get_assistants(self) -> dict:
         return self._request("GET", "/control-board/assistants", include_auth=True)

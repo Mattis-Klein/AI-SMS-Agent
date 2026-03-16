@@ -51,26 +51,122 @@ class ControlBoardService:
         rows = self._read_jsonl(self._agent_log_path(), limit=limit)
         return [row for row in rows if isinstance(row, dict)]
 
+    @staticmethod
+    def _csv_values(raw: str | None) -> set[str]:
+        text = str(raw or "").strip()
+        if not text:
+            return set()
+        return {part.strip().lower() for part in text.split(",") if part.strip()}
+
+    @staticmethod
+    def _to_text(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        try:
+            return json.dumps(value, ensure_ascii=True)
+        except Exception:
+            return str(value)
+
+    def _event_to_activity(self, ev: dict[str, Any]) -> dict[str, Any] | None:
+        event_type = str(ev.get("event_type") or "").strip()
+        if not event_type:
+            return None
+
+        args = ev.get("arguments") if isinstance(ev.get("arguments"), dict) else {}
+        source = str(ev.get("source") or ev.get("sender") or "backend")
+        tool_name = str(ev.get("tool_name") or ev.get("selected_tool") or "")
+        action = ""
+        state = "info"
+        details = ""
+
+        if event_type == "tool_execution":
+            action = str(ev.get("interpreted_intent") or tool_name or "tool execution")
+            if ev.get("success"):
+                state = "success"
+                details = str(ev.get("output") or "")
+            else:
+                err = str(ev.get("error") or "")
+                state = "blocked" if "allowed" in err.lower() else "failure"
+                details = err
+        elif event_type == "request":
+            action = str(ev.get("interpreted_intent") or "request")
+            tool_name = tool_name or str(ev.get("selected_tool") or "")
+            details = str(ev.get("raw_message") or "")
+            state = "received"
+        elif event_type == "response":
+            action = "response"
+            state = str(ev.get("status") or "completed").lower()
+            details = str(ev.get("response_message") or "")
+        elif event_type == "error":
+            action = str(ev.get("error_type") or "error")
+            state = "failure"
+            details = str(ev.get("error_message") or "")
+        elif event_type == "voice_inbound_call":
+            action = "voice call received"
+            state = "received"
+            details = str(ev.get("from_number") or "")
+            source = "voice"
+        elif event_type == "voice_access_denied":
+            action = "voice access denied"
+            state = "blocked"
+            details = str(ev.get("from_number") or "")
+            source = "voice"
+        elif event_type == "voice_speech_received":
+            action = "voice speech"
+            state = "received"
+            details = str(ev.get("speech_result") or "")
+            source = "voice"
+        elif event_type == "voice_assistant_reply":
+            action = "voice assistant reply"
+            state = "success"
+            details = str(ev.get("reply_text") or "")
+            source = "voice"
+        else:
+            action = event_type.replace("_", " ")
+            details = self._to_text(ev)
+
+        target = args.get("path") or args.get("parent_path") or args.get("target") or ""
+        searchable = " ".join(
+            [
+                self._to_text(ev.get("request_id")),
+                self._to_text(action),
+                self._to_text(tool_name),
+                self._to_text(source),
+                self._to_text(state),
+                self._to_text(target),
+                self._to_text(details),
+            ]
+        ).lower()
+
+        return {
+            "timestamp": ev.get("time"),
+            "event_type": event_type,
+            "assistant": ev.get("sender") or source,
+            "requested_action": action,
+            "selected_tool": tool_name,
+            "result": "success" if state == "success" else ("failure" if state == "failure" else state),
+            "state": state,
+            "target": self._to_text(target),
+            "details": details,
+            "source": source,
+            "request_id": ev.get("request_id"),
+            "searchable": searchable,
+            "raw_event": ev,
+        }
+
     def recent_tool_actions(self, limit: int = 25) -> list[dict[str, Any]]:
         events = self._tail_events(limit=400)
         actions: list[dict[str, Any]] = []
         for ev in reversed(events):
             if ev.get("event_type") != "tool_execution":
                 continue
-            arguments = ev.get("arguments") if isinstance(ev.get("arguments"), dict) else {}
-            actions.append(
-                {
-                    "timestamp": ev.get("time"),
-                    "assistant": ev.get("sender") or ev.get("source") or "desktop",
-                    "requested_action": ev.get("interpreted_intent") or ev.get("tool_name"),
-                    "selected_tool": ev.get("tool_name"),
-                    "result": "success" if ev.get("success") else "failure",
-                    "state": "blocked" if "allowed" in str(ev.get("error") or "").lower() else ("success" if ev.get("success") else "failure"),
-                    "target": arguments.get("path") or arguments.get("parent_path"),
-                    "details": ev.get("error") or ev.get("output"),
-                    "source": ev.get("source") or "desktop",
-                }
-            )
+            item = self._event_to_activity(ev)
+            if item:
+                item.pop("searchable", None)
+                item.pop("raw_event", None)
+                actions.append(item)
             if len(actions) >= limit:
                 break
         return actions
@@ -130,9 +226,54 @@ class ControlBoardService:
             "recent_actions": self.recent_tool_actions(limit=12),
         }
 
-    def activity(self, limit: int = 100) -> dict[str, Any]:
+    def activity(
+        self,
+        limit: int = 100,
+        event_types: str = "",
+        sources: str = "",
+        tool_name: str = "",
+        state: str = "",
+        query: str = "",
+    ) -> dict[str, Any]:
         cap = max(10, min(int(limit or 100), 500))
-        return {"items": self.recent_tool_actions(limit=cap), "count": cap}
+        event_filter = self._csv_values(event_types)
+        source_filter = self._csv_values(sources)
+        tool_filter = str(tool_name or "").strip().lower()
+        state_filter = str(state or "").strip().lower()
+        query_filter = str(query or "").strip().lower()
+
+        items: list[dict[str, Any]] = []
+        for ev in reversed(self._tail_events(limit=1000)):
+            item = self._event_to_activity(ev)
+            if not item:
+                continue
+            if event_filter and str(item.get("event_type") or "").lower() not in event_filter:
+                continue
+            if source_filter and str(item.get("source") or "").lower() not in source_filter:
+                continue
+            if tool_filter and tool_filter not in str(item.get("selected_tool") or "").lower():
+                continue
+            if state_filter and state_filter != str(item.get("state") or "").lower():
+                continue
+            if query_filter and query_filter not in str(item.get("searchable") or ""):
+                continue
+
+            item.pop("searchable", None)
+            if len(items) < cap:
+                items.append(item)
+
+        return {
+            "items": items,
+            "count": len(items),
+            "limit": cap,
+            "filters": {
+                "event_types": sorted(event_filter),
+                "sources": sorted(source_filter),
+                "tool_name": tool_filter,
+                "state": state_filter,
+                "query": query_filter,
+            },
+        }
 
     def email_accounts_summary(self) -> dict[str, Any]:
         return self.email_accounts.list_public_accounts()

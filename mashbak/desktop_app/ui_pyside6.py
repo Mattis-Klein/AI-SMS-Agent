@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QCheckBox,
+    QComboBox,
     QSpinBox,
     QTabWidget,
     QScrollArea,
@@ -423,6 +424,7 @@ class AssistantsPage(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
         
         header_layout = QHBoxLayout()
         header_layout.addWidget(create_label("Assistants", 12, bold=True))
@@ -430,10 +432,37 @@ class AssistantsPage(QWidget):
         header_layout.addWidget(create_button("Refresh", self.app.refresh_assistants, style="subtle"))
         layout.addLayout(header_layout)
         
-        self.assistants_text = QPlainTextEdit()
-        self.assistants_text.setReadOnly(True)
-        self.assistants_text.setStyleSheet("background-color: white; border: none; font-family: monospace;")
-        layout.addWidget(self.assistants_text)
+        split = QHBoxLayout()
+
+        left = QVBoxLayout()
+        left.addWidget(create_label("Mashbak Runtime", 10, bold=True))
+        self.mashbak_table = QTableWidget()
+        self.mashbak_table.setColumnCount(2)
+        self.mashbak_table.setHorizontalHeaderLabels(["Setting", "Value"])
+        self.mashbak_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.mashbak_table.verticalHeader().setVisible(False)
+        left.addWidget(self.mashbak_table)
+
+        left.addWidget(create_label("Bucherim Summary", 10, bold=True))
+        self.bucherim_counts_table = QTableWidget()
+        self.bucherim_counts_table.setColumnCount(2)
+        self.bucherim_counts_table.setHorizontalHeaderLabels(["Field", "Value"])
+        self.bucherim_counts_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.bucherim_counts_table.verticalHeader().setVisible(False)
+        left.addWidget(self.bucherim_counts_table)
+
+        right = QVBoxLayout()
+        right.addWidget(create_label("Bucherim Response Templates", 10, bold=True))
+        self.responses_table = QTableWidget()
+        self.responses_table.setColumnCount(2)
+        self.responses_table.setHorizontalHeaderLabels(["Template", "Text"])
+        self.responses_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.responses_table.verticalHeader().setVisible(False)
+        right.addWidget(self.responses_table)
+
+        split.addLayout(left, 1)
+        split.addLayout(right, 1)
+        layout.addLayout(split, 1)
 
 
 class CommunicationsPage(QWidget):
@@ -544,9 +573,36 @@ class CommunicationsPage(QWidget):
         routing_actions.addWidget(create_button("Block", self.app.block_routing_member, style="subtle"))
         routing_layout.addLayout(routing_actions)
 
+        detail_layout = QHBoxLayout()
+        detail_left = QVBoxLayout()
+        detail_left.addWidget(create_label("Selected Member", 10, bold=True))
+        self.routing_member_table = QTableWidget()
+        self.routing_member_table.setColumnCount(2)
+        self.routing_member_table.setHorizontalHeaderLabels(["Field", "Value"])
+        self.routing_member_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.routing_member_table.verticalHeader().setVisible(False)
+        detail_left.addWidget(self.routing_member_table)
+
+        detail_right = QVBoxLayout()
+        detail_right.addWidget(create_label("Recent Message History", 10, bold=True))
+        self.routing_history_table = QTableWidget()
+        self.routing_history_table.setColumnCount(4)
+        self.routing_history_table.setHorizontalHeaderLabels(["Time", "Direction", "State", "Preview"])
+        self.routing_history_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.routing_history_table.verticalHeader().setVisible(False)
+        detail_right.addWidget(self.routing_history_table)
+
+        detail_layout.addLayout(detail_left, 1)
+        detail_layout.addLayout(detail_right, 2)
+        routing_layout.addLayout(detail_layout)
+
         self.routing_result = QPlainTextEdit()
         self.routing_result.setReadOnly(True)
         routing_layout.addWidget(self.routing_result)
+
+        self.approved_widget.itemSelectionChanged.connect(self.app.on_routing_selection_changed)
+        self.blocked_widget.itemSelectionChanged.connect(self.app.on_routing_selection_changed)
+        self.pending_widget.itemSelectionChanged.connect(self.app.on_routing_selection_changed)
         
         tabs.addTab(routing_widget, "SMS / Routing")
         layout.addWidget(tabs)
@@ -573,13 +629,21 @@ class FilesPermissionsPage(QWidget):
         # Two columns
         content_layout = QHBoxLayout()
         
+        allowed_column = QVBoxLayout()
+        allowed_column.addWidget(create_label("Allowed Directories", 10, bold=True))
         self.allowed_list = QListWidget()
-        content_layout.addWidget(self.allowed_list, 1)
-        
-        self.blocked_text = QPlainTextEdit()
-        self.blocked_text.setReadOnly(True)
-        self.blocked_text.setStyleSheet("background-color: white; border: none; font-family: monospace;")
-        content_layout.addWidget(self.blocked_text, 1)
+        allowed_column.addWidget(self.allowed_list)
+        content_layout.addLayout(allowed_column, 1)
+
+        blocked_column = QVBoxLayout()
+        blocked_column.addWidget(create_label("Blocked Attempts", 10, bold=True))
+        self.blocked_table = QTableWidget()
+        self.blocked_table.setColumnCount(3)
+        self.blocked_table.setHorizontalHeaderLabels(["Timestamp", "Tool", "Path"])
+        self.blocked_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.blocked_table.verticalHeader().setVisible(False)
+        blocked_column.addWidget(self.blocked_table)
+        content_layout.addLayout(blocked_column, 2)
         
         layout.addLayout(content_layout)
         
@@ -591,6 +655,15 @@ class FilesPermissionsPage(QWidget):
         controls_layout.addWidget(create_button("Add", self.app.add_allowed_directory, style="subtle"))
         controls_layout.addWidget(create_button("Remove Selected", self.app.remove_selected_directory, style="subtle"))
         layout.addLayout(controls_layout)
+
+        test_layout = QHBoxLayout()
+        self.path_test_input = QLineEdit()
+        self.path_test_input.setPlaceholderText("Path to validate against file policy")
+        test_layout.addWidget(self.path_test_input, 1)
+        test_layout.addWidget(create_button("Test Path", self.app.test_policy_path, style="subtle"))
+        layout.addLayout(test_layout)
+        self.path_test_result = create_label("", 9, color=_SLATE)
+        layout.addWidget(self.path_test_result)
 
 
 class ProjectsFilesPage(QWidget):
@@ -611,10 +684,25 @@ class ProjectsFilesPage(QWidget):
         header_layout.addWidget(create_button("Refresh", self.app.refresh_projects, style="subtle"))
         layout.addLayout(header_layout)
         
-        self.projects_text = QPlainTextEdit()
-        self.projects_text.setReadOnly(True)
-        self.projects_text.setStyleSheet("background-color: white; border: none; font-family: monospace;")
-        layout.addWidget(self.projects_text)
+        filter_layout = QHBoxLayout()
+        self.projects_query = QLineEdit()
+        self.projects_query.setPlaceholderText("Filter by file name, path, or action")
+        filter_layout.addWidget(self.projects_query, 1)
+        filter_layout.addWidget(create_button("Apply Filter", self.app.refresh_projects, style="subtle"))
+        layout.addLayout(filter_layout)
+
+        self.projects_table = QTableWidget()
+        self.projects_table.setColumnCount(6)
+        self.projects_table.setHorizontalHeaderLabels(["Timestamp", "Action", "Tool", "State", "Target", "Source"])
+        self.projects_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.projects_table.verticalHeader().setVisible(False)
+        self.projects_table.itemSelectionChanged.connect(self.app.on_project_row_selected)
+        layout.addWidget(self.projects_table)
+
+        self.projects_detail = QPlainTextEdit()
+        self.projects_detail.setReadOnly(True)
+        self.projects_detail.setStyleSheet("background-color: white; border: none; font-family: Consolas;")
+        layout.addWidget(self.projects_detail, 0)
 
 
 class ActivityAuditPage(QWidget):
@@ -634,11 +722,30 @@ class ActivityAuditPage(QWidget):
         header_layout.addStretch()
         header_layout.addWidget(create_button("Refresh", self.app.refresh_activity_audit, style="subtle"))
         layout.addLayout(header_layout)
+
+        filter_layout = QHBoxLayout()
+        self.activity_source = QComboBox()
+        self.activity_source.addItems(["all", "desktop", "voice", "backend"])
+        self.activity_state = QComboBox()
+        self.activity_state.addItems(["all", "received", "success", "failure", "blocked", "completed"])
+        self.activity_tool = QLineEdit()
+        self.activity_tool.setPlaceholderText("Tool filter")
+        self.activity_query = QLineEdit()
+        self.activity_query.setPlaceholderText("Search text")
+        filter_layout.addWidget(create_label("Source"))
+        filter_layout.addWidget(self.activity_source)
+        filter_layout.addWidget(create_label("State"))
+        filter_layout.addWidget(self.activity_state)
+        filter_layout.addWidget(self.activity_tool, 1)
+        filter_layout.addWidget(self.activity_query, 2)
+        filter_layout.addWidget(create_button("Apply", self.app.refresh_activity_audit, style="subtle"))
+        layout.addLayout(filter_layout)
         
         self.activity_table = QTableWidget()
-        self.activity_table.setColumnCount(6)
-        self.activity_table.setHorizontalHeaderLabels(["Timestamp", "Assistant", "Action", "Tool", "State", "Target"])
+        self.activity_table.setColumnCount(8)
+        self.activity_table.setHorizontalHeaderLabels(["Timestamp", "Event", "Assistant", "Action", "Tool", "State", "Target", "Source"])
         self.activity_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.activity_table.itemSelectionChanged.connect(self.app.on_activity_row_selected)
         layout.addWidget(self.activity_table)
         
         self.activity_detail = QPlainTextEdit()
@@ -667,6 +774,8 @@ class DesktopControlApp:
         self.lock_sensitive_buttons: list = []
         self.last_response_text = ""
         self.last_trace_payload: dict = {}
+        self.activity_rows: list[dict[str, Any]] = []
+        self.project_rows: list[dict[str, Any]] = []
         
         workspace = Path(runtime_summary.get("workspace") or "")
         platform_root = workspace.parent.parent if workspace else Path.cwd()
@@ -1058,12 +1167,6 @@ class DesktopControlApp:
         elif verification_state.lower() == "unverified":
             verify_color = _RED
         
-        # Add visual indicator for web-based answers
-        verify_text = f"Verification: {verification_state}"
-        if verification_state.lower() == "web-verified":
-            verify_text += " 🌐"
-        chat_page.verification_label.setText(verify_text)
-        chat_page.verification_label.setStyleSheet(f"color: {verify_color};")
         chat_page.verification_label.setText(f"Verification: {verification_state}")
         chat_page.verification_label.setStyleSheet(f"color: {verify_color};")
         
@@ -1259,20 +1362,39 @@ class DesktopControlApp:
         
         mashbak = payload.get("mashbak") or {}
         bucherim = payload.get("bucherim") or {}
-        
-        lines = [
-            "Mashbak",
-            f"  AI enabled: {mashbak.get('ai_enabled')}",
-            f"  Model: {mashbak.get('model')}",
-            f"  Base URL: {mashbak.get('base_url')}",
-            "",
-            "Bucherim",
-            f"  Assistant number: {bucherim.get('assistant_number')}",
-            f"  Approved: {(bucherim.get('counts') or {}).get('approved', 0)}",
-            f"  Pending: {(bucherim.get('counts') or {}).get('pending', 0)}",
-            f"  Blocked: {(bucherim.get('counts') or {}).get('blocked', 0)}",
+
+        mashbak_rows = [
+            ("AI enabled", str(bool(mashbak.get("ai_enabled")))),
+            ("Model", str(mashbak.get("model") or "-")),
+            ("Base URL", str(mashbak.get("base_url") or "-")),
+            ("Temperature", str(mashbak.get("temperature") or "-")),
+            ("Max tokens", str(mashbak.get("max_tokens") or "-")),
         ]
-        page.assistants_text.setPlainText("\n".join(lines))
+        page.mashbak_table.setRowCount(0)
+        for idx, (key, value) in enumerate(mashbak_rows):
+            page.mashbak_table.insertRow(idx)
+            page.mashbak_table.setItem(idx, 0, QTableWidgetItem(key))
+            page.mashbak_table.setItem(idx, 1, QTableWidgetItem(value))
+
+        counts = bucherim.get("counts") or {}
+        bucherim_rows = [
+            ("Assistant number", str(bucherim.get("assistant_number") or "-")),
+            ("Approved", str(counts.get("approved", 0))),
+            ("Pending", str(counts.get("pending", 0))),
+            ("Blocked", str(counts.get("blocked", 0))),
+        ]
+        page.bucherim_counts_table.setRowCount(0)
+        for idx, (key, value) in enumerate(bucherim_rows):
+            page.bucherim_counts_table.insertRow(idx)
+            page.bucherim_counts_table.setItem(idx, 0, QTableWidgetItem(key))
+            page.bucherim_counts_table.setItem(idx, 1, QTableWidgetItem(value))
+
+        responses = bucherim.get("responses") or {}
+        page.responses_table.setRowCount(0)
+        for idx, (key, value) in enumerate(sorted(responses.items())):
+            page.responses_table.insertRow(idx)
+            page.responses_table.setItem(idx, 0, QTableWidgetItem(str(key)))
+            page.responses_table.setItem(idx, 1, QTableWidgetItem(self._condense_detail(str(value), 220)))
     
     def refresh_communications(self):
         """Refresh communications data."""
@@ -1345,6 +1467,50 @@ class DesktopControlApp:
             f"Approved: {counts.get('approved', len(approved))}   Pending: {counts.get('pending', len(pending))}   Blocked: {counts.get('blocked', len(blocked))}"
         )
         page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        self.refresh_selected_routing_member()
+
+    def on_routing_selection_changed(self):
+        """Load selected routing member detail into the side panel."""
+        self.refresh_selected_routing_member()
+
+    def refresh_selected_routing_member(self):
+        """Refresh selected routing member details and history."""
+        page = self.pages.get("Communications")
+        if not page:
+            return
+        phone = self._selected_routing_phone()
+        if not phone:
+            page.routing_member_table.setRowCount(0)
+            page.routing_history_table.setRowCount(0)
+            return
+        payload = self.client.get_routing_member(phone)
+        if payload.get("success") is False:
+            page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+            return
+
+        profile = payload.get("profile") or {}
+        rows = [
+            ("Phone", str(payload.get("phone_number") or phone)),
+            ("State", str(payload.get("state") or "unknown")),
+            ("Pending request", str(bool(payload.get("has_pending_request")))),
+            ("Last seen", str(profile.get("last_seen") or "-")),
+            ("Display name", str(profile.get("display_name") or "-")),
+        ]
+        page.routing_member_table.setRowCount(0)
+        for idx, (key, value) in enumerate(rows):
+            page.routing_member_table.insertRow(idx)
+            page.routing_member_table.setItem(idx, 0, QTableWidgetItem(key))
+            page.routing_member_table.setItem(idx, 1, QTableWidgetItem(value))
+
+        history = payload.get("history") or []
+        page.routing_history_table.setRowCount(0)
+        for idx, row in enumerate(history[:40]):
+            page.routing_history_table.insertRow(idx)
+            page.routing_history_table.setItem(idx, 0, QTableWidgetItem(str(row.get("timestamp") or "")))
+            page.routing_history_table.setItem(idx, 1, QTableWidgetItem(str(row.get("direction") or "")))
+            page.routing_history_table.setItem(idx, 2, QTableWidgetItem(str(row.get("state") or "")))
+            preview = str(row.get("body") or row.get("content") or "")
+            page.routing_history_table.setItem(idx, 3, QTableWidgetItem(self._condense_detail(preview, 120)))
     
     def refresh_files_policy(self):
         """Refresh files and permissions policy."""
@@ -1363,65 +1529,129 @@ class DesktopControlApp:
         for path in payload.get("allowed_directories") or []:
             page.allowed_list.addItem(str(path))
         
-        lines = []
-        for row in payload.get("blocked_attempts") or []:
-            lines.append(f"{row.get('timestamp')} | {row.get('tool')} | {row.get('path') or '-'}")
-        page.blocked_text.setPlainText("\n".join(lines) if lines else "No blocked attempts.")
+        page.blocked_table.setRowCount(0)
+        for idx, row in enumerate(payload.get("blocked_attempts") or []):
+            page.blocked_table.insertRow(idx)
+            page.blocked_table.setItem(idx, 0, QTableWidgetItem(str(row.get("timestamp") or "")))
+            page.blocked_table.setItem(idx, 1, QTableWidgetItem(str(row.get("tool") or "")))
+            page.blocked_table.setItem(idx, 2, QTableWidgetItem(str(row.get("path") or "-")))
     
     def refresh_projects(self):
         """Refresh projects/files information."""
         if not self.is_unlocked:
             return
         
-        payload = self.client.get_activity(limit=120)
-        if not isinstance(payload, dict) or payload.get("success") is False:
-            return
-        
         page = self.pages.get("Projects / Files")
         if not page:
             return
-        
-        file_like = []
+
+        payload = self.client.get_activity(
+            limit=150,
+            event_types="tool_execution",
+            query=page.projects_query.text().strip(),
+        )
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            return
+
+        relevant_tools = {
+            "create_file",
+            "create_folder",
+            "delete_file",
+            "list_files",
+            "write_file",
+            "read_file",
+            "update_file",
+        }
+        self.project_rows = []
         for item in payload.get("items") or []:
             tool = str(item.get("selected_tool") or "")
             target = str(item.get("target") or "")
-            if tool in {"create_file", "create_folder", "delete_file", "list_files"} or target:
-                file_like.append(f"{item.get('timestamp')} | {tool} | {item.get('state')} | {target or '-'}")
-        
-        page.projects_text.setPlainText("\n".join(file_like) if file_like else "No recent file/project actions.")
+            if tool in relevant_tools or target:
+                self.project_rows.append(item)
+
+        page.projects_table.setRowCount(0)
+        for idx, row in enumerate(self.project_rows):
+            page.projects_table.insertRow(idx)
+            values = [
+                str(row.get("timestamp") or ""),
+                self._condense_detail(str(row.get("requested_action") or ""), 72),
+                str(row.get("selected_tool") or ""),
+                str(row.get("state") or ""),
+                self._condense_detail(str(row.get("target") or "-"), 86),
+                str(row.get("source") or ""),
+            ]
+            for col, value in enumerate(values):
+                page.projects_table.setItem(idx, col, QTableWidgetItem(value))
+
+        if not self.project_rows:
+            page.projects_detail.setPlainText("No recent file/project actions.")
+        else:
+            page.projects_table.selectRow(0)
+
+    def on_project_row_selected(self):
+        """Show selected project/file event details."""
+        page = self.pages.get("Projects / Files")
+        if not page:
+            return
+        row = page.projects_table.currentRow()
+        if row < 0 or row >= len(self.project_rows):
+            return
+        selected = self.project_rows[row]
+        page.projects_detail.setPlainText(json.dumps(selected, indent=2, ensure_ascii=True))
     
     def refresh_activity_audit(self):
         """Refresh activity and audit log."""
         if not self.is_unlocked:
             return
-        
-        payload = self.client.get_activity(limit=160)
-        if not isinstance(payload, dict) or payload.get("success") is False:
-            return
-        
+
         page = self.pages.get("Activity / Audit")
         if not page:
             return
         
+        source_value = page.activity_source.currentText().strip().lower()
+        state_value = page.activity_state.currentText().strip().lower()
+        payload = self.client.get_activity(
+            limit=180,
+            sources="" if source_value == "all" else source_value,
+            state="" if state_value == "all" else state_value,
+            tool_name=page.activity_tool.text().strip(),
+            query=page.activity_query.text().strip(),
+        )
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            return
+
         page.activity_table.setRowCount(0)
-        for idx, row in enumerate(payload.get("items") or []):
+        self.activity_rows = list(payload.get("items") or [])
+        for idx, row in enumerate(self.activity_rows):
             page.activity_table.insertRow(idx)
             values = [
                 row.get("timestamp") or "",
+                row.get("event_type") or "",
                 row.get("assistant") or "",
                 row.get("requested_action") or "",
                 row.get("selected_tool") or "",
                 row.get("state") or "",
                 row.get("target") or "",
+                row.get("source") or "",
             ]
             for col, value in enumerate(values):
                 page.activity_table.setItem(idx, col, QTableWidgetItem(value))
-        
-        sample = (payload.get("items") or [])[:12]
-        lines = []
-        for row in sample:
-            lines.append(f"{row.get('timestamp')} | {row.get('selected_tool')} | {row.get('state')}")
-        page.activity_detail.setPlainText("\n".join(lines) if lines else "No recent activity.")
+
+        if not self.activity_rows:
+            page.activity_detail.setPlainText("No recent activity.")
+        else:
+            page.activity_table.selectRow(0)
+
+    def on_activity_row_selected(self):
+        """Show selected activity event details."""
+        page = self.pages.get("Activity / Audit")
+        if not page:
+            return
+        row = page.activity_table.currentRow()
+        if row < 0 or row >= len(self.activity_rows):
+            return
+        selected = self.activity_rows[row]
+        page.activity_detail.setPlainText(json.dumps(selected, indent=2, ensure_ascii=True))
     
     def refresh_logs(self):
         """Refresh logs display."""
@@ -1577,7 +1807,7 @@ class DesktopControlApp:
         if value not in existing:
             existing.append(value)
         payload = self.client.save_files_policy(existing)
-        page.blocked_text.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        page.path_test_result.setText(json.dumps(payload, ensure_ascii=True)[:220])
         if payload.get("success") is not False:
             page.new_dir_input.clear()
             self.refresh_files_policy()
@@ -1597,9 +1827,23 @@ class DesktopControlApp:
             if page.allowed_list.item(index).text() != remove_value
         ]
         payload = self.client.save_files_policy(remaining)
-        page.blocked_text.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        page.path_test_result.setText(json.dumps(payload, ensure_ascii=True)[:220])
         if payload.get("success") is not False:
             self.refresh_files_policy()
+
+    def test_policy_path(self):
+        """Test path against current file policy."""
+        page = self.pages.get("Files & Permissions")
+        if not page:
+            return
+        value = page.path_test_input.text().strip()
+        if not value:
+            return
+        payload = self.client.test_policy_path(value)
+        allowed = bool(payload.get("allowed"))
+        reason = str(payload.get("reason") or "")
+        page.path_test_result.setText(("Allowed: " if allowed else "Blocked: ") + reason)
+        page.path_test_result.setStyleSheet(f"color: {_GREEN if allowed else _RED};")
 
     def _selected_routing_phone(self) -> str:
         """Resolve the phone number selected or typed in the routing panel."""
@@ -1627,6 +1871,7 @@ class DesktopControlApp:
         payload = self.client.approve_routing_member(phone)
         page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
         self.refresh_routing_view()
+        self.refresh_selected_routing_member()
 
     def block_routing_member(self):
         """Block the selected or typed phone number."""
@@ -1640,6 +1885,7 @@ class DesktopControlApp:
         payload = self.client.block_routing_member(phone)
         page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
         self.refresh_routing_view()
+        self.refresh_selected_routing_member()
     
     def clear_chat(self):
         """Clear chat conversation."""

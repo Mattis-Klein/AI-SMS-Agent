@@ -17,6 +17,12 @@ Desktop UI (desktop_app/) ──────────────────
                                                 ├──► FastAPI backend (agent/agent.py :8787)
 SMS bridge (sms_bridge/) ──────────────────────┘
 
+Control-board API composition:
+  agent/routes/system.py
+  agent/routes/execution.py
+  agent/routes/control_board.py (+ control_board_* submodules)
+  agent/voice_handler.py
+
 /execute-nl request path:
   AgentRuntime → AssistantCore → NLInterpreter → Dispatcher → ToolRegistry → Tool
 
@@ -34,6 +40,12 @@ Bucherim SMS path:
 | POST | /execute-nl | Natural language execution |
 | POST | /voice | Twilio voice webhook |
 | POST | /bucherim/sms | Bucherim SMS flow |
+| GET | /control-board/overview | Dashboard overview |
+| GET | /control-board/activity | Unified audit/activity stream |
+| GET | /control-board/assistants | Runtime and Bucherim assistant summary |
+| GET | /control-board/routing | Bucherim routing overview |
+| GET | /control-board/email-accounts | Multi-account email config |
+| GET | /control-board/files-policy | Allowed directories + blocked attempts |
 
 Headers: `x-api-key` required on protected endpoints.
 
@@ -42,27 +54,31 @@ Headers: `x-api-key` required on protected endpoints.
 ```
 mashbak/
 ├── agent/                 # FastAPI backend + reasoning engine
-│   ├── agent.py               # App entry and route handlers
+│   ├── agent.py               # App entry and router composition
 │   ├── runtime.py             # Runtime wiring, config reload, source handling
 │   ├── assistant_core.py      # Reasoning and response shaping
 │   ├── interpreter.py         # NL and config assignment parsing
 │   ├── dispatcher.py          # Tool validation/execution path
 │   ├── session_context.py     # In-memory context tracking
 │   ├── voice_handler.py       # Twilio voice webhook and caller allowlist
+│   ├── routes/                # API route modules
+│   ├── services/              # Control-board and integration services
 │   ├── config_loader.py       # .env.master reader
 │   ├── logger.py              # Logging setup
 │   ├── redaction.py           # Redaction helpers
 │   └── tools/                 # Tool registry + built-in implementations
 ├── assistants/
 │   └── bucherim/          # Bucherim SMS assistant subsystem
-│       ├── service.py         # Conversation and membership logic
+│       ├── bucherim_service.py # Conversation service wrapper
 │       ├── membership.py      # State transitions
 │       ├── storage.py         # File-based persistence
+│       ├── admin.py           # Operator routing admin APIs
+│       ├── config_store.py    # Canonical config access
 │       ├── bucherim_router.py # Routing layer
 │       └── config/            # approved/blocked/pending number lists
 ├── desktop_app/           # Windows control board UI (PySide6)
 │   ├── main.py                # Entry point and PIN lock
-│   ├── ui.py                  # Control board layout
+│   ├── ui_pyside6.py          # Control board layout and page handlers
 │   ├── agent_service.py       # Backend process management
 │   └── agent_client.py        # HTTP client to backend
 ├── sms_bridge/            # Node.js Twilio SMS bridge
@@ -116,7 +132,7 @@ All tools: grounded execution — completion claims only after confirmed success
 
 ## Bucherim
 
-Dedicated SMS assistant on Twilio number +18772683048. Membership states: `unknown → pending → approved / blocked`. Config: `assistants/bucherim/config/`. Admin tool: `scripts/approve-bucherim-member.ps1`.
+Dedicated SMS assistant on Twilio number +18772683048. Membership states: `approved`, `pending`, and `blocked` (with legacy migration support in storage). Canonical state/config lives under `assistants/bucherim/config/`. Admin tool: `scripts/approve-bucherim-member.ps1`.
 
 ## Voice
 

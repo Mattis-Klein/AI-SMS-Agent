@@ -14,8 +14,10 @@ from typing import Any, Optional
 
 if __package__:
     from .redaction import sanitize_for_logging, sanitize_trace
+    from .verification_policy import VerificationPolicy
 else:
     from redaction import sanitize_for_logging, sanitize_trace
+    from verification_policy import VerificationPolicy
 
 
 @dataclass
@@ -108,6 +110,7 @@ class AssistantCore:
         self.runtime = runtime
         self.interpreter = runtime.interpreter
         self.model_client = BackendOpenAIClient(runtime.openai_api_key, runtime.openai_model)
+        self.verification_policy = VerificationPolicy()
 
     async def respond(self, message: str, metadata: AssistantMetadata) -> dict[str, Any]:
         request_id = metadata.request_id or str(uuid.uuid4())[:8]
@@ -183,49 +186,11 @@ class AssistantCore:
         response["trace"] = response_trace
         return response
 
-    _DYNAMIC_FACT_TERMS = (
-        "election", "officeholder", "president", "vice president", "senator", "governor", "mayor",
-        "congress", "parliament", "prime minister", "won", "winner", "results", "poll", "latest",
-        "breaking", "today", "this week", "this month", "this year", "current", "as of", "now",
-        "schedule", "calendar", "deadline", "law", "bill", "statute", "court", "ruling",
-        "price", "cost", "stock", "market", "inflation", "gdp", "population", "statistics", "stats",
-    )
-
-    _LOCAL_CONTEXT_TERMS = (
-        "mashbak", "this app", "this system", "my computer", "desktop", "inbox", "outbox",
-        "file", "folder", "path", "cpu", "disk", "network", "uptime", "process", "email",
-    )
-
     def _is_time_sensitive_fact_query(self, message: str, parsed: dict[str, Any]) -> bool:
-        lower = str(message or "").strip().lower()
-        if not lower:
-            return False
-
-        # Local operations and runtime diagnostics are not external dynamic-fact queries.
-        if any(token in lower for token in self._LOCAL_CONTEXT_TERMS):
-            return False
-
-        if parsed.get("tool"):
-            return False
-
-        factual_cues = (
-            "who", "what", "when", "which", "did", "won", "winner", "result", "latest",
-            "current", "as of", "now", "price", "cost", "how much", "schedule", "law", "stat",
-        )
-        if not any(token in lower for token in factual_cues) and "?" not in lower:
-            return False
-
-        return any(token in lower for token in self._DYNAMIC_FACT_TERMS)
+        return self.verification_policy.is_time_sensitive_fact_query(message, parsed)
 
     def _is_time_or_date_query(self, message: str) -> bool:
-        lower = str(message or "").strip().lower()
-        if not lower:
-            return False
-        date_time_tokens = (
-            "what time", "current time", "time is it", "date today", "today's date",
-            "what date", "what day is", "today",
-        )
-        return any(token in lower for token in date_time_tokens)
+        return self.verification_policy.is_time_or_date_query(message)
 
     async def _dynamic_fact_reply(self, message: str, metadata: AssistantMetadata) -> tuple[str, str, str, str]:
         """Return reply + verification metadata for dynamic factual questions.
