@@ -1,7 +1,5 @@
 {
   "assistant_number": "+18772683048",
-  "allowlist": [8483291230, 8457017405],
-  "blocked_numbers": [4155988428, 3475988428],
   "responses": {
     "welcome": "Welcome to Bucherim. You are now connected and can start asking questions.",
     "not_approved": "You are not currently approved for Bucherim. Text join@bucherim to request access.",

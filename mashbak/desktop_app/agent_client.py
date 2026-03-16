@@ -54,12 +54,28 @@ class AgentClient:
             body={"phone_number": phone_number},
         )
 
+    def block_routing_member(self, phone_number: str) -> dict:
+        return self._request(
+            "POST",
+            "/control-board/routing/block",
+            include_auth=True,
+            body={"phone_number": phone_number},
+        )
+
+    def get_routing_member(self, phone_number: str) -> dict:
+        return self._request("GET", f"/control-board/routing/member/{phone_number}", include_auth=True)
+
+    def get_email_accounts(self) -> dict:
+        return self._request("GET", "/control-board/email-accounts", include_auth=True)
+
     def get_email_config(self) -> dict:
         return self._request("GET", "/control-board/email-config", include_auth=True)
 
     def save_email_config(
         self,
         *,
+        account_id: str | None = None,
+        label: str = "",
         provider: str,
         email_address: str,
         password: str,
@@ -67,12 +83,15 @@ class AgentClient:
         imap_port: int,
         use_ssl: bool,
         mailbox: str,
+        make_default: bool = False,
     ) -> dict:
         return self._request(
             "POST",
-            "/control-board/email-config/save",
+            "/control-board/email-accounts/save",
             include_auth=True,
             body={
+                "account_id": account_id,
+                "label": label,
                 "provider": provider,
                 "email_address": email_address,
                 "password": password,
@@ -80,10 +99,34 @@ class AgentClient:
                 "imap_port": int(imap_port),
                 "use_ssl": bool(use_ssl),
                 "mailbox": mailbox,
+                "make_default": bool(make_default),
             },
         )
 
-    def test_email_connection(self) -> dict:
+    def set_default_email_account(self, account_id: str) -> dict:
+        return self._request(
+            "POST",
+            "/control-board/email-accounts/set-default",
+            include_auth=True,
+            body={"account_id": account_id},
+        )
+
+    def delete_email_account(self, account_id: str) -> dict:
+        return self._request(
+            "POST",
+            "/control-board/email-accounts/delete",
+            include_auth=True,
+            body={"account_id": account_id},
+        )
+
+    def test_email_connection(self, account_id: str | None = None) -> dict:
+        if account_id:
+            return self._request(
+                "POST",
+                "/control-board/email-accounts/test",
+                include_auth=True,
+                body={"account_id": account_id},
+            )
         return self._request("POST", "/control-board/email-config/test", include_auth=True, body={})
 
     def get_files_policy(self) -> dict:

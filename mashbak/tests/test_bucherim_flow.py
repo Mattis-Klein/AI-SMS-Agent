@@ -10,7 +10,7 @@ from assistants.bucherim.bucherim_service import BucherimService, BucherimSmsReq
 from assistants.bucherim.storage import BucherimStorage
 
 
-def make_service(tmp_path: Path, allowlist: list[str] | None = None) -> BucherimService:
+def make_service(tmp_path: Path, approved_numbers: list[str] | None = None) -> BucherimService:
     service = BucherimService(
         base_dir=tmp_path,
         openai_api_key="",
@@ -18,7 +18,7 @@ def make_service(tmp_path: Path, allowlist: list[str] | None = None) -> Bucherim
         session_turns=4,
     )
     storage = BucherimStorage(base_dir=tmp_path)
-    for number in allowlist or []:
+    for number in approved_numbers or []:
         storage.add_approved_number(number)
     return service
 
@@ -50,10 +50,10 @@ def load_jsonl(path: Path) -> list[dict]:
     return rows
 
 
-def test_allowlisted_number_join_command_becomes_active():
+def test_approved_number_message_is_processed():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        service = make_service(root, allowlist=["+1 (212) 555-0101"])
+        service = make_service(root, approved_numbers=["+1 (212) 555-0101"])
 
         result = run_request(service, "+1 212-555-0101", "hello")
         assert result["status"] == "approved"
@@ -61,21 +61,21 @@ def test_allowlisted_number_join_command_becomes_active():
         assert result["reply"]
 
 
-def test_non_allowlisted_join_command_rejected_with_instructions():
+def test_non_member_command_is_rejected_with_join_instructions():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        service = make_service(root, allowlist=[])
+        service = make_service(root, approved_numbers=[])
 
         result = run_request(service, "+1 646-555-0202", "@bucherim")
-        assert result["status"] == "unknown"
+        assert result["status"] == "pending"
         assert result["response_mode"] == "not_approved"
         assert result["reply"] == "You are not currently approved for Bucherim. Text join@bucherim to request access."
 
 
-def test_non_allowlisted_join_request_logged_and_acknowledged():
+def test_non_member_join_request_logged_and_acknowledged():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        service = make_service(root, allowlist=[])
+        service = make_service(root, approved_numbers=[])
 
         result = run_request(service, "+1 718-555-0303", "join@bucherim")
         assert result["status"] == "pending"
@@ -86,10 +86,10 @@ def test_non_allowlisted_join_request_logged_and_acknowledged():
         assert pending_payload["requests"][-1]["phone_number"] == "+17185550303"
 
 
-def test_active_member_normal_message_is_processed_and_appended():
+def test_approved_member_normal_message_is_processed_and_appended():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        service = make_service(root, allowlist=["+12125550404"])
+        service = make_service(root, approved_numbers=["+12125550404"])
 
         message_result = run_request(service, "+1 212-555-0404", "hello bucherim")
         assert message_result["status"] == "approved"
@@ -102,21 +102,21 @@ def test_active_member_normal_message_is_processed_and_appended():
         assert rows[-1]["direction"] == "outbound"
 
 
-def test_non_member_normal_message_is_blocked():
+def test_non_member_normal_message_is_restricted():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        service = make_service(root, allowlist=[])
+        service = make_service(root, approved_numbers=[])
 
         result = run_request(service, "+1 332-555-0505", "what is quantum mechanics")
-        assert result["status"] == "unknown"
-        assert result["response_mode"] == "access_restricted"
+        assert result["status"] == "pending"
+        assert result["response_mode"] == "pending_access_restricted"
         assert result["reply"] == "Access restricted. Text join@bucherim to request access."
 
 
 def test_blocked_number_gets_blocked_response():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        service = make_service(root, allowlist=[])
+        service = make_service(root, approved_numbers=[])
         storage = BucherimStorage(base_dir=root)
         storage.add_blocked_number("+1 917-555-4444")
 
@@ -136,7 +136,7 @@ def test_phone_normalization_to_e164_and_user_key():
 def test_user_files_created_and_conversation_appends():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        service = make_service(root, allowlist=["+17185550606"])
+        service = make_service(root, approved_numbers=["+17185550606"])
 
         run_request(service, "+1 718-555-0606", "first message")
         run_request(service, "+1 718-555-0606", "second message")
@@ -152,7 +152,7 @@ def test_user_files_created_and_conversation_appends():
 def test_media_references_are_logged_when_present():
     with tempfile.TemporaryDirectory() as tmpdir:
         root = Path(tmpdir)
-        service = make_service(root, allowlist=["+16465550707"])
+        service = make_service(root, approved_numbers=["+16465550707"])
 
         result = run_request(
             service,

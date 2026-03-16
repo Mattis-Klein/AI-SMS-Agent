@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .config_store import BucherimConfigStore
+
 
 def iso_now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -29,6 +31,7 @@ class BucherimStorage:
         self.root = self.base_dir / "assistants" / "bucherim"
         self.config_dir = self.root / "config"
         self.logs_users_dir = self.root / "logs" / "users"
+        self.config_store = BucherimConfigStore(base_dir=self.base_dir)
 
         self.approved_numbers_path = self.config_dir / "approved_numbers.json"
         self.pending_requests_path = self.config_dir / "pending_requests.json"
@@ -43,6 +46,37 @@ class BucherimStorage:
         self._ensure_json(self.approved_numbers_path, {"numbers": []})
         self._ensure_json(self.pending_requests_path, {"requests": []})
         self._ensure_json(self.blocked_numbers_path, {"numbers": []})
+        self._migrate_legacy_membership_config()
+
+    def _migrate_legacy_membership_config(self) -> None:
+        legacy_path = self.root / "config.json"
+        if not legacy_path.exists():
+            return
+
+        raw = self._read_json(legacy_path, {})
+        if not raw:
+            return
+
+        legacy_approved = {
+            normalize_phone_e164(str(item))
+            for item in (raw.get("allowlist") or [])
+            if normalize_phone_e164(str(item))
+        }
+        legacy_blocked = {
+            normalize_phone_e164(str(item))
+            for item in (raw.get("blocked_numbers") or [])
+            if normalize_phone_e164(str(item))
+        }
+
+        if legacy_approved:
+            self._save_numbers(self.approved_numbers_path, self.approved_numbers() | legacy_approved)
+        if legacy_blocked:
+            self._save_numbers(self.blocked_numbers_path, self.blocked_numbers() | legacy_blocked)
+
+        if "allowlist" in raw or "blocked_numbers" in raw:
+            raw.pop("allowlist", None)
+            raw.pop("blocked_numbers", None)
+            self.config_store.save(raw)
 
     def _ensure_json(self, path: Path, payload: dict[str, Any]) -> None:
         if not path.exists():
@@ -257,3 +291,7 @@ class BucherimStorage:
         if limit <= 0:
             return rows
         return rows[-limit:]
+
+    def profile(self, phone_number: str) -> dict[str, Any]:
+        profile_path = self.user_dir(phone_number) / "profile.json"
+        return self._read_json(profile_path, {})

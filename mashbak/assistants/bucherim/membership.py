@@ -9,13 +9,13 @@ from .storage import BucherimStorage, normalize_phone_e164
 STATE_APPROVED = "approved"
 STATE_PENDING = "pending"
 STATE_BLOCKED = "blocked"
-STATE_UNKNOWN = "unknown"
 
 
 @dataclass
 class MembershipDecision:
     normalized_phone: str
     state: str
+    has_pending_request: bool = False
 
 
 class MembershipService:
@@ -25,19 +25,20 @@ class MembershipService:
     def get_state(self, phone_number: str) -> MembershipDecision:
         normalized_phone = normalize_phone_e164(phone_number)
         if not normalized_phone:
-            return MembershipDecision(normalized_phone="", state=STATE_UNKNOWN)
+            return MembershipDecision(normalized_phone="", state=STATE_PENDING, has_pending_request=False)
 
         if normalized_phone in self.storage.blocked_numbers():
-            return MembershipDecision(normalized_phone=normalized_phone, state=STATE_BLOCKED)
+            return MembershipDecision(normalized_phone=normalized_phone, state=STATE_BLOCKED, has_pending_request=False)
 
         approved = self.storage.approved_numbers()
-        if normalized_phone in approved or self._legacy_allowlisted(normalized_phone):
-            return MembershipDecision(normalized_phone=normalized_phone, state=STATE_APPROVED)
+        if normalized_phone in approved:
+            return MembershipDecision(normalized_phone=normalized_phone, state=STATE_APPROVED, has_pending_request=False)
 
-        if self.storage.is_pending(normalized_phone):
-            return MembershipDecision(normalized_phone=normalized_phone, state=STATE_PENDING)
-
-        return MembershipDecision(normalized_phone=normalized_phone, state=STATE_UNKNOWN)
+        return MembershipDecision(
+            normalized_phone=normalized_phone,
+            state=STATE_PENDING,
+            has_pending_request=self.storage.is_pending(normalized_phone),
+        )
 
     def request_join(
         self,
@@ -61,21 +62,4 @@ class MembershipService:
             message_sid=message_sid,
             media=media,
         )
-        return MembershipDecision(normalized_phone=decision.normalized_phone, state=STATE_PENDING)
-
-    def _legacy_allowlisted(self, normalized_phone: str) -> bool:
-        # Keep compatibility with the existing approval script that updates config.json allowlist.
-        config_path = self.storage.root / "config.json"
-        if not config_path.exists():
-            return False
-        try:
-            import json
-
-            raw = json.loads(config_path.read_text(encoding="utf-8"))
-            allowlist = raw.get("allowlist") if isinstance(raw, dict) else []
-            if not isinstance(allowlist, list):
-                return False
-            legacy = {normalize_phone_e164(str(item)) for item in allowlist}
-            return normalized_phone in legacy
-        except Exception:
-            return False
+        return MembershipDecision(normalized_phone=decision.normalized_phone, state=STATE_PENDING, has_pending_request=True)

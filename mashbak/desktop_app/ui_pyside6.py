@@ -447,6 +447,7 @@ class CommunicationsPage(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
+        self.current_email_account_id: str | None = None
         
         header_layout = QHBoxLayout()
         header_layout.addWidget(create_label("Communications", 12, bold=True))
@@ -461,27 +462,48 @@ class CommunicationsPage(QWidget):
         # Email tab
         email_widget = QWidget()
         email_layout = QVBoxLayout(email_widget)
-        email_layout.addWidget(create_label("Email Configuration", 10, bold=True))
+        email_layout.addWidget(create_label("Email Accounts", 10, bold=True))
+
+        email_top = QHBoxLayout()
+        self.email_accounts_widget = QListWidget()
+        self.email_accounts_widget.currentItemChanged.connect(self.app.on_email_account_selected)
+        email_top.addWidget(self.email_accounts_widget, 1)
         
         grid = QGridLayout()
+        self.email_label = QLineEdit()
         self.email_address = QLineEdit()
         self.email_password = QLineEdit()
         self.email_password.setEchoMode(QLineEdit.Password)
         self.email_imap_host = QLineEdit()
         self.email_imap_port = QLineEdit("993")
+        self.email_mailbox = QLineEdit("INBOX")
+        self.email_make_default = QCheckBox("Set as default account")
         
-        grid.addWidget(create_label("Email Address"), 0, 0)
-        grid.addWidget(self.email_address, 0, 1)
-        grid.addWidget(create_label("Password"), 1, 0)
-        grid.addWidget(self.email_password, 1, 1)
-        grid.addWidget(create_label("IMAP Server"), 2, 0)
-        grid.addWidget(self.email_imap_host, 2, 1)
-        grid.addWidget(create_label("IMAP Port"), 3, 0)
-        grid.addWidget(self.email_imap_port, 3, 1)
+        grid.addWidget(create_label("Label"), 0, 0)
+        grid.addWidget(self.email_label, 0, 1)
+        grid.addWidget(create_label("Email Address"), 1, 0)
+        grid.addWidget(self.email_address, 1, 1)
+        grid.addWidget(create_label("Password"), 2, 0)
+        grid.addWidget(self.email_password, 2, 1)
+        grid.addWidget(create_label("IMAP Server"), 3, 0)
+        grid.addWidget(self.email_imap_host, 3, 1)
+        grid.addWidget(create_label("IMAP Port"), 4, 0)
+        grid.addWidget(self.email_imap_port, 4, 1)
+        grid.addWidget(create_label("Mailbox"), 5, 0)
+        grid.addWidget(self.email_mailbox, 5, 1)
+        grid.addWidget(self.email_make_default, 6, 1)
         
-        email_layout.addLayout(grid)
-        email_layout.addWidget(create_button("Save Email Settings", self.app.save_email_config))
-        email_layout.addWidget(create_button("Test Connection", self.app.test_email_connection, style="subtle"))
+        email_top.addLayout(grid, 2)
+        email_layout.addLayout(email_top)
+
+        email_actions = QHBoxLayout()
+        email_actions.addWidget(create_button("New Account", self.app.new_email_account, style="subtle"))
+        email_actions.addWidget(create_button("Save Account", self.app.save_email_config))
+        email_actions.addWidget(create_button("Test Connection", self.app.test_email_connection, style="subtle"))
+        email_actions.addWidget(create_button("Set Default", self.app.set_default_email_account, style="subtle"))
+        email_actions.addWidget(create_button("Delete", self.app.delete_email_account, style="subtle"))
+        email_actions.addStretch()
+        email_layout.addLayout(email_actions)
         self.email_status = create_label("Email status: unknown", 9, color=_SLATE)
         email_layout.addWidget(self.email_status)
         self.email_result = QPlainTextEdit()
@@ -500,9 +522,9 @@ class CommunicationsPage(QWidget):
         # Lists layout
         lists_layout = QHBoxLayout()
         
-        self.allowlist_widget = QListWidget()
+        self.approved_widget = QListWidget()
         routing_layout.addWidget(create_label("Approved Members", 10, bold=True))
-        lists_layout.addWidget(self.allowlist_widget)
+        lists_layout.addWidget(self.approved_widget)
         
         self.blocked_widget = QListWidget()
         routing_layout.addWidget(create_label("Blocked Numbers", 10, bold=True))
@@ -513,6 +535,18 @@ class CommunicationsPage(QWidget):
         lists_layout.addWidget(self.pending_widget)
         
         routing_layout.addLayout(lists_layout)
+
+        routing_actions = QHBoxLayout()
+        self.routing_phone_input = QLineEdit()
+        self.routing_phone_input.setPlaceholderText("Phone number")
+        routing_actions.addWidget(self.routing_phone_input, 1)
+        routing_actions.addWidget(create_button("Approve", self.app.approve_routing_member, style="subtle"))
+        routing_actions.addWidget(create_button("Block", self.app.block_routing_member, style="subtle"))
+        routing_layout.addLayout(routing_actions)
+
+        self.routing_result = QPlainTextEdit()
+        self.routing_result.setReadOnly(True)
+        routing_layout.addWidget(self.routing_result)
         
         tabs.addTab(routing_widget, "SMS / Routing")
         layout.addWidget(tabs)
@@ -951,10 +985,9 @@ class DesktopControlApp:
         """Run message in background thread."""
         try:
             result = self.client.execute_nl(message=message, sender="local-desktop", owner_unlocked=self.is_unlocked)
-            # Schedule UI update on main thread
-            self.window.after(0, lambda: self._display_result(message, result))
+            QTimer.singleShot(0, lambda: self._display_result(message, result))
         except Exception as exc:
-            self.window.after(0, lambda: self._display_error(str(exc)))
+            QTimer.singleShot(0, lambda: self._display_error(str(exc)))
     
     def _display_result(self, message: str, result: dict):
         """Display result in chat."""
@@ -1235,7 +1268,9 @@ class DesktopControlApp:
             "",
             "Bucherim",
             f"  Assistant number: {bucherim.get('assistant_number')}",
-            f"  Allowlist count: {bucherim.get('allowlist_count')}",
+            f"  Approved: {(bucherim.get('counts') or {}).get('approved', 0)}",
+            f"  Pending: {(bucherim.get('counts') or {}).get('pending', 0)}",
+            f"  Blocked: {(bucherim.get('counts') or {}).get('blocked', 0)}",
         ]
         page.assistants_text.setPlainText("\n".join(lines))
     
@@ -1247,24 +1282,34 @@ class DesktopControlApp:
         self.refresh_routing_view()
     
     def refresh_email_config_view(self):
-        """Refresh email configuration view."""
-        payload = self.client.get_email_config()
+        """Refresh email accounts view."""
+        payload = self.client.get_email_accounts()
         if not isinstance(payload, dict) or payload.get("success") is False:
             return
         
         page = self.pages.get("Communications")
         if not page:
             return
-        
-        page.email_address.setText(str(payload.get("email_address") or ""))
-        page.email_imap_host.setText(str(payload.get("imap_host") or ""))
-        page.email_imap_port.setText(str(payload.get("imap_port") or "993"))
-        
-        if payload.get("password_set"):
-            page.email_status.setText("Email status: configured")
+
+        accounts = payload.get("accounts") or []
+        default_id = payload.get("default_account_id")
+        page.email_accounts_widget.clear()
+        for account in accounts:
+            label = str(account.get("label") or account.get("email_address") or "Email account")
+            suffix = " [default]" if account.get("account_id") == default_id else ""
+            item = QListWidgetItem(label + suffix)
+            item.setData(Qt.UserRole, account)
+            page.email_accounts_widget.addItem(item)
+
+        if accounts:
+            page.email_accounts_widget.setCurrentRow(0)
+            page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+            page.email_status.setText(f"Email status: {len(accounts)} account(s) configured")
             page.email_status.setStyleSheet(f"color: {_GREEN};")
         else:
-            page.email_status.setText("Email status: password missing")
+            self.new_email_account()
+            page.email_result.setPlainText("No email accounts configured.")
+            page.email_status.setText("Email status: not configured")
             page.email_status.setStyleSheet(f"color: {_AMBER};")
     
     def refresh_routing_view(self):
@@ -1277,13 +1322,13 @@ class DesktopControlApp:
         if not page:
             return
         
-        allowlist = payload.get("allowlist") or []
+        approved = payload.get("approved_numbers") or []
         blocked = payload.get("blocked_numbers") or []
-        pending = payload.get("pending_join_requests") or []
+        pending = payload.get("pending_requests") or []
         
-        page.allowlist_widget.clear()
-        for item in allowlist:
-            page.allowlist_widget.addItem(str(item))
+        page.approved_widget.clear()
+        for item in approved:
+            page.approved_widget.addItem(str(item))
         
         page.blocked_widget.clear()
         for item in blocked:
@@ -1295,7 +1340,11 @@ class DesktopControlApp:
             ts = item.get("timestamp") if isinstance(item, dict) else ""
             page.pending_widget.addItem(f"{phone}  ({ts})")
         
-        page.routing_counts.setText(f"Approved: {len(allowlist)}   Pending: {len(pending)}   Blocked: {len(blocked)}")
+        counts = payload.get("counts") or {}
+        page.routing_counts.setText(
+            f"Approved: {counts.get('approved', len(approved))}   Pending: {counts.get('pending', len(pending))}   Blocked: {counts.get('blocked', len(blocked))}"
+        )
+        page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
     
     def refresh_files_policy(self):
         """Refresh files and permissions policy."""
@@ -1426,20 +1475,171 @@ class DesktopControlApp:
     # --- ACTION HANDLERS ---
     
     def save_email_config(self):
-        """Save email configuration (stub)."""
-        pass
+        """Save the current email account."""
+        page = self.pages.get("Communications")
+        if not page:
+            return
+        try:
+            port = int((page.email_imap_port.text() or "993").strip())
+        except ValueError:
+            page.email_result.setPlainText("IMAP port must be a number.")
+            return
+        payload = self.client.save_email_config(
+            account_id=page.current_email_account_id,
+            label=page.email_label.text().strip(),
+            provider="imap",
+            email_address=page.email_address.text().strip(),
+            password=page.email_password.text(),
+            imap_host=page.email_imap_host.text().strip(),
+            imap_port=port,
+            use_ssl=True,
+            mailbox=page.email_mailbox.text().strip() or "INBOX",
+            make_default=page.email_make_default.isChecked(),
+        )
+        page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        if payload.get("success") is False:
+            page.email_status.setText("Email status: save failed")
+            page.email_status.setStyleSheet(f"color: {_RED};")
+            return
+        self.refresh_email_config_view()
     
     def test_email_connection(self):
-        """Test email connection (stub)."""
-        pass
+        """Test the selected email account."""
+        page = self.pages.get("Communications")
+        if not page:
+            return
+        payload = self.client.test_email_connection(page.current_email_account_id)
+        page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        if payload.get("success"):
+            page.email_status.setText("Email status: connection successful")
+            page.email_status.setStyleSheet(f"color: {_GREEN};")
+        else:
+            page.email_status.setText("Email status: connection failed")
+            page.email_status.setStyleSheet(f"color: {_RED};")
+
+    def new_email_account(self):
+        """Reset the email form for a new account."""
+        page = self.pages.get("Communications")
+        if not page:
+            return
+        page.current_email_account_id = None
+        page.email_label.clear()
+        page.email_address.clear()
+        page.email_password.clear()
+        page.email_imap_host.clear()
+        page.email_imap_port.setText("993")
+        page.email_mailbox.setText("INBOX")
+        page.email_make_default.setChecked(False)
+
+    def on_email_account_selected(self, current, previous=None):
+        """Load the selected email account into the form."""
+        del previous
+        page = self.pages.get("Communications")
+        if not page or current is None:
+            return
+        account = current.data(Qt.UserRole) or {}
+        page.current_email_account_id = account.get("account_id")
+        page.email_label.setText(str(account.get("label") or ""))
+        page.email_address.setText(str(account.get("email_address") or ""))
+        page.email_password.clear()
+        page.email_imap_host.setText(str(account.get("imap_host") or ""))
+        page.email_imap_port.setText(str(account.get("imap_port") or "993"))
+        page.email_mailbox.setText(str(account.get("mailbox") or "INBOX"))
+        page.email_make_default.setChecked(bool(account.get("is_default")))
+
+    def set_default_email_account(self):
+        """Set the selected email account as default."""
+        page = self.pages.get("Communications")
+        if not page or not page.current_email_account_id:
+            return
+        payload = self.client.set_default_email_account(page.current_email_account_id)
+        page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        self.refresh_email_config_view()
+
+    def delete_email_account(self):
+        """Delete the selected email account."""
+        page = self.pages.get("Communications")
+        if not page or not page.current_email_account_id:
+            return
+        payload = self.client.delete_email_account(page.current_email_account_id)
+        page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        self.refresh_email_config_view()
     
     def add_allowed_directory(self):
-        """Add allowed directory (stub)."""
-        pass
+        """Add an allowed directory and persist the policy."""
+        page = self.pages.get("Files & Permissions")
+        if not page:
+            return
+        value = page.new_dir_input.text().strip()
+        if not value:
+            return
+        existing = [page.allowed_list.item(index).text() for index in range(page.allowed_list.count())]
+        if value not in existing:
+            existing.append(value)
+        payload = self.client.save_files_policy(existing)
+        page.blocked_text.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        if payload.get("success") is not False:
+            page.new_dir_input.clear()
+            self.refresh_files_policy()
     
     def remove_selected_directory(self):
-        """Remove selected directory (stub)."""
-        pass
+        """Remove the selected allowed directory and persist the policy."""
+        page = self.pages.get("Files & Permissions")
+        if not page:
+            return
+        current = page.allowed_list.currentItem()
+        if current is None:
+            return
+        remove_value = current.text()
+        remaining = [
+            page.allowed_list.item(index).text()
+            for index in range(page.allowed_list.count())
+            if page.allowed_list.item(index).text() != remove_value
+        ]
+        payload = self.client.save_files_policy(remaining)
+        page.blocked_text.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        if payload.get("success") is not False:
+            self.refresh_files_policy()
+
+    def _selected_routing_phone(self) -> str:
+        """Resolve the phone number selected or typed in the routing panel."""
+        page = self.pages.get("Communications")
+        if not page:
+            return ""
+        direct = page.routing_phone_input.text().strip()
+        if direct:
+            return direct
+        for widget in (page.pending_widget, page.approved_widget, page.blocked_widget):
+            item = widget.currentItem()
+            if item is not None:
+                return item.text().split()[0]
+        return ""
+
+    def approve_routing_member(self):
+        """Approve the selected or typed phone number."""
+        page = self.pages.get("Communications")
+        if not page:
+            return
+        phone = self._selected_routing_phone()
+        if not phone:
+            page.routing_result.setPlainText("Select or enter a phone number to approve.")
+            return
+        payload = self.client.approve_routing_member(phone)
+        page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        self.refresh_routing_view()
+
+    def block_routing_member(self):
+        """Block the selected or typed phone number."""
+        page = self.pages.get("Communications")
+        if not page:
+            return
+        phone = self._selected_routing_phone()
+        if not phone:
+            page.routing_result.setPlainText("Select or enter a phone number to block.")
+            return
+        payload = self.client.block_routing_member(phone)
+        page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        self.refresh_routing_view()
     
     def clear_chat(self):
         """Clear chat conversation."""

@@ -102,16 +102,11 @@ function Restore-OriginalContent {
 }
 
 $platformRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$configPath = Join-Path $platformRoot "assistants\bucherim\config.json"
 $approvedNumbersPath = Join-Path $platformRoot "assistants\bucherim\config\approved_numbers.json"
 $newPendingPath = Join-Path $platformRoot "assistants\bucherim\config\pending_requests.json"
 $usersRoot = Join-Path $platformRoot "data\users\bucherim"
 $pendingPath = Join-Path $usersRoot "pending_requests.jsonl"
 $mutationLockPath = Join-Path $platformRoot "assistants\bucherim\config\.approve-member.lock"
-
-if (-not (Test-Path $configPath)) {
-    throw "Bucherim config not found: $configPath"
-}
 
 $normalizedPhone = Convert-ToE164 -Value $Phone
 $userKey = "p" + (($normalizedPhone -replace "\D", ""))
@@ -126,7 +121,7 @@ try {
     # Serialize multi-file mutation to avoid races across concurrent approvals.
     $lockHandle = New-ExclusiveLock -LockPath $mutationLockPath
 
-    $pathsToTrack = @($configPath, $approvedNumbersPath, $newPendingPath, $membershipPath, $pendingPath)
+    $pathsToTrack = @($approvedNumbersPath, $newPendingPath, $membershipPath, $pendingPath)
     foreach ($path in $pathsToTrack) {
         $exists = Test-Path $path
         $rollbackTargets[$path] = [ordered]@{
@@ -135,40 +130,18 @@ try {
         }
     }
 
-    $config = Read-JsonFile -Path $configPath
-    if (-not $config) {
-        throw "Invalid Bucherim config JSON: $configPath"
-    }
-
-    if (-not ($config.PSObject.Properties.Name -contains "allowlist")) {
-        $config | Add-Member -NotePropertyName allowlist -NotePropertyValue @()
-    }
-
-    $allowlist = if ($null -eq $config.allowlist) { @() } else { @($config.allowlist) }
-    if ($allowlist -notcontains $normalizedPhone) {
-        $allowlist += $normalizedPhone
-    }
-    $config.allowlist = $allowlist
-
     $now = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     $source = "approved_request"
 
     $membership = Read-JsonFile -Path $membershipPath
-    $existingStatus = if ($membership -and ($membership.PSObject.Properties.Name -contains "status")) { [string]$membership.status } else { "" }
-    $status = if ($ActivateNow) {
-        "active"
-    } elseif ($existingStatus -eq "active") {
-        "active"
-    } else {
-        "allowlisted"
-    }
+    $status = "approved"
 
     if (-not $membership) {
         $membership = [ordered]@{
             phone_number = $normalizedPhone
             status = $status
             source = $source
-            joined_at = if ($status -eq "active") { $now } else { $null }
+            joined_at = if ($ActivateNow) { $now } else { $null }
             updated_at = $now
             history = @()
         }
@@ -176,7 +149,7 @@ try {
         $membership.phone_number = $normalizedPhone
         $membership.status = $status
         $membership.source = $source
-        if ($status -eq "active" -and -not $membership.joined_at) {
+        if ($ActivateNow -and -not $membership.joined_at) {
             $membership.joined_at = $now
         }
         if (-not ($membership.PSObject.Properties.Name -contains "history")) {
@@ -186,7 +159,7 @@ try {
 
     $membershipEvent = [ordered]@{
         timestamp = $now
-        event = if ($status -eq "active") { "approved_and_activated" } else { "approved_allowlisted" }
+        event = if ($ActivateNow) { "approved_and_activated" } else { "approved" }
         status = $status
         phone_number = $normalizedPhone
         details = @{ source = $source }
@@ -198,7 +171,6 @@ try {
     $membership.updated_at = $now
 
     Write-JsonFile -Path $membershipPath -Object $membership
-    Write-JsonFile -Path $configPath -Object $config
 
     # Also write to the new canonical approved_numbers.json.
     $approvedNumbers = @()
@@ -275,6 +247,5 @@ finally {
 }
 
 Write-Host "Approved Bucherim member: $normalizedPhone"
-Write-Host "Updated allowlist: $configPath"
 Write-Host "Updated approved_numbers: $approvedNumbersPath"
 Write-Host "Membership status: $status"

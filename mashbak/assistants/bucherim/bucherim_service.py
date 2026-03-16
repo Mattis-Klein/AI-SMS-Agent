@@ -7,6 +7,7 @@ from typing import Any
 from agent.assistant_core import BackendOpenAIClient
 
 from .bucherim_router import BucherimRouter
+from .config_store import BucherimConfigStore
 from .membership import MembershipService
 from .storage import BucherimStorage, normalize_phone_e164
 
@@ -37,8 +38,9 @@ class BucherimService:
     ):
         del session_turns
         self.storage = BucherimStorage(base_dir=base_dir)
+        self.config = BucherimConfigStore(base_dir=base_dir)
         self.membership = MembershipService(storage=self.storage)
-        self.router = BucherimRouter(membership=self.membership)
+        self.router = BucherimRouter(membership=self.membership, responses=self.config.responses())
         self.model_client = BackendOpenAIClient(
             openai_api_key or "",
             openai_model or "gpt-4.1-mini",
@@ -71,6 +73,7 @@ class BucherimService:
         self.model_client.base_url = self.model_client._normalize_base_url(base_url)
         self.model_client.timeout_seconds = max(1.0, float(timeout_seconds or self.model_client.timeout_seconds))
         self.model_client.temperature = self.model_client._normalize_temperature(temperature)
+        self.router = BucherimRouter(membership=self.membership, responses=self.config.responses())
 
     def _format_recent_history(self, normalized_sender: str, limit: int = 10) -> str:
         rows = self.storage.recent_messages(normalized_sender, limit=limit)

@@ -9,6 +9,7 @@ if __package__:
     from .config import Config
     from .config_loader import ConfigLoader
     from .assistant_core import AssistantCore, AssistantMetadata
+    from .services.email_accounts import EmailAccountStore
     from assistants.bucherim.bucherim_service import BucherimService, BucherimSmsRequest
     from .logger import StructuredLogger
     from .tools import ToolRegistry
@@ -21,6 +22,7 @@ else:
     from config import Config
     from config_loader import ConfigLoader
     from assistant_core import AssistantCore, AssistantMetadata
+    from services.email_accounts import EmailAccountStore
     from assistants.bucherim.bucherim_service import BucherimService, BucherimSmsRequest
     from logger import StructuredLogger
     from tools import ToolRegistry
@@ -465,11 +467,7 @@ class AgentRuntime:
             "session_context_max_turns": self.session_context_turns,
             "log_level": (ConfigLoader.get("LOG_LEVEL", "INFO") or "INFO").upper(),
             "debug_mode": ConfigLoader.get_bool("DEBUG_MODE", False),
-            "email_configured": bool(
-                (ConfigLoader.get("EMAIL_IMAP_HOST") or ConfigLoader.get("IMAP_SERVER"))
-                and (ConfigLoader.get("EMAIL_USERNAME") or ConfigLoader.get("EMAIL_ADDRESS"))
-                and ConfigLoader.get("EMAIL_PASSWORD")
-            ),
+            "email_configured": EmailAccountStore(self.base_dir).is_configured(),
             "version": "2.0.0",
         }
 
