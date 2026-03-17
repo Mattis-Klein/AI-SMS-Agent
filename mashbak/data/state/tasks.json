@@ -1,0 +1,364 @@
+{
+  "tasks": [
+    {
+      "task_id": "4aa4f118ba03",
+      "title": "Run capture_screenshot",
+      "status": "completed",
+      "source": "desktop",
+      "sender": "workflow-test",
+      "created_at": "2026-03-16T11:36:23",
+      "updated_at": "2026-03-16T11:36:24",
+      "steps": [
+        {
+          "tool_name": "capture_screenshot",
+          "args": {},
+          "status": "completed"
+        }
+      ],
+      "result": {
+        "success": true,
+        "tool_name": "capture_screenshot",
+        "error": null
+      }
+    },
+    {
+      "task_id": "0b1236048011",
+      "title": "Run dir_inbox",
+      "status": "completed",
+      "source": "desktop",
+      "sender": "desktop-service-smoke",
+      "created_at": "2026-03-16T11:17:33",
+      "updated_at": "2026-03-16T11:17:33",
+      "steps": [
+        {
+          "tool_name": "dir_inbox",
+          "args": {},
+          "status": "completed"
+        }
+      ],
+      "result": {
+        "success": true,
+        "tool_name": "dir_inbox",
+        "error": null
+      }
+    },
+    {
+      "task_id": "49bd00cf0887",
+      "title": "Plan: check my inbox",
+      "status": "completed",
+      "source": "desktop",
+      "sender": "desktop-service-smoke",
+      "created_at": "2026-03-16T11:17:33",
+      "updated_at": "2026-03-16T11:17:33",
+      "steps": [
+        {
+          "tool_name": "dir_inbox",
+          "args": {},
+          "status": "completed",
+          "result": {
+            "success": true,
+            "error": null,
+            "tool_name": "dir_inbox"
+          }
+        }
+      ],
+      "result": {
+        "step_results": [
+          {
+            "success": true,
+            "tool_name": "dir_inbox",
+            "output": " Volume in drive C is Windows\n Volume Serial Number is 24C8-ECCB\n\n Directory of C:\\AI-SMS-Agent\\mashbak\\data\\workspace\\inbox\n\n03/11/2026  09:29 PM    <DIR>          .\n03/11/2026  09:29 PM    <DIR>          ..\n03/11/2026  09:29 PM                 2 .gitkeep\n               1 File(s)              2 bytes\n               2 Dir(s)  42,051,342,336 bytes free\n",
+            "error": null,
+            "error_type": null,
+            "missing_config_fields": null,
+            "remediation": null,
+            "request_id": "23b644e1",
+            "source": "desktop",
+            "data": {
+              "task": {
+                "task_id": "0b1236048011",
+                "title": "Run dir_inbox",
+                "status": "completed",
+                "source": "desktop",
+                "sender": "desktop-service-smoke",
+                "created_at": "2026-03-16T11:17:33",
+                "updated_at": "2026-03-16T11:17:33",
+                "steps": [
+                  {
+                    "tool_name": "dir_inbox",
+                    "args": {},
+                    "status": "completed"
+                  }
+                ],
+                "result": {
+                  "success": true,
+                  "tool_name": "dir_inbox",
+                  "error": null
+                }
+              }
+            },
+            "trace": {
+              "raw_request": "execute: dir_inbox",
+              "session_id": "desktop:desktop-service-smoke",
+              "session_context": {
+                "session_id": "desktop:desktop-service-smoke",
+                "last_topic": null,
+                "last_intent": null,
+                "last_tool": null,
+                "last_failure_type": null,
+                "last_entities": {},
+                "missing_config_fields": [],
+                "config_progress_state": null,
+                "pending_restart_components": [],
+                "recent_turns": [],
+                "updated_at": 1773677853.8680844,
+                "pending_task": null,
+                "pending_parameters": {},
+                "missing_parameters": [],
+                "last_task": null,
+                "last_result": null,
+                "last_args": {},
+                "last_created_path": null
+              },
+              "source": "desktop",
+              "interpreted_intent": "dir_inbox",
+              "interpreted_args": {},
+              "confidence": 1.0,
+              "selected_tool": "dir_inbox",
+              "validation_status": "passed",
+              "validated_arguments": {},
+              "execution_status": "success",
+              "execution_time_ms": 22
+            }
+          }
+        ]
+      }
+    },
+    {
+      "task_id": "44cbd404755b",
+      "title": "Run dir_inbox",
+      "status": "completed",
+      "source": "desktop",
+      "sender": "desktop-service-smoke",
+      "created_at": "2026-03-16T11:17:09",
+      "updated_at": "2026-03-16T11:17:09",
+      "steps": [
+        {
+          "tool_name": "dir_inbox",
+          "args": {},
+          "status": "completed"
+        }
+      ],
+      "result": {
+        "success": true,
+        "tool_name": "dir_inbox",
+        "error": null
+      }
+    },
+    {
+      "task_id": "b4e85df85a93",
+      "title": "Plan: check my inbox",
+      "status": "completed",
+      "source": "desktop",
+      "sender": "desktop-service-smoke",
+      "created_at": "2026-03-16T11:17:09",
+      "updated_at": "2026-03-16T11:17:09",
+      "steps": [
+        {
+          "tool_name": "dir_inbox",
+          "args": {},
+          "status": "completed",
+          "result": {
+            "success": true,
+            "error": null,
+            "tool_name": "dir_inbox"
+          }
+        }
+      ],
+      "result": {
+        "step_results": [
+          {
+            "success": true,
+            "tool_name": "dir_inbox",
+            "output": " Volume in drive C is Windows\n Volume Serial Number is 24C8-ECCB\n\n Directory of C:\\AI-SMS-Agent\\mashbak\\data\\workspace\\inbox\n\n03/11/2026  09:29 PM    <DIR>          .\n03/11/2026  09:29 PM    <DIR>          ..\n03/11/2026  09:29 PM                 2 .gitkeep\n               1 File(s)              2 bytes\n               2 Dir(s)  42,047,672,320 bytes free\n",
+            "error": null,
+            "error_type": null,
+            "missing_config_fields": null,
+            "remediation": null,
+            "request_id": "c43edd5a",
+            "source": "desktop",
+            "data": {
+              "task": {
+                "task_id": "44cbd404755b",
+                "title": "Run dir_inbox",
+                "status": "completed",
+                "source": "desktop",
+                "sender": "desktop-service-smoke",
+                "created_at": "2026-03-16T11:17:09",
+                "updated_at": "2026-03-16T11:17:09",
+                "steps": [
+                  {
+                    "tool_name": "dir_inbox",
+                    "args": {},
+                    "status": "completed"
+                  }
+                ],
+                "result": {
+                  "success": true,
+                  "tool_name": "dir_inbox",
+                  "error": null
+                }
+              }
+            },
+            "trace": {
+              "raw_request": "execute: dir_inbox",
+              "session_id": "desktop:desktop-service-smoke",
+              "session_context": {
+                "session_id": "desktop:desktop-service-smoke",
+                "last_topic": null,
+                "last_intent": null,
+                "last_tool": null,
+                "last_failure_type": null,
+                "last_entities": {},
+                "missing_config_fields": [],
+                "config_progress_state": null,
+                "pending_restart_components": [],
+                "recent_turns": [],
+                "updated_at": 1773677829.5698383,
+                "pending_task": null,
+                "pending_parameters": {},
+                "missing_parameters": [],
+                "last_task": null,
+                "last_result": null,
+                "last_args": {},
+                "last_created_path": null
+              },
+              "source": "desktop",
+              "interpreted_intent": "dir_inbox",
+              "interpreted_args": {},
+              "confidence": 1.0,
+              "selected_tool": "dir_inbox",
+              "validation_status": "passed",
+              "validated_arguments": {},
+              "execution_status": "success",
+              "execution_time_ms": 24
+            }
+          }
+        ]
+      }
+    },
+    {
+      "task_id": "91abf5309732",
+      "title": "Run dir_inbox",
+      "status": "completed",
+      "source": "desktop",
+      "sender": "desktop-service-smoke",
+      "created_at": "2026-03-16T11:16:54",
+      "updated_at": "2026-03-16T11:16:54",
+      "steps": [
+        {
+          "tool_name": "dir_inbox",
+          "args": {},
+          "status": "completed"
+        }
+      ],
+      "result": {
+        "success": true,
+        "tool_name": "dir_inbox",
+        "error": null
+      }
+    },
+    {
+      "task_id": "fba5f895c0af",
+      "title": "Plan: check my inbox",
+      "status": "completed",
+      "source": "desktop",
+      "sender": "desktop-service-smoke",
+      "created_at": "2026-03-16T11:16:54",
+      "updated_at": "2026-03-16T11:16:54",
+      "steps": [
+        {
+          "tool_name": "dir_inbox",
+          "args": {},
+          "status": "completed",
+          "result": {
+            "success": true,
+            "error": null,
+            "tool_name": "dir_inbox"
+          }
+        }
+      ],
+      "result": {
+        "step_results": [
+          {
+            "success": true,
+            "tool_name": "dir_inbox",
+            "output": " Volume in drive C is Windows\n Volume Serial Number is 24C8-ECCB\n\n Directory of C:\\AI-SMS-Agent\\mashbak\\data\\workspace\\inbox\n\n03/11/2026  09:29 PM    <DIR>          .\n03/11/2026  09:29 PM    <DIR>          ..\n03/11/2026  09:29 PM                 2 .gitkeep\n               1 File(s)              2 bytes\n               2 Dir(s)  42,049,597,440 bytes free\n",
+            "error": null,
+            "error_type": null,
+            "missing_config_fields": null,
+            "remediation": null,
+            "request_id": "676dc9d5",
+            "source": "desktop",
+            "data": {
+              "task": {
+                "task_id": "91abf5309732",
+                "title": "Run dir_inbox",
+                "status": "completed",
+                "source": "desktop",
+                "sender": "desktop-service-smoke",
+                "created_at": "2026-03-16T11:16:54",
+                "updated_at": "2026-03-16T11:16:54",
+                "steps": [
+                  {
+                    "tool_name": "dir_inbox",
+                    "args": {},
+                    "status": "completed"
+                  }
+                ],
+                "result": {
+                  "success": true,
+                  "tool_name": "dir_inbox",
+                  "error": null
+                }
+              }
+            },
+            "trace": {
+              "raw_request": "execute: dir_inbox",
+              "session_id": "desktop:desktop-service-smoke",
+              "session_context": {
+                "session_id": "desktop:desktop-service-smoke",
+                "last_topic": null,
+                "last_intent": null,
+                "last_tool": null,
+                "last_failure_type": null,
+                "last_entities": {},
+                "missing_config_fields": [],
+                "config_progress_state": null,
+                "pending_restart_components": [],
+                "recent_turns": [],
+                "updated_at": 1773677814.74752,
+                "pending_task": null,
+                "pending_parameters": {},
+                "missing_parameters": [],
+                "last_task": null,
+                "last_result": null,
+                "last_args": {},
+                "last_created_path": null
+              },
+              "source": "desktop",
+              "interpreted_intent": "dir_inbox",
+              "interpreted_args": {},
+              "confidence": 1.0,
+              "selected_tool": "dir_inbox",
+              "validation_status": "passed",
+              "validated_arguments": {},
+              "execution_status": "success",
+              "execution_time_ms": 22
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

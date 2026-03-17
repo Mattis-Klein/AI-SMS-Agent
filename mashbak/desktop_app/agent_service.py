@@ -29,7 +29,7 @@ class AgentService:
 
     def start(self) -> None:
         if self._is_healthy():
-            if self._is_authorized(self.api_key):
+            if self._is_authorized(self.api_key) and self._has_required_control_board_routes(self.api_key):
                 return
 
             # A different agent is already using this port with another key.
@@ -151,6 +151,29 @@ class AgentService:
                 return response.status == 200
         except Exception:
             return False
+
+    def _has_required_control_board_routes(self, api_key: str) -> bool:
+        """Check minimal ops endpoints before reusing an already-running service."""
+        headers = {"x-api-key": api_key}
+        required_paths = [
+            "/control-board/tools-permissions",
+            "/control-board/personal-context",
+        ]
+        for path in required_paths:
+            request = urllib.request.Request(f"{self.base_url}{path}", headers=headers, method="GET")
+            try:
+                with urllib.request.urlopen(request, timeout=1.2) as response:
+                    if response.status != 200:
+                        return False
+            except urllib.error.HTTPError as exc:
+                if exc.code == 404:
+                    return False
+                if exc.code in {401, 403}:
+                    return False
+                continue
+            except Exception:
+                return False
+        return True
 
     def _find_free_port(self, start_port: int) -> int:
         for port in range(start_port, start_port + 50):

@@ -325,16 +325,31 @@ class ControlBoardService:
     def test_path_allowed(self, path_text: str) -> dict[str, Any]:
         path_value = str(path_text or "").strip()
         if not path_value:
-            return {"allowed": False, "reason": "Path is empty"}
+            return {"success": True, "allowed": False, "normalized_path": "", "reason": "Path is empty"}
         requested = Path(path_value).expanduser().resolve()
         workspace = self.runtime.workspace.resolve()
         if requested.is_relative_to(workspace):
-            return {"allowed": True, "reason": f"Allowed: workspace-relative ({requested})"}
+            return {
+                "success": True,
+                "allowed": True,
+                "normalized_path": str(requested),
+                "reason": "Allowed: workspace-relative path",
+            }
         for allowed in self.runtime.config.get_allowed_directories():
             base = Path(allowed).expanduser().resolve()
             if requested.is_relative_to(base):
-                return {"allowed": True, "reason": f"Allowed: within {base}"}
-        return {"allowed": False, "reason": "Blocked: path is not in allowed directories"}
+                return {
+                    "success": True,
+                    "allowed": True,
+                    "normalized_path": str(requested),
+                    "reason": f"Allowed: within {base}",
+                }
+        return {
+            "success": True,
+            "allowed": False,
+            "normalized_path": str(requested),
+            "reason": "Blocked: path is not in allowed directories",
+        }
 
     def assistants(self) -> dict[str, Any]:
         bucherim = self.bucherim_admin.assistants_summary()
@@ -365,6 +380,7 @@ class ControlBoardService:
         info = self.runtime.registry.get_all_info()
         payload = self.runtime.tool_permissions.list(info)
         return {
+            "success": True,
             "tools": payload.get("tools") or {},
             "tool_info": info,
             "count": len(info),
@@ -394,6 +410,32 @@ class ControlBoardService:
         )
         return {"success": True, "approval_id": approval_id, "result": result}
 
+    def approve_approval(self, approval_id: str, reviewer: str = "operator") -> dict[str, Any]:
+        approval = self.runtime.approval_store.get(approval_id)
+        if not approval:
+            return {"success": False, "error": "Approval not found"}
+        row = self.runtime.approval_store.set_status(approval_id, "approved", reviewer=reviewer)
+        if not row:
+            return {"success": False, "error": "Approval not found"}
+        return {"success": True, "approval": row}
+
+    async def run_approved(self, approval_id: str, reviewer: str = "operator") -> dict[str, Any]:
+        approval = self.runtime.approval_store.get(approval_id)
+        if not approval:
+            return {"success": False, "error": "Approval not found"}
+        if str(approval.get("status") or "").lower() != "approved":
+            return {"success": False, "error": "Approval must be approved before running"}
+        result = await self.runtime.execute_tool(
+            tool_name=str(approval.get("tool_name") or ""),
+            args=approval.get("args") if isinstance(approval.get("args"), dict) else {},
+            sender=str(approval.get("sender") or "operator"),
+            source="desktop",
+            owner_unlocked=True,
+            approval_id=approval_id,
+            approved_by=reviewer,
+        )
+        return {"success": bool(result.get("success", True)), "approval_id": approval_id, "result": result}
+
     def reject_approval(self, approval_id: str, reviewer: str = "operator") -> dict[str, Any]:
         row = self.runtime.approval_store.set_status(approval_id, "rejected", reviewer=reviewer)
         if not row:
@@ -404,7 +446,23 @@ class ControlBoardService:
         return self.runtime.task_store.list_tasks(limit=limit, status=status)
 
     def get_personal_context(self) -> dict[str, Any]:
-        return self.runtime.personal_context.read()
+        payload = self.runtime.personal_context.read()
+        return {
+            "success": True,
+            "profile": payload.get("profile") or {},
+            "people": payload.get("people") or [],
+            "routines": payload.get("routines") or [],
+            "projects": payload.get("projects") or [],
+            "preferences": payload.get("preferences") or {},
+        }
 
     def save_personal_context(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self.runtime.personal_context.save(payload)
+        saved = self.runtime.personal_context.save(payload)
+        return {
+            "success": True,
+            "profile": saved.get("profile") or {},
+            "people": saved.get("people") or [],
+            "routines": saved.get("routines") or [],
+            "projects": saved.get("projects") or [],
+            "preferences": saved.get("preferences") or {},
+        }

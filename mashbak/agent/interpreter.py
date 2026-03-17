@@ -60,6 +60,12 @@ class NaturalLanguageInterpreter:
 
     def __init__(self):
         self.patterns = [
+            (r"(?:check|show|list|summari[sz]e)\s+all\s+emails\s+everywhere", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True, "all_accounts": True, "all_categories": True}),
+            (r"(?:check|show|list|summari[sz]e)\s+all\s+inbox\s+tabs", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True, "all_categories": True}),
+            (r"(?:check|show|list|summari[sz]e)\s+(primary|promotions?|social|updates?|forums?)(?:\s+(?:emails?|mail))?\s+in\s+(.+?)\s+email$", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True, "category": m.group(1).strip(), "account_query": m.group(2).strip()}),
+            (r"(?:check|show|list|summari[sz]e)\s+(primary|promotions?|social|updates?|forums?)(?:\s+(?:emails?|mail))?$", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True, "category": m.group(1).strip()}),
+            (r"(?:check|show|list|summari[sz]e)\s+(?:my\s+)?emails?$", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True}),
+            (r"(?:check|show|list|summari[sz]e)\s+(.+?)\s+email", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True, "account_query": m.group(1).strip()}),
             (r"(?:do i have|any|show|list|check).*(?:new|recent|latest|unread).*(?:emails?|mail|messages?)", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True}),
             (r"(?:summari[sz]e|summary).*(?:emails?|mail|inbox)", "summarize_inbox", lambda m: {"limit": 5, "unread_only": True}),
             (r"(?:list|show|check).*(?:emails?|mail|messages?)", "list_recent_emails", lambda m: {"limit": 5}),
@@ -551,7 +557,7 @@ class NaturalLanguageInterpreter:
         msg = message.lower().strip()
         if any(phrase in msg for phrase in ["explain", "what does", "what is", "how does"]):
             return "explanation"
-        if any(word in msg for word in ["email", "emails", "mail", "inbox message", "unread"]):
+        if any(word in msg for word in ["email", "emails", "mail", "inbox message", "unread", "primary", "promotions", "social", "updates", "forums"]):
             return "email_access"
         if any(word in msg for word in ["inbox", "outbox", "files", "file", "folder", "directory"]):
             return "filesystem"
@@ -648,7 +654,21 @@ class NaturalLanguageInterpreter:
         entities: dict[str, Any] = {}
         if tool_name:
             entities["tool"] = tool_name
-        for key in ("query", "path", "parent_path", "name", "email_id", "limit", "variable_name", "path_reference_unresolved"):
+        for key in (
+            "query",
+            "path",
+            "parent_path",
+            "name",
+            "email_id",
+            "limit",
+            "variable_name",
+            "path_reference_unresolved",
+            "account_id",
+            "account_query",
+            "category",
+            "all_accounts",
+            "all_categories",
+        ):
             if key in args:
                 entities[key] = args[key]
         return entities

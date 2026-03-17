@@ -68,33 +68,98 @@ class AgentClient:
         return self._request("GET", "/control-board/approvals" + tail, include_auth=True)
 
     def approve_and_run(self, approval_id: str, reviewer: str = "operator") -> dict:
-        return self._request(
+        return self._request_first_success(
             "POST",
-            "/control-board/approvals/approve-run",
-            include_auth=True,
+            [
+                "/control-board/approvals/approve-run",
+                "/control-board/approvals/approve_run",
+            ],
+            body={"approval_id": approval_id, "reviewer": reviewer},
+        )
+
+    def approve_approval(self, approval_id: str, reviewer: str = "operator") -> dict:
+        return self._request_first_success(
+            "POST",
+            [
+                "/control-board/approvals/approve",
+                "/control-board/approvals/approve-only",
+                "/control-board/approvals/approve_only",
+            ],
+            body={"approval_id": approval_id, "reviewer": reviewer},
+        )
+
+    def run_approved_action(self, approval_id: str, reviewer: str = "operator") -> dict:
+        return self._request_first_success(
+            "POST",
+            [
+                "/control-board/approvals/run",
+                "/control-board/approvals/run-approved",
+                "/control-board/approvals/run_approved",
+            ],
             body={"approval_id": approval_id, "reviewer": reviewer},
         )
 
     def reject_approval(self, approval_id: str, reviewer: str = "operator") -> dict:
-        return self._request(
+        return self._request_first_success(
             "POST",
-            "/control-board/approvals/reject",
-            include_auth=True,
+            [
+                "/control-board/approvals/reject",
+            ],
             body={"approval_id": approval_id, "reviewer": reviewer},
         )
 
     def get_personal_context(self) -> dict:
-        return self._request("GET", "/control-board/personal-context", include_auth=True)
+        return self._request_first_success(
+            "GET",
+            [
+                "/control-board/personal-context",
+                "/control-board/personal_context",
+            ],
+        )
 
     def save_personal_context(self, payload: dict) -> dict:
-        return self._request("POST", "/control-board/personal-context/save", include_auth=True, body=payload)
+        return self._request_first_success(
+            "POST",
+            [
+                "/control-board/personal-context/save",
+                "/control-board/personal_context/save",
+            ],
+            body=payload,
+        )
 
     def get_tools_permissions(self) -> dict:
-        return self._request("GET", "/control-board/tools-permissions", include_auth=True)
+        return self._request_first_success(
+            "GET",
+            [
+                "/control-board/tools-permissions",
+                "/control-board/tools_permissions",
+            ],
+        )
 
     def update_tool_permission(self, tool_name: str, settings: dict) -> dict:
         body = {"tool_name": tool_name, **settings}
-        return self._request("POST", "/control-board/tools-permissions/update", include_auth=True, body=body)
+        return self._request_first_success(
+            "POST",
+            [
+                "/control-board/tools-permissions/update",
+                "/control-board/tools_permissions/update",
+            ],
+            body=body,
+        )
+
+    def _request_first_success(self, method: str, paths: list[str], body: dict | None = None) -> dict:
+        last_error = None
+        for path in paths:
+            result = self._request(method, path, include_auth=True, body=body)
+            if not isinstance(result, dict):
+                last_error = {"success": False, "error": "Unexpected response type"}
+                continue
+            error_text = str(result.get("error") or "")
+            if result.get("success") is False and "HTTP 404" in error_text:
+                last_error = result
+                continue
+            return result
+        return last_error or {"success": False, "error": "No endpoint path succeeded."}
 
     def get_routing(self) -> dict:
         return self._request("GET", "/control-board/routing", include_auth=True)
@@ -145,23 +210,30 @@ class AgentClient:
         use_ssl: bool,
         mailbox: str,
         make_default: bool = False,
+        categories: list | None = None,
+        default_category: str | None = None,
     ) -> dict:
+        body = {
+            "account_id": account_id,
+            "label": label,
+            "provider": provider,
+            "email_address": email_address,
+            "password": password,
+            "imap_host": imap_host,
+            "imap_port": int(imap_port),
+            "use_ssl": bool(use_ssl),
+            "mailbox": mailbox,
+            "make_default": bool(make_default),
+        }
+        if categories is not None:
+            body["categories"] = categories
+        if default_category is not None:
+            body["default_category"] = default_category
         return self._request(
             "POST",
             "/control-board/email-accounts/save",
             include_auth=True,
-            body={
-                "account_id": account_id,
-                "label": label,
-                "provider": provider,
-                "email_address": email_address,
-                "password": password,
-                "imap_host": imap_host,
-                "imap_port": int(imap_port),
-                "use_ssl": bool(use_ssl),
-                "mailbox": mailbox,
-                "make_default": bool(make_default),
-            },
+            body=body,
         )
 
     def set_default_email_account(self, account_id: str) -> dict:

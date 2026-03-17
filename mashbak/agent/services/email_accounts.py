@@ -28,6 +28,8 @@ class EmailAccount:
     use_ssl: bool
     mailbox: str
     provider: str = "imap"
+    categories: list[str] | None = None
+    default_category: str = "Primary"
     is_default: bool = False
 
     def public_dict(self) -> dict[str, Any]:
@@ -40,6 +42,8 @@ class EmailAccount:
             "use_ssl": self.use_ssl,
             "mailbox": self.mailbox,
             "provider": self.provider,
+            "categories": list(self.categories or []),
+            "default_category": self.default_category or "Primary",
             "is_default": self.is_default,
             "password_set": bool(self.password),
         }
@@ -74,6 +78,8 @@ class EmailAccountStore:
             use_ssl=use_ssl,
             mailbox=mailbox,
             provider=provider,
+            categories=["Primary"],
+            default_category="Primary",
             is_default=True,
         )
 
@@ -118,6 +124,8 @@ class EmailAccountStore:
                     use_ssl=bool(row.get("use_ssl", True)),
                     mailbox=str(row.get("mailbox") or "INBOX"),
                     provider=str(row.get("provider") or "imap"),
+                    categories=[str(item) for item in (row.get("categories") or []) if str(item).strip()],
+                    default_category=str(row.get("default_category") or "Primary"),
                     is_default=str(row.get("account_id")) == str(default_id),
                 )
             )
@@ -162,6 +170,8 @@ class EmailAccountStore:
         mailbox: str,
         provider: str = "imap",
         make_default: bool = False,
+        categories: list[str] | None = None,
+        default_category: str | None = None,
     ) -> dict[str, Any]:
         payload = self._read_payload()
         rows = [row for row in payload.get("accounts") or [] if isinstance(row, dict)]
@@ -177,6 +187,9 @@ class EmailAccountStore:
         existing["use_ssl"] = bool(use_ssl)
         existing["mailbox"] = mailbox.strip() or "INBOX"
         existing["provider"] = provider.strip() or "imap"
+        normalized_categories = [str(item).strip() for item in (categories or []) if str(item).strip()]
+        existing["categories"] = normalized_categories or ["Primary"]
+        existing["default_category"] = str(default_category or existing.get("default_category") or "Primary").strip() or "Primary"
         if str(password or "").strip():
             existing["password"] = str(password).strip()
         else:

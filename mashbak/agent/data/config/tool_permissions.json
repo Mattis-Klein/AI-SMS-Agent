@@ -1,0 +1,352 @@
+{
+  "tools": {
+    "dir_inbox": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "List files in the inbox directory"
+    },
+    "dir_outbox": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "List files in the outbox directory"
+    },
+    "list_files": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "List files in a specified directory"
+    },
+    "system_info": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Get basic system information (OS, version, memory)"
+    },
+    "cpu_usage": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Check current CPU usage percentage"
+    },
+    "disk_space": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Check disk space on C: drive"
+    },
+    "current_time": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Get current system date and time"
+    },
+    "network_status": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Check network connection status and IP configuration"
+    },
+    "list_processes": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "List top running processes by CPU usage"
+    },
+    "uptime": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Get system uptime in hours"
+    },
+    "list_recent_emails": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "List recent emails from the configured inbox"
+    },
+    "summarize_inbox": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Summarize unread or recent emails from the configured inbox"
+    },
+    "search_emails": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Search email headers and message bodies for a query"
+    },
+    "read_email_thread": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Read a thread related to a specific email id"
+    },
+    "set_config_variable": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Set environment configuration variables through chat. Supports EMAIL_*, SMS_*, Twilio, URLs, ports, and other config settings. Values are validated and safely persisted to mashbak/.env.master."
+    },
+    "create_folder": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Create a folder in a validated directory"
+    },
+    "create_file": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Create a file and optionally write text content"
+    },
+    "delete_file": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop"
+      ],
+      "requires_approval": true,
+      "requires_unlocked_desktop": true,
+      "scope": "default",
+      "description": "Delete a file at a validated path"
+    },
+    "edit_file": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Edit a text file by replacing its full content or appending text"
+    },
+    "copy_file": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Copy a file from source path to destination path"
+    },
+    "move_file": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop"
+      ],
+      "requires_approval": true,
+      "requires_unlocked_desktop": true,
+      "scope": "default",
+      "description": "Move a file from source path to destination path"
+    },
+    "search_files": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Search for files by glob/name under a safe directory"
+    },
+    "launch_program": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop"
+      ],
+      "requires_approval": true,
+      "requires_unlocked_desktop": true,
+      "scope": "default",
+      "description": "Launch an approved local program"
+    },
+    "open_target": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Open a safe folder path or URL"
+    },
+    "run_project_command": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop"
+      ],
+      "requires_approval": true,
+      "requires_unlocked_desktop": true,
+      "scope": "default",
+      "description": "Run an approved project command in a safe directory"
+    },
+    "capture_screenshot": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop"
+      ],
+      "requires_approval": true,
+      "requires_unlocked_desktop": true,
+      "scope": "default",
+      "description": "Capture a screenshot and save it under workspace/outbox/screenshots"
+    },
+    "generate_homepage": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Generate a simple colorful HTML homepage from a natural-language prompt"
+    },
+    "send_email": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop"
+      ],
+      "requires_approval": true,
+      "requires_unlocked_desktop": true,
+      "scope": "default",
+      "description": "Send an email using a configured email account"
+    },
+    "draft_email_reply": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Create a draft email reply as a file in outbox/drafts"
+    },
+    "web_search": {
+      "enabled": true,
+      "allowed_sources": [
+        "desktop",
+        "sms",
+        "voice"
+      ],
+      "requires_approval": false,
+      "requires_unlocked_desktop": false,
+      "scope": "default",
+      "description": "Search the internet for current information on a topic. Returns a list of relevant results with titles, snippets, and URLs. Useful for verifying time-sensitive facts like elections, news, statistics, schedules, public figures, and current events."
+    }
+  }
+}

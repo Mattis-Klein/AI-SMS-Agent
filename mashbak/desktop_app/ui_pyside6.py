@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import html
 import threading
 import urllib.error
 import urllib.request
@@ -10,8 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QIcon, QTextCursor, QPixmap, QColor
+from PySide6.QtCore import Qt, QTimer, QPoint
+from PySide6.QtGui import QFont, QIcon, QTextCursor, QPixmap, QColor, QAction
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -37,6 +38,13 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QScrollArea,
     QApplication,
+    QAbstractItemView,
+    QMenu,
+    QDialog,
+    QDialogButtonBox,
+    QInputDialog,
+    QSizePolicy,
+    QMessageBox,
 )
 
 try:
@@ -55,12 +63,12 @@ _YELLOW = "#b98900"
 _UNKNOWN = "#6b7280"
 _BG = "#eef2f7"
 _CARD = "#ffffff"
-_NAV_BG = "#121722"
+_NAV_BG = "#5175C2"
 _SURFACE = "#e7ecf4"
-_HEADER_BG = "#101826"
+_HEADER_BG = "#374B6D"
 
 
-def create_label(text: str, font_size: int = 10, bold: bool = False, color: str = "#111827") -> QLabel:
+def create_label(text: str, font_size: int = 10, bold: bool = False, color: str = "#34415E") -> QLabel:
     """Create a styled label."""
     label = QLabel(text)
     font = QFont("Segoe UI", font_size)
@@ -98,11 +106,11 @@ def create_status_badge(text: str, status: str = "info") -> QLabel:
     if status == "ok":
         bg, fg = "#e9f7ef", "#17683a"
     elif status == "warn":
-        bg, fg = "#fff5db", "#8a5a00"
+        bg, fg = "#fff5db", "#b47808"
     elif status == "error":
-        bg, fg = "#ffebe9", "#9f1239"
+        bg, fg = "#ffebe9", "#ce1a4d"
     else:  # info
-        bg, fg = "#1a2638", "#e6edf5"
+        bg, fg = "#304769", "#e6edf5"
     badge.setStyleSheet(f"background-color: {bg}; color: {fg}; padding: 6px 10px; border-radius: 4px;")
     return badge
 
@@ -110,27 +118,43 @@ def create_status_badge(text: str, status: str = "info") -> QLabel:
 class StatusCard(QFrame):
     """A card showing component status with indicator dot."""
     
+    _ICONS = {
+        "Backend": "⚙",
+        "Bridge": "🔗",
+        "Email": "✉",
+        "Active Assistant": "🤖",
+    }
+    
     def __init__(self, title: str, subtitle: str):
         super().__init__()
         self.title = title
         self.subtitle_text = subtitle
         self._setup_ui()
-        self.setStyleSheet("background-color: white; border-radius: 4px; padding: 12px;")
+        self.setStyleSheet(
+            "StatusCard { background-color: white; border-radius: 8px; "
+            "border: 1px solid #dde3ef; }"
+        )
         
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(6)
         
-        # Top row: title + indicator
+        # Top row: icon + title + indicator
         top_layout = QHBoxLayout()
         top_layout.setContentsMargins(0, 0, 0, 0)
+        
+        icon_text = self._ICONS.get(self.title, "●")
+        icon_label = create_label(icon_text, 16)
+        icon_label.setFixedWidth(26)
+        top_layout.addWidget(icon_label)
+        
         self.title_label = create_label(self.title, 10, bold=True)
         top_layout.addWidget(self.title_label)
+        top_layout.addStretch()
         
         self.indicator = QLabel("●")
         self.indicator.setStyleSheet(f"color: {_UNKNOWN}; font-size: 14px;")
-        top_layout.addStretch()
         top_layout.addWidget(self.indicator)
         layout.addLayout(top_layout)
         
@@ -237,30 +261,46 @@ class DashboardPage(QWidget):
             cards_layout.addWidget(card)
         layout.addLayout(cards_layout)
         
-        # Tables area
-        tables_layout = QHBoxLayout()
+        # Tables area - use splitter so both can be resized
+        tables_splitter = QSplitter(Qt.Horizontal)
+        tables_splitter.setChildrenCollapsible(False)
         
         # Attention queue
-        attention_layout = QVBoxLayout()
+        attention_widget = QWidget()
+        attention_layout = QVBoxLayout(attention_widget)
+        attention_layout.setContentsMargins(0, 0, 0, 0)
+        attention_layout.addWidget(create_label("Attention", 10, bold=True))
         self.attention_label = create_label("No alerts.", 9, color=_SLATE)
         attention_layout.addWidget(self.attention_label)
         
         self.failures_table = QTableWidget()
         self.failures_table.setColumnCount(5)
         self.failures_table.setHorizontalHeaderLabels(["Timestamp", "Assistant", "Action", "Result", "Status"])
-        self.failures_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.failures_table.setMaximumWidth(450)
+        self.failures_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.failures_table.horizontalHeader().setStretchLastSection(True)
+        self.failures_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.failures_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         attention_layout.addWidget(self.failures_table)
-        tables_layout.addLayout(attention_layout, 0)
+        tables_splitter.addWidget(attention_widget)
         
         # Recent Activity
+        activity_widget = QWidget()
+        activity_layout = QVBoxLayout(activity_widget)
+        activity_layout.setContentsMargins(0, 0, 0, 0)
+        activity_layout.addWidget(create_label("Recent Activity", 10, bold=True))
         self.actions_table = QTableWidget()
         self.actions_table.setColumnCount(5)
         self.actions_table.setHorizontalHeaderLabels(["Timestamp", "Assistant", "Action", "Result", "Status"])
-        self.actions_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        tables_layout.addWidget(self.actions_table, 1)
+        self.actions_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.actions_table.horizontalHeader().setStretchLastSection(True)
+        self.actions_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.actions_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        activity_layout.addWidget(self.actions_table)
+        tables_splitter.addWidget(activity_widget)
         
-        layout.addLayout(tables_layout, 1)
+        tables_splitter.setStretchFactor(0, 1)
+        tables_splitter.setStretchFactor(1, 2)
+        layout.addWidget(tables_splitter, 1)
         
     def update_cards(self, cards_data: dict):
         """Update status cards."""
@@ -314,7 +354,10 @@ class ChatConsolePage(QWidget):
         
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
-        self.chat_display.setStyleSheet(f"background-color: white; color: #111827; border: none; padding: 8px;")
+        self.chat_display.setStyleSheet(
+            "background-color: #f8fafc; color: #111827; border: 1px solid #d9e2ec; border-radius: 6px; padding: 10px;"
+        )
+        self.chat_display.setPlaceholderText("No activity yet")
         left_layout.addWidget(self.chat_display, 1)
         
         self.processing_label = create_label("", 9, color=_SLATE)
@@ -325,12 +368,28 @@ class ChatConsolePage(QWidget):
         self.message_input = QLineEdit()
         self.message_input.setFont(QFont("Segoe UI", 10))
         self.message_input.setStyleSheet("padding: 8px; border: 1px solid #ddd; border-radius: 4px;")
+        self.message_input.setPlaceholderText("Type a command for Mashbak (e.g., summarize new emails)")
         self.message_input.returnPressed.connect(self.app.on_send)
         input_layout.addWidget(self.message_input)
         
         send_btn = create_button("Send", self.app.on_send)
         input_layout.addWidget(send_btn)
         left_layout.addLayout(input_layout)
+
+        self.quick_suggestion_frame = QFrame()
+        self.quick_suggestion_frame.setStyleSheet(
+            "background-color: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px;"
+        )
+        suggest_layout = QHBoxLayout(self.quick_suggestion_frame)
+        suggest_layout.setContentsMargins(10, 8, 10, 8)
+        self.quick_suggestion_label = create_label("", 9, color="#92400e")
+        suggest_layout.addWidget(self.quick_suggestion_label, 1)
+        self.quick_suggestion_yes = create_button("Yes", self.app.on_accept_quick_suggestion, style="subtle")
+        self.quick_suggestion_no = create_button("No", self.app.on_dismiss_quick_suggestion, style="subtle")
+        suggest_layout.addWidget(self.quick_suggestion_yes)
+        suggest_layout.addWidget(self.quick_suggestion_no)
+        self.quick_suggestion_frame.setVisible(False)
+        left_layout.addWidget(self.quick_suggestion_frame)
         
         # Right: Trace
         right_widget = QWidget()
@@ -350,12 +409,14 @@ class ChatConsolePage(QWidget):
         
         self.details_text = QPlainTextEdit()
         self.details_text.setReadOnly(True)
-        self.details_text.setStyleSheet("background-color: white; border: none;")
+        self.details_text.setStyleSheet("background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px;")
+        self.details_text.setPlaceholderText("Waiting for commands")
         self.trace_tabs.addTab(self.details_text, "Details")
         
         self.activity_list = QPlainTextEdit()
         self.activity_list.setReadOnly(True)
-        self.activity_list.setStyleSheet("background-color: white; border: none; font-family: monospace;")
+        self.activity_list.setStyleSheet("background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; font-family: monospace;")
+        self.activity_list.setPlainText("No activity yet")
         self.trace_tabs.addTab(self.activity_list, "Activity")
         
         logs_widget = QWidget()
@@ -363,12 +424,12 @@ class ChatConsolePage(QWidget):
         logs_layout.addWidget(create_label("Agent Logs", 10, bold=True))
         self.agent_logs = QPlainTextEdit()
         self.agent_logs.setReadOnly(True)
-        self.agent_logs.setStyleSheet("background-color: white; border: none; font-family: monospace; font-size: 8pt;")
+        self.agent_logs.setStyleSheet("background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; font-family: monospace; font-size: 8pt;")
         logs_layout.addWidget(self.agent_logs)
         logs_layout.addWidget(create_label("Bridge Logs", 10, bold=True))
         self.bridge_logs = QPlainTextEdit()
         self.bridge_logs.setReadOnly(True)
-        self.bridge_logs.setStyleSheet("background-color: white; border: none; font-family: monospace; font-size: 8pt;")
+        self.bridge_logs.setStyleSheet("background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; font-family: monospace; font-size: 8pt;")
         logs_layout.addWidget(self.bridge_logs)
         self.trace_tabs.addTab(logs_widget, "Logs")
         
@@ -382,13 +443,25 @@ class ChatConsolePage(QWidget):
         
         # Action buttons
         action_layout = QHBoxLayout()
-        action_layout.addWidget(create_button("Clear Conversation", self.app.clear_chat, style="subtle"))
+        action_layout.setSpacing(8)
+        action_layout.addWidget(create_label("Conversation", 9, bold=True, color=_SLATE))
+        action_layout.addWidget(create_button("Clear", self.app.clear_chat, style="subtle"))
+        action_layout.addWidget(create_button("Copy Last", self.app.copy_last_response, style="subtle"))
+        action_layout.addSpacing(12)
+        action_layout.addWidget(create_label("Trace", 9, bold=True, color=_SLATE))
         action_layout.addWidget(create_button("Clear Activity", self.app.clear_activity, style="subtle"))
-        action_layout.addWidget(create_button("Copy Last Response", self.app.copy_last_response, style="subtle"))
-        action_layout.addWidget(create_button("Copy Raw Trace", self.app.copy_raw_trace, style="subtle"))
+        action_layout.addWidget(create_button("Copy Raw", self.app.copy_raw_trace, style="subtle"))
         action_layout.addWidget(create_button("Refresh Logs", self.app.refresh_logs, style="subtle"))
         action_layout.addStretch()
         layout.addLayout(action_layout)
+
+    def show_quick_suggestion(self, command_text: str):
+        safe_text = str(command_text or "").strip()
+        self.quick_suggestion_label.setText(f'Create Quick Command for "{safe_text}"?')
+        self.quick_suggestion_frame.setVisible(True)
+
+    def hide_quick_suggestion(self):
+        self.quick_suggestion_frame.setVisible(False)
     
     def append_message(self, role: str, text: str):
         """Append message to chat display."""
@@ -397,18 +470,29 @@ class ChatConsolePage(QWidget):
         self.chat_display.setTextCursor(cursor)
         
         timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
+        body = html.escape(str(text or "")).replace("\n", "<br>")
         
-        if role == "user":
-            self.chat_display.insertHtml(f"<b>{role.upper()} | {timestamp}</b><br>")
-            self.chat_display.insertPlainText(text + "\n\n")
-        elif role == "assistant":
-            self.chat_display.insertHtml(f"<b>MASHBAK | {timestamp}</b><br>")
-            self.chat_display.insertPlainText(text + "\n\n")
-        elif role == "error":
-            self.chat_display.insertHtml(f"<span style='color: #8c2f39;'><b>ERROR | {timestamp}</b></span><br>")
-            self.chat_display.insertHtml(f"<span style='color: #8c2f39;'>{text}</span><br><br>")
+        normalized_role = str(role or "system").strip().lower()
+        if normalized_role in {"you", "user"}:
+            self.chat_display.insertHtml(
+                f"<div style='background:#eaf2ff;border:1px solid #cfe0ff;border-radius:8px;padding:8px;margin:6px 0 6px 80px;'>"
+                f"<div style='font-weight:600;color:#0a3069;'>You | {timestamp}</div><div>{body}</div></div>"
+            )
+        elif normalized_role in {"mashbak", "assistant"}:
+            self.chat_display.insertHtml(
+                f"<div style='background:#ffffff;border:1px solid #d9e2ec;border-radius:8px;padding:8px;margin:6px 80px 6px 0;'>"
+                f"<div style='font-weight:600;color:#0f4fbf;'>Mashbak | {timestamp}</div><div>{body}</div></div>"
+            )
+        elif normalized_role == "error":
+            self.chat_display.insertHtml(
+                f"<div style='background:#fff1f0;border:1px solid #ffd6d2;border-radius:8px;padding:8px;margin:6px 0;'>"
+                f"<div style='font-weight:600;color:#8c2f39;'>System Error | {timestamp}</div><div style='color:#8c2f39;'>{body}</div></div>"
+            )
         else:
-            self.chat_display.insertHtml(f"<i>{text}</i><br><br>")
+            self.chat_display.insertHtml(
+                f"<div style='background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:8px;margin:6px 0;'>"
+                f"<div style='font-weight:600;color:#64748b;'>System | {timestamp}</div><div>{body}</div></div>"
+            )
         
         self.chat_display.ensureCursorVisible()
 
@@ -432,37 +516,61 @@ class AssistantsPage(QWidget):
         header_layout.addWidget(create_button("Refresh", self.app.refresh_assistants, style="subtle"))
         layout.addLayout(header_layout)
         
-        split = QHBoxLayout()
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
 
-        left = QVBoxLayout()
+        left_widget = QWidget()
+        left = QVBoxLayout(left_widget)
+        left.setContentsMargins(0, 0, 0, 0)
         left.addWidget(create_label("Mashbak Runtime", 10, bold=True))
         self.mashbak_table = QTableWidget()
         self.mashbak_table.setColumnCount(2)
         self.mashbak_table.setHorizontalHeaderLabels(["Setting", "Value"])
-        self.mashbak_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.mashbak_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.mashbak_table.horizontalHeader().setStretchLastSection(True)
         self.mashbak_table.verticalHeader().setVisible(False)
+        self.mashbak_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         left.addWidget(self.mashbak_table)
+        left.addWidget(create_label("Runtime settings and model controls", 8, color=_SLATE))
+        left.addSpacing(10)
 
         left.addWidget(create_label("Bucherim Summary", 10, bold=True))
         self.bucherim_counts_table = QTableWidget()
         self.bucherim_counts_table.setColumnCount(2)
         self.bucherim_counts_table.setHorizontalHeaderLabels(["Field", "Value"])
-        self.bucherim_counts_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.bucherim_counts_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.bucherim_counts_table.horizontalHeader().setStretchLastSection(True)
         self.bucherim_counts_table.verticalHeader().setVisible(False)
+        self.bucherim_counts_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         left.addWidget(self.bucherim_counts_table)
+        self.bucherim_empty_label = create_label("", 9, color=_SLATE)
+        left.addWidget(self.bucherim_empty_label)
 
-        right = QVBoxLayout()
-        right.addWidget(create_label("Bucherim Response Templates", 10, bold=True))
+        right_widget = QWidget()
+        right = QVBoxLayout(right_widget)
+        right.setContentsMargins(0, 0, 0, 0)
+        right.addWidget(create_label("Response Templates", 10, bold=True))
         self.responses_table = QTableWidget()
         self.responses_table.setColumnCount(2)
         self.responses_table.setHorizontalHeaderLabels(["Template", "Text"])
-        self.responses_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.responses_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.responses_table.horizontalHeader().setStretchLastSection(True)
         self.responses_table.verticalHeader().setVisible(False)
+        self.responses_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.responses_table.itemSelectionChanged.connect(self.app.on_template_row_selected)
         right.addWidget(self.responses_table)
+        right.addWidget(create_label("Selected template", 9, bold=True, color=_SLATE))
+        self.responses_detail = QPlainTextEdit()
+        self.responses_detail.setReadOnly(True)
+        self.responses_detail.setStyleSheet("background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px;")
+        self.responses_detail.setPlaceholderText("No template selected")
+        right.addWidget(self.responses_detail)
 
-        split.addLayout(left, 1)
-        split.addLayout(right, 1)
-        layout.addLayout(split, 1)
+        splitter.addWidget(left_widget)
+        splitter.addWidget(right_widget)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        layout.addWidget(splitter, 1)
 
 
 class CommunicationsPage(QWidget):
@@ -493,41 +601,92 @@ class CommunicationsPage(QWidget):
         email_layout = QVBoxLayout(email_widget)
         email_layout.addWidget(create_label("Email Accounts", 10, bold=True))
 
-        email_top = QHBoxLayout()
-        self.email_accounts_widget = QListWidget()
-        self.email_accounts_widget.currentItemChanged.connect(self.app.on_email_account_selected)
-        email_top.addWidget(self.email_accounts_widget, 1)
+        email_splitter = QSplitter(Qt.Horizontal)
+        email_splitter.setChildrenCollapsible(False)
         
-        grid = QGridLayout()
+        list_widget = QWidget()
+        list_layout = QVBoxLayout(list_widget)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.addWidget(create_label("Configured Accounts", 9, bold=True, color=_SLATE))
+        self.email_accounts_widget = QListWidget()
+        self.email_accounts_widget.setStyleSheet(
+            "QListWidget::item:selected { background: #eaf2ff; color: #0a3069; border: 1px solid #bfd6ff; }"
+        )
+        self.email_accounts_widget.currentItemChanged.connect(self.app.on_email_account_selected)
+        list_layout.addWidget(self.email_accounts_widget)
+        self.email_accounts_empty = create_label("", 9, color=_SLATE)
+        list_layout.addWidget(self.email_accounts_empty)
+        email_splitter.addWidget(list_widget)
+        
+        form_widget = QWidget()
+        grid = QGridLayout(form_widget)
+        grid.setContentsMargins(8, 0, 0, 0)
         self.email_label = QLineEdit()
         self.email_address = QLineEdit()
+        
+        # Password field with show/hide
         self.email_password = QLineEdit()
         self.email_password.setEchoMode(QLineEdit.Password)
+        pw_row = QHBoxLayout()
+        pw_row.setContentsMargins(0, 0, 0, 0)
+        pw_row.setSpacing(4)
+        pw_row.addWidget(self.email_password)
+        self._pw_show_btn = QPushButton("Show")
+        self._pw_show_btn.setFixedWidth(48)
+        self._pw_show_btn.setCheckable(True)
+        self._pw_show_btn.setFont(QFont("Segoe UI", 8))
+        self._pw_show_btn.setStyleSheet(
+            "QPushButton { background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 3px; padding: 3px; }"
+            "QPushButton:checked { background: #dbeafe; color: #1d4ed8; }"
+        )
+        self._pw_show_btn.toggled.connect(
+            lambda checked: (
+                self.email_password.setEchoMode(QLineEdit.Normal if checked else QLineEdit.Password),
+                self._pw_show_btn.setText("Hide" if checked else "Show"),
+            )
+        )
+        pw_row.addWidget(self._pw_show_btn)
+        pw_widget = QWidget()
+        pw_widget.setLayout(pw_row)
+        
         self.email_imap_host = QLineEdit()
         self.email_imap_port = QLineEdit("993")
         self.email_mailbox = QLineEdit("INBOX")
-        self.email_make_default = QCheckBox("Set as default account")
+        self.email_make_default = QCheckBox("Set as primary account")
+        
+        self.email_categories = QLineEdit()
+        self.email_categories.setPlaceholderText("e.g. Primary, Promotions, Social, Updates")
+        self.email_default_category = QComboBox()
+        self.email_default_category.addItems(["Primary", "All", "Promotions", "Social", "Updates", "Forums"])
         
         grid.addWidget(create_label("Label"), 0, 0)
         grid.addWidget(self.email_label, 0, 1)
         grid.addWidget(create_label("Email Address"), 1, 0)
         grid.addWidget(self.email_address, 1, 1)
         grid.addWidget(create_label("Password"), 2, 0)
-        grid.addWidget(self.email_password, 2, 1)
+        grid.addWidget(pw_widget, 2, 1)
         grid.addWidget(create_label("IMAP Server"), 3, 0)
         grid.addWidget(self.email_imap_host, 3, 1)
         grid.addWidget(create_label("IMAP Port"), 4, 0)
         grid.addWidget(self.email_imap_port, 4, 1)
         grid.addWidget(create_label("Mailbox"), 5, 0)
         grid.addWidget(self.email_mailbox, 5, 1)
-        grid.addWidget(self.email_make_default, 6, 1)
+        grid.addWidget(create_label("Categories"), 6, 0)
+        grid.addWidget(self.email_categories, 6, 1)
+        grid.addWidget(create_label("Default Category"), 7, 0)
+        grid.addWidget(self.email_default_category, 7, 1)
+        grid.addWidget(self.email_make_default, 8, 1)
+        email_splitter.addWidget(form_widget)
+        email_splitter.setStretchFactor(0, 1)
+        email_splitter.setStretchFactor(1, 2)
         
-        email_top.addLayout(grid, 2)
-        email_layout.addLayout(email_top)
+        email_layout.addWidget(email_splitter)
 
         email_actions = QHBoxLayout()
         email_actions.addWidget(create_button("New Account", self.app.new_email_account, style="subtle"))
-        email_actions.addWidget(create_button("Save Account", self.app.save_email_config))
+        self.save_account_btn = create_button("Save Account", self.app.save_email_config)
+        self.save_account_btn.setEnabled(False)
+        email_actions.addWidget(self.save_account_btn)
         email_actions.addWidget(create_button("Test Connection", self.app.test_email_connection, style="subtle"))
         email_actions.addWidget(create_button("Set Default", self.app.set_default_email_account, style="subtle"))
         email_actions.addWidget(create_button("Delete", self.app.delete_email_account, style="subtle"))
@@ -538,6 +697,16 @@ class CommunicationsPage(QWidget):
         self.email_result = QPlainTextEdit()
         self.email_result.setReadOnly(True)
         email_layout.addWidget(self.email_result)
+
+        self.email_label.textChanged.connect(self.app.on_email_form_dirty)
+        self.email_address.textChanged.connect(self.app.on_email_form_dirty)
+        self.email_password.textChanged.connect(self.app.on_email_form_dirty)
+        self.email_imap_host.textChanged.connect(self.app.on_email_form_dirty)
+        self.email_imap_port.textChanged.connect(self.app.on_email_form_dirty)
+        self.email_mailbox.textChanged.connect(self.app.on_email_form_dirty)
+        self.email_categories.textChanged.connect(self.app.on_email_form_dirty)
+        self.email_default_category.currentTextChanged.connect(self.app.on_email_form_dirty)
+        self.email_make_default.toggled.connect(self.app.on_email_form_dirty)
         
         tabs.addTab(email_widget, "Email")
         
@@ -579,8 +748,10 @@ class CommunicationsPage(QWidget):
         self.routing_member_table = QTableWidget()
         self.routing_member_table.setColumnCount(2)
         self.routing_member_table.setHorizontalHeaderLabels(["Field", "Value"])
-        self.routing_member_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.routing_member_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.routing_member_table.horizontalHeader().setStretchLastSection(True)
         self.routing_member_table.verticalHeader().setVisible(False)
+        self.routing_member_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         detail_left.addWidget(self.routing_member_table)
 
         detail_right = QVBoxLayout()
@@ -588,8 +759,10 @@ class CommunicationsPage(QWidget):
         self.routing_history_table = QTableWidget()
         self.routing_history_table.setColumnCount(4)
         self.routing_history_table.setHorizontalHeaderLabels(["Time", "Direction", "State", "Preview"])
-        self.routing_history_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.routing_history_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.routing_history_table.horizontalHeader().setStretchLastSection(True)
         self.routing_history_table.verticalHeader().setVisible(False)
+        self.routing_history_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         detail_right.addWidget(self.routing_history_table)
 
         detail_layout.addLayout(detail_left, 1)
@@ -626,44 +799,71 @@ class FilesPermissionsPage(QWidget):
         header_layout.addWidget(create_button("Refresh", self.app.refresh_files_policy, style="subtle"))
         layout.addLayout(header_layout)
         
-        # Two columns
-        content_layout = QHBoxLayout()
+        # Two columns in a splitter
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
         
-        allowed_column = QVBoxLayout()
-        allowed_column.addWidget(create_label("Allowed Directories", 10, bold=True))
+        # Left: Allowed Directories
+        allowed_widget = QWidget()
+        allowed_layout = QVBoxLayout(allowed_widget)
+        allowed_layout.setContentsMargins(0, 0, 0, 0)
+        
+        allowed_hdr = QHBoxLayout()
+        allowed_hdr.addWidget(create_label("Allowed Directories", 10, bold=True))
+        allowed_hdr.addStretch()
+        add_dir_btn = create_button("+ Add Directory", self.app.add_allowed_directory, style="subtle")
+        allowed_hdr.addWidget(add_dir_btn)
+        allowed_layout.addLayout(allowed_hdr)
+        
         self.allowed_list = QListWidget()
-        allowed_column.addWidget(self.allowed_list)
-        content_layout.addLayout(allowed_column, 1)
-
-        blocked_column = QVBoxLayout()
-        blocked_column.addWidget(create_label("Blocked Attempts", 10, bold=True))
+        self.allowed_list.setStyleSheet(
+            "QListWidget { border: 1px solid #dde3ef; border-radius: 6px; background: white; }"
+            "QListWidget::item { padding: 6px 10px; border-bottom: 1px solid #f0f2f5; font-family: Consolas; font-size: 9pt; }"
+            "QListWidget::item:selected { background: #eaf2ff; color: #0a3069; }"
+        )
+        self.allowed_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.allowed_list.customContextMenuRequested.connect(self.app.on_allowed_dir_context_menu)
+        allowed_layout.addWidget(self.allowed_list)
+        allowed_layout.addWidget(create_label("Right-click a directory for options.", 8, color=_SLATE))
+        splitter.addWidget(allowed_widget)
+        
+        # Right: Blocked Attempts
+        blocked_widget = QWidget()
+        blocked_layout = QVBoxLayout(blocked_widget)
+        blocked_layout.setContentsMargins(0, 0, 0, 0)
+        blocked_layout.addWidget(create_label("Blocked Attempts", 10, bold=True))
         self.blocked_table = QTableWidget()
         self.blocked_table.setColumnCount(3)
         self.blocked_table.setHorizontalHeaderLabels(["Timestamp", "Tool", "Path"])
-        self.blocked_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.blocked_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.blocked_table.horizontalHeader().setStretchLastSection(True)
         self.blocked_table.verticalHeader().setVisible(False)
-        blocked_column.addWidget(self.blocked_table)
-        content_layout.addLayout(blocked_column, 2)
+        self.blocked_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.blocked_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        blocked_layout.addWidget(self.blocked_table)
+        self.blocked_empty_label = create_label("No blocked attempts recorded.", 9, color=_SLATE)
+        self.blocked_empty_label.setAlignment(Qt.AlignCenter)
+        blocked_layout.addWidget(self.blocked_empty_label)
+        splitter.addWidget(blocked_widget)
         
-        layout.addLayout(content_layout)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
+        layout.addWidget(splitter, 1)
         
-        # Controls
-        controls_layout = QHBoxLayout()
-        self.new_dir_input = QLineEdit()
-        controls_layout.addWidget(create_label("Directory"), 0)
-        controls_layout.addWidget(self.new_dir_input, 1)
-        controls_layout.addWidget(create_button("Add", self.app.add_allowed_directory, style="subtle"))
-        controls_layout.addWidget(create_button("Remove Selected", self.app.remove_selected_directory, style="subtle"))
-        layout.addLayout(controls_layout)
-
+        # Path validation area
+        layout.addWidget(create_label("Path Validation", 10, bold=True))
         test_layout = QHBoxLayout()
         self.path_test_input = QLineEdit()
-        self.path_test_input.setPlaceholderText("Path to validate against file policy")
+        self.path_test_input.setPlaceholderText("Enter a path to validate against file policy")
         test_layout.addWidget(self.path_test_input, 1)
-        test_layout.addWidget(create_button("Test Path", self.app.test_policy_path, style="subtle"))
+        test_layout.addWidget(create_button("Test Path", lambda: self.app.open_validate_path_dialog(self.path_test_input.text().strip()), style="subtle"))
         layout.addLayout(test_layout)
         self.path_test_result = create_label("", 9, color=_SLATE)
         layout.addWidget(self.path_test_result)
+        
+        # Hidden input (kept for compatibility with add_allowed_directory logic)
+        self.new_dir_input = QLineEdit()
+        self.new_dir_input.setVisible(False)
 
 
 class ProjectsFilesPage(QWidget):
@@ -694,8 +894,11 @@ class ProjectsFilesPage(QWidget):
         self.projects_table = QTableWidget()
         self.projects_table.setColumnCount(6)
         self.projects_table.setHorizontalHeaderLabels(["Timestamp", "Action", "Tool", "State", "Target", "Source"])
-        self.projects_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.projects_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.projects_table.horizontalHeader().setStretchLastSection(True)
         self.projects_table.verticalHeader().setVisible(False)
+        self.projects_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.projects_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.projects_table.itemSelectionChanged.connect(self.app.on_project_row_selected)
         layout.addWidget(self.projects_table)
 
@@ -741,17 +944,50 @@ class ActivityAuditPage(QWidget):
         filter_layout.addWidget(create_button("Apply", self.app.refresh_activity_audit, style="subtle"))
         layout.addLayout(filter_layout)
         
+        # Main area: table + detail in vertical splitter
+        v_splitter = QSplitter(Qt.Vertical)
+        v_splitter.setChildrenCollapsible(False)
+        
         self.activity_table = QTableWidget()
         self.activity_table.setColumnCount(8)
         self.activity_table.setHorizontalHeaderLabels(["Timestamp", "Event", "Assistant", "Action", "Tool", "State", "Target", "Source"])
-        self.activity_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.activity_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.activity_table.horizontalHeader().setStretchLastSection(True)
+        self.activity_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.activity_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.activity_table.itemSelectionChanged.connect(self.app.on_activity_row_selected)
-        layout.addWidget(self.activity_table)
+        v_splitter.addWidget(self.activity_table)
+
+        detail_widget = QWidget()
+        detail_layout = QVBoxLayout(detail_widget)
+        detail_layout.setContentsMargins(0, 8, 0, 0)
+        detail_layout.setSpacing(4)
         
-        self.activity_detail = QPlainTextEdit()
-        self.activity_detail.setReadOnly(True)
-        self.activity_detail.setStyleSheet("background-color: white; border: none; font-family: monospace;")
-        layout.addWidget(self.activity_detail, 0)
+        detail_header = QHBoxLayout()
+        detail_header.addWidget(create_label("Selected Event Details", 10, bold=True))
+        detail_header.addStretch()
+        detail_header.addWidget(create_button("Copy Details", self.app.copy_activity_details, style="subtle"))
+        detail_layout.addLayout(detail_header)
+
+        self.activity_detail_tabs = QTabWidget()
+        self.activity_meta = QPlainTextEdit()
+        self.activity_meta.setReadOnly(True)
+        self.activity_meta.setStyleSheet("background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px;")
+        self.activity_summary = QPlainTextEdit()
+        self.activity_summary.setReadOnly(True)
+        self.activity_summary.setStyleSheet("background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px;")
+        self.activity_raw = QPlainTextEdit()
+        self.activity_raw.setReadOnly(True)
+        self.activity_raw.setStyleSheet("background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; font-family: Consolas;")
+        self.activity_detail_tabs.addTab(self.activity_meta, "Metadata")
+        self.activity_detail_tabs.addTab(self.activity_summary, "Result Summary")
+        self.activity_detail_tabs.addTab(self.activity_raw, "Raw Output")
+        detail_layout.addWidget(self.activity_detail_tabs)
+        v_splitter.addWidget(detail_widget)
+        
+        v_splitter.setStretchFactor(0, 3)
+        v_splitter.setStretchFactor(1, 2)
+        layout.addWidget(v_splitter, 1)
 
 
 class PersonalContextPage(QWidget):
@@ -765,37 +1001,90 @@ class PersonalContextPage(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
 
         header_layout = QHBoxLayout()
         header_layout.addWidget(create_label("Personal Context", 12, bold=True))
         header_layout.addStretch()
         header_layout.addWidget(create_button("Refresh", self.app.refresh_personal_context, style="subtle"))
-        header_layout.addWidget(create_button("Save", self.app.save_personal_context))
+        self.save_button = create_button("Save", self.app.save_personal_context)
+        self.save_button.setEnabled(False)
+        header_layout.addWidget(self.save_button)
         layout.addLayout(header_layout)
 
-        self.profile_text = QPlainTextEdit()
-        self.profile_text.setPlaceholderText("Profile JSON: name, preferred_tone, response_style, notes")
+        self.profile_name = QLineEdit()
+        self.profile_name.setPlaceholderText("Name")
+        self.profile_tone = QLineEdit()
+        self.profile_tone.setPlaceholderText("Preferred tone (e.g., calm, direct)")
+        self.profile_style = QLineEdit()
+        self.profile_style.setPlaceholderText("Response style (e.g., concise, detailed)")
+        self.profile_notes = QPlainTextEdit()
+        self.profile_notes.setPlaceholderText("Additional profile notes")
+
         self.people_text = QPlainTextEdit()
-        self.people_text.setPlaceholderText("People JSON array")
+        self.people_text.setPlaceholderText("People list (JSON array)")
         self.routines_text = QPlainTextEdit()
-        self.routines_text.setPlaceholderText("Routines JSON array")
+        self.routines_text.setPlaceholderText("Routines list (JSON array)")
         self.projects_text = QPlainTextEdit()
-        self.projects_text.setPlaceholderText("Projects JSON array")
-        self.preferences_text = QPlainTextEdit()
-        self.preferences_text.setPlaceholderText("Preferences JSON")
+        self.projects_text.setPlaceholderText("Projects list (JSON array)")
+
+        self.pref_response_length = QComboBox()
+        self.pref_response_length.addItems(["short", "balanced", "detailed"])
+        self.pref_notification_style = QComboBox()
+        self.pref_notification_style.addItems(["minimal", "normal", "verbose"])
+        self.pref_automation = QComboBox()
+        self.pref_automation.addItems(["safe", "balanced", "aggressive"])
+        self.pref_notes = QPlainTextEdit()
+        self.pref_notes.setPlaceholderText("Preference notes")
 
         layout.addWidget(create_label("Profile", 10, bold=True))
-        layout.addWidget(self.profile_text)
+        profile_grid = QGridLayout()
+        profile_grid.addWidget(create_label("Name"), 0, 0)
+        profile_grid.addWidget(self.profile_name, 0, 1)
+        profile_grid.addWidget(create_label("Tone"), 1, 0)
+        profile_grid.addWidget(self.profile_tone, 1, 1)
+        profile_grid.addWidget(create_label("Response Style"), 2, 0)
+        profile_grid.addWidget(self.profile_style, 2, 1)
+        layout.addLayout(profile_grid)
+        layout.addWidget(self.profile_notes)
         layout.addWidget(create_label("People", 10, bold=True))
+        layout.addWidget(create_label("JSON array of important contacts and context clues.", 8, color=_SLATE))
         layout.addWidget(self.people_text)
+        layout.addWidget(create_label("Example: [{\"name\": \"Sam\", \"relationship\": \"Manager\", \"notes\": \"Prefers concise updates\"}]", 8, color=_SLATE))
         layout.addWidget(create_label("Routines", 10, bold=True))
+        layout.addWidget(create_label("JSON array of recurring habits or schedules.", 8, color=_SLATE))
         layout.addWidget(self.routines_text)
+        layout.addWidget(create_label("Example: [{\"name\": \"Morning review\", \"time\": \"08:30\", \"days\": [\"Mon\", \"Tue\"]}]", 8, color=_SLATE))
         layout.addWidget(create_label("Projects", 10, bold=True))
+        layout.addWidget(create_label("JSON array of active projects and constraints.", 8, color=_SLATE))
         layout.addWidget(self.projects_text)
+        layout.addWidget(create_label("Example: [{\"name\": \"Website revamp\", \"status\": \"active\", \"owner\": \"Ops\"}]", 8, color=_SLATE))
         layout.addWidget(create_label("Preferences", 10, bold=True))
-        layout.addWidget(self.preferences_text)
+        pref_grid = QGridLayout()
+        pref_grid.addWidget(create_label("Response Length"), 0, 0)
+        pref_grid.addWidget(self.pref_response_length, 0, 1)
+        pref_grid.addWidget(create_label("Notification Style"), 1, 0)
+        pref_grid.addWidget(self.pref_notification_style, 1, 1)
+        pref_grid.addWidget(create_label("Automation"), 2, 0)
+        pref_grid.addWidget(self.pref_automation, 2, 1)
+        layout.addLayout(pref_grid)
+        layout.addWidget(self.pref_notes)
         self.status_label = create_label("", 9, color=_SLATE)
+        self.last_saved_label = create_label("Last saved: never", 8, color=_SLATE)
         layout.addWidget(self.status_label)
+        layout.addWidget(self.last_saved_label)
+
+        self.profile_name.textChanged.connect(self.app.on_personal_context_dirty)
+        self.profile_tone.textChanged.connect(self.app.on_personal_context_dirty)
+        self.profile_style.textChanged.connect(self.app.on_personal_context_dirty)
+        self.profile_notes.textChanged.connect(self.app.on_personal_context_dirty)
+        self.people_text.textChanged.connect(self.app.on_personal_context_dirty)
+        self.routines_text.textChanged.connect(self.app.on_personal_context_dirty)
+        self.projects_text.textChanged.connect(self.app.on_personal_context_dirty)
+        self.pref_notes.textChanged.connect(self.app.on_personal_context_dirty)
+        self.pref_response_length.currentTextChanged.connect(self.app.on_personal_context_dirty)
+        self.pref_notification_style.currentTextChanged.connect(self.app.on_personal_context_dirty)
+        self.pref_automation.currentTextChanged.connect(self.app.on_personal_context_dirty)
 
 
 class ToolsPermissionsPage(QWidget):
@@ -817,9 +1106,12 @@ class ToolsPermissionsPage(QWidget):
         layout.addLayout(header)
 
         self.tools_table = QTableWidget()
-        self.tools_table.setColumnCount(6)
-        self.tools_table.setHorizontalHeaderLabels(["Tool", "Enabled", "Sources", "Approval", "Unlock", "Scope"])
-        self.tools_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tools_table.setColumnCount(7)
+        self.tools_table.setHorizontalHeaderLabels(["Tool", "Description", "Enabled", "Sources", "Approval Required", "Requires Unlocked", "Scope"])
+        self.tools_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.tools_table.horizontalHeader().setStretchLastSection(True)
+        self.tools_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tools_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.tools_table.itemSelectionChanged.connect(self.app.on_tool_permission_selected)
         layout.addWidget(self.tools_table)
 
@@ -833,30 +1125,56 @@ class ToolsPermissionsPage(QWidget):
         controls.addWidget(self.tool_requires_approval)
         controls.addWidget(self.tool_requires_unlock)
         controls.addWidget(self.tool_sources, 1)
-        controls.addWidget(create_button("Apply", self.app.save_selected_tool_permission, style="subtle"))
+        self.apply_button = create_button("Apply", self.app.save_selected_tool_permission, style="subtle")
+        self.apply_button.setEnabled(False)
+        controls.addWidget(self.apply_button)
         layout.addLayout(controls)
 
-        split = QHBoxLayout()
+        self.tool_enabled.toggled.connect(self.app.on_tool_permission_form_dirty)
+        self.tool_requires_approval.toggled.connect(self.app.on_tool_permission_form_dirty)
+        self.tool_requires_unlock.toggled.connect(self.app.on_tool_permission_form_dirty)
+        self.tool_sources.textChanged.connect(self.app.on_tool_permission_form_dirty)
+
+        approvals_splitter = QSplitter(Qt.Horizontal)
+        approvals_splitter.setChildrenCollapsible(False)
+        
         self.approvals_table = QTableWidget()
         self.approvals_table.setColumnCount(5)
         self.approvals_table.setHorizontalHeaderLabels(["ID", "Tool", "Source", "Sender", "Status"])
-        self.approvals_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.approvals_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.approvals_table.horizontalHeader().setStretchLastSection(True)
+        self.approvals_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.approvals_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.approvals_table.itemSelectionChanged.connect(self.app.on_approval_selected)
-        split.addWidget(self.approvals_table, 2)
+        approvals_splitter.addWidget(self.approvals_table)
 
-        right = QVBoxLayout()
-        right.addWidget(create_button("Approve & Run", self.app.approve_selected_action))
-        right.addWidget(create_button("Reject", self.app.reject_selected_action, style="subtle"))
+        right_widget = QWidget()
+        right = QVBoxLayout(right_widget)
+        right.setContentsMargins(6, 0, 0, 0)
+        right.addWidget(create_button("✔ Approve", self.app.approve_selected_action))
+        right.addWidget(create_button("▶ Run", self.app.run_selected_action, style="subtle"))
+        right.addWidget(create_button("✖ Reject", self.app.reject_selected_action, style="subtle"))
+        right.addSpacing(8)
+        right.addWidget(create_label("Recent Tasks", 10, bold=True))
         self.tasks_table = QTableWidget()
         self.tasks_table.setColumnCount(4)
         self.tasks_table.setHorizontalHeaderLabels(["Task ID", "Title", "Status", "Updated"])
-        self.tasks_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tasks_table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.tasks_table.horizontalHeader().setStretchLastSection(True)
+        self.tasks_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tasks_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         right.addWidget(self.tasks_table, 1)
-        split.addLayout(right, 3)
-
-        layout.addLayout(split, 1)
+        self.tasks_empty = create_label("No tasks pending.", 9, color=_SLATE)
+        self.tasks_empty.setAlignment(Qt.AlignCenter)
+        right.addWidget(self.tasks_empty)
+        approvals_splitter.addWidget(right_widget)
+        
+        approvals_splitter.setStretchFactor(0, 2)
+        approvals_splitter.setStretchFactor(1, 3)
+        layout.addWidget(approvals_splitter, 1)
         self.result_text = QPlainTextEdit()
         self.result_text.setReadOnly(True)
+        self.result_text.setPlaceholderText("No tools selected yet.")
         layout.addWidget(self.result_text)
 
 
@@ -874,6 +1192,7 @@ class DesktopControlApp:
         self.is_unlocked = False
         self.current_section = "Dashboard"
         self.compact_tables = False
+        self._pre_lock_section: str | None = None
         
         self.activity: list[str] = []
         self.chat_history: list[tuple[str, str]] = []
@@ -884,8 +1203,16 @@ class DesktopControlApp:
         self.project_rows: list[dict[str, Any]] = []
         self.tool_permission_rows: list[tuple[str, dict[str, Any]]] = []
         self.approval_rows: list[dict[str, Any]] = []
+        self.response_templates: list[tuple[str, str]] = []
+        self.last_activity_detail_text = ""
         self.selected_tool_name: str | None = None
         self.selected_approval_id: str | None = None
+        self._command_frequency: dict[str, int] = {}
+        self._suggested_commands: set[str] = set()
+        self._pending_quick_command: str | None = None
+        self._loading_personal_context = False
+        self._loading_email_form = False
+        self._loading_tool_form = False
         
         workspace = Path(runtime_summary.get("workspace") or "")
         platform_root = workspace.parent.parent if workspace else Path.cwd()
@@ -914,25 +1241,50 @@ class DesktopControlApp:
 
         # Lock screen
         self.lock_screen = QWidget()
+        self.lock_screen.setStyleSheet(f"background-color: {_BG};")
         lock_layout = QVBoxLayout(self.lock_screen)
-        lock_layout.setContentsMargins(30, 30, 30, 30)
+        lock_layout.setContentsMargins(0, 0, 0, 0)
         lock_layout.addStretch()
         card = QFrame()
-        card.setMaximumWidth(560)
-        card.setStyleSheet("background-color: white; border-radius: 10px; padding: 16px;")
+        card.setMaximumWidth(440)
+        card.setMinimumWidth(340)
+        card.setStyleSheet(
+            "background-color: white; border-radius: 16px; "
+            "border: 1px solid #dde3ef;"
+        )
         card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(10)
-        title = create_label("Mashbak", 22, bold=True)
-        msg = create_label("System is locked. Enter your PIN to unlock.", 10, color=_SLATE)
+        card_layout.setContentsMargins(36, 32, 36, 32)
+        card_layout.setSpacing(14)
+        lock_icon = create_label("🔒", 32)
+        lock_icon.setAlignment(Qt.AlignHCenter)
+        title = create_label("Mashbak Control Board Locked", 16, bold=True)
+        title.setAlignment(Qt.AlignHCenter)
+        msg = create_label("Enter PIN to unlock", 10, color=_SLATE)
+        msg.setAlignment(Qt.AlignHCenter)
+        self.lock_backend_status = create_label("Backend: checking...", 9, color=_SLATE)
+        self.lock_backend_status.setAlignment(Qt.AlignHCenter)
         self.lock_pin_input = QLineEdit()
         self.lock_pin_input.setEchoMode(QLineEdit.Password)
-        self.lock_pin_input.setPlaceholderText("PIN")
+        self.lock_pin_input.setPlaceholderText("Enter PIN")
+        self.lock_pin_input.setFont(QFont("Segoe UI", 13))
+        self.lock_pin_input.setStyleSheet(
+            "padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 8px;"
+            "background-color: #f9fafb;"
+        )
+        self.lock_pin_input.setAlignment(Qt.AlignHCenter)
         self.lock_pin_input.returnPressed.connect(self.unlock_app)
         unlock_btn = create_button("Unlock", self.unlock_app)
+        unlock_btn.setFixedHeight(40)
+        self.lock_status_hint = create_label("", 9, color=_RED)
+        self.lock_status_hint.setAlignment(Qt.AlignHCenter)
+        card_layout.addWidget(lock_icon)
         card_layout.addWidget(title)
         card_layout.addWidget(msg)
+        card_layout.addWidget(self.lock_backend_status)
+        card_layout.addSpacing(6)
         card_layout.addWidget(self.lock_pin_input)
         card_layout.addWidget(unlock_btn)
+        card_layout.addWidget(self.lock_status_hint)
         lock_layout.addWidget(card, alignment=Qt.AlignHCenter)
         lock_layout.addStretch()
 
@@ -1000,7 +1352,7 @@ class DesktopControlApp:
         title_layout.setContentsMargins(0, 0, 0, 0)
         title_layout.setSpacing(2)
         title = create_label("Mashbak Control Board", 18, bold=True, color="#f8fafc")
-        subtitle = create_label("Private local operations console.", 9, color="#9dadc1")
+        subtitle = create_label("Private local operations console.", 9, color="#9bdbe4")
         title_layout.addWidget(title)
         title_layout.addWidget(subtitle)
         layout.addLayout(title_layout)
@@ -1009,12 +1361,12 @@ class DesktopControlApp:
         self.header_state_label = create_label("System starting", 9, color=_AMBER)
         layout.addWidget(self.header_state_label)
         
-        # Right: Badges and lock
+        # Right: Badges and lock button
         layout.addStretch()
         
         badges_layout = QHBoxLayout()
         badges_layout.setContentsMargins(0, 0, 0, 0)
-        badges_layout.setSpacing(8)
+        badges_layout.setSpacing(10)
         
         self.agent_badge = create_status_badge("Backend: Starting")
         self.bridge_badge = create_status_badge("Bridge: Checking")
@@ -1023,34 +1375,22 @@ class DesktopControlApp:
         badges_layout.addWidget(self.agent_badge)
         badges_layout.addWidget(self.bridge_badge)
         badges_layout.addWidget(self.email_badge)
-        badges_layout.addSpacing(12)
+        badges_layout.addSpacing(14)
         
-        # Lock controls
-        lock_layout = QHBoxLayout()
-        lock_layout.setContentsMargins(0, 0, 0, 0)
-        lock_layout.setSpacing(8)
-        
-        lock_layout.addWidget(create_label("Control Board", 9, color="#d9e1ec"))
-        self.lock_status = create_status_badge("Locked", "error")
-        lock_layout.addWidget(self.lock_status)
-        
-        self.pin_input = QLineEdit()
-        self.pin_input.setEchoMode(QLineEdit.Password)
-        self.pin_input.setMaximumWidth(110)
-        self.pin_input.setFont(QFont("Segoe UI", 10))
-        self.pin_input.setStyleSheet("padding: 4px; border: 1px solid #ddd; border-radius: 4px;")
-        self.pin_input.returnPressed.connect(self.unlock_app)
-        lock_layout.addWidget(self.pin_input)
-        
-        self.unlock_button = create_button("Unlock", self.unlock_app)
-        lock_layout.addWidget(self.unlock_button)
-        
-        self.lock_button = create_button("Lock", self.lock_app, style="subtle")
+        self.lock_button = QPushButton("🔒  Lock")
+        self.lock_button.setFont(QFont("Segoe UI", 9))
         self.lock_button.setEnabled(False)
-        lock_layout.addWidget(self.lock_button)
-        
-        badges_layout.addLayout(lock_layout)
+        self.lock_button.clicked.connect(self.lock_app)
+        self.lock_button.setStyleSheet(
+            "QPushButton { background-color: #4b5563; color: white; border: none; "
+            "padding: 7px 14px; border-radius: 5px; font-weight: bold; } "
+            "QPushButton:hover { background-color: #374151; } "
+            "QPushButton:disabled { background-color: #6b7280; color: #9ca3af; }"
+        )
+        badges_layout.addWidget(self.lock_button)
         layout.addLayout(badges_layout)
+        layout.setStretch(0, 2)
+        layout.setStretch(1, 1)
     
     def _build_sidebar(self):
         """Build navigation sidebar."""
@@ -1090,7 +1430,7 @@ class DesktopControlApp:
             btn.setStyleSheet(
                 f"QPushButton {{ background-color: transparent; color: #d9e1ec; border: none; "
                 "padding: 10px 14px; text-align: left; }} "
-                "QPushButton:hover { background-color: #1a2437; }"
+                "QPushButton:hover { background-color: #6280b9; }"
             )
             layout.addWidget(btn)
             self.nav_buttons[section] = btn
@@ -1099,18 +1439,29 @@ class DesktopControlApp:
         layout.addSpacing(10)
         
         # Quick commands
-        quick_label = create_label("QUICK COMMANDS", 11, bold=True, color="#e5e7eb")
+        quick_label = create_label("QUICK COMMANDS", 11, bold=True, color="#e5e7eb")  
         layout.addWidget(quick_label)
         
-        for label, msg in [
+        self.quick_commands: list[tuple[str, str]] = [
             ("System Info", "system info"),
             ("CPU Usage", "How busy is my computer right now?"),
             ("Recent Emails", "Do I have any new emails?"),
             ("Current Time", "what time is it"),
-        ]:
-            btn = create_button(label, lambda m=msg: self._send_quick_command(m), style="subtle")
-            layout.addWidget(btn)
-            self.lock_sensitive_buttons.append(btn)
+        ]
+        self.quick_commands_list = QListWidget()
+        self.quick_commands_list.setStyleSheet(
+            "QListWidget { background: transparent; border: none; }"
+            "QListWidget::item { color: #d9e1ec; padding: 8px 14px; border-radius: 4px; }"
+            "QListWidget::item:hover { background: #6280b9; }"
+            "QListWidget::item:selected { background: #0f4fbf; color: white; }"
+        )
+        self.quick_commands_list.setFont(QFont("Segoe UI", 10))
+        self.quick_commands_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.quick_commands_list.customContextMenuRequested.connect(self._on_quick_cmd_context_menu)
+        self.quick_commands_list.itemDoubleClicked.connect(self._on_quick_cmd_double_clicked)
+        self._rebuild_quick_commands_list()
+        layout.addWidget(self.quick_commands_list)
+        self.lock_sensitive_buttons.extend([])  # list widget items enabled/disabled via list widget
         
         layout.addStretch()
     
@@ -1132,8 +1483,218 @@ class DesktopControlApp:
                 btn.setStyleSheet(
                     f"QPushButton {{ background-color: transparent; color: #d9e1ec; border: none; "
                     "padding: 10px 14px; text-align: left; }} "
-                    "QPushButton:hover { background-color: #1a2437; }"
+                    "QPushButton:hover { background-color: #6280b9; }"
                 )
+    
+    def _rebuild_quick_commands_list(self):
+        """Rebuild the quick commands list widget from self.quick_commands."""
+        self.quick_commands_list.clear()
+        for label, _msg in self.quick_commands:
+            self.quick_commands_list.addItem(label)
+    
+    def _on_quick_cmd_double_clicked(self, item):
+        """Run a quick command on double-click."""
+        if not self.is_unlocked:
+            return
+        idx = self.quick_commands_list.row(item)
+        if 0 <= idx < len(self.quick_commands):
+            _label, msg = self.quick_commands[idx]
+            self._send_quick_command(msg)
+    
+    def _on_quick_cmd_context_menu(self, pos: QPoint):
+        """Show context menu for quick commands."""
+        item = self.quick_commands_list.itemAt(pos)
+        idx = self.quick_commands_list.row(item) if item else -1
+        
+        menu = QMenu(self.quick_commands_list)
+        menu.setStyleSheet(
+            "QMenu { background: white; border: 1px solid #dde3ef; }"
+            "QMenu::item { padding: 6px 20px; } "
+            "QMenu::item:selected { background: #eaf2ff; color: #0a3069; }"
+        )
+        
+        if item and 0 <= idx < len(self.quick_commands):
+            run_action = QAction("▶  Run", menu)
+            run_action.triggered.connect(lambda: self._send_quick_command(self.quick_commands[idx][1]))
+            menu.addAction(run_action)
+            menu.addSeparator()
+            
+            rename_action = QAction("✏  Rename", menu)
+            rename_action.triggered.connect(lambda: self._rename_quick_command(idx))
+            menu.addAction(rename_action)
+            
+            edit_action = QAction("🔧  Edit Command", menu)
+            edit_action.triggered.connect(lambda: self._edit_quick_command(idx))
+            menu.addAction(edit_action)
+            
+            delete_action = QAction("✖  Delete", menu)
+            delete_action.triggered.connect(lambda: self._delete_quick_command(idx))
+            menu.addAction(delete_action)
+            menu.addSeparator()
+        
+        new_action = QAction("＋  New Quick Command", menu)
+        new_action.triggered.connect(self._new_quick_command)
+        menu.addAction(new_action)
+        
+        menu.exec(self.quick_commands_list.mapToGlobal(pos))
+    
+    def _rename_quick_command(self, idx: int):
+        label, msg = self.quick_commands[idx]
+        new_label, ok = QInputDialog.getText(
+            self.window, "Rename Quick Command", "New label:", text=label
+        )
+        if ok and new_label.strip():
+            self.quick_commands[idx] = (new_label.strip(), msg)
+            self._rebuild_quick_commands_list()
+    
+    def _edit_quick_command(self, idx: int):
+        label, msg = self.quick_commands[idx]
+        new_msg, ok = QInputDialog.getText(
+            self.window, "Edit Quick Command", f"Command text for \"{label}\":", text=msg
+        )
+        if ok and new_msg.strip():
+            self.quick_commands[idx] = (label, new_msg.strip())
+    
+    def _delete_quick_command(self, idx: int):
+        label = self.quick_commands[idx][0]
+        confirm = QMessageBox.question(
+            self.window, "Delete Quick Command",
+            f"Delete \"{label}\"?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if confirm == QMessageBox.Yes:
+            self.quick_commands.pop(idx)
+            self._rebuild_quick_commands_list()
+    
+    def _new_quick_command(self):
+        label, ok1 = QInputDialog.getText(self.window, "New Quick Command", "Label (display name):")
+        if not ok1 or not label.strip():
+            return
+        msg, ok2 = QInputDialog.getText(self.window, "New Quick Command", "Command text:")
+        if ok2 and msg.strip():
+            self.quick_commands.append((label.strip(), msg.strip()))
+            self._rebuild_quick_commands_list()
+
+    def on_accept_quick_suggestion(self):
+        if not self._pending_quick_command:
+            return
+        command = self._pending_quick_command.strip()
+        label = command[:28].title() or "Quick Command"
+        if not any(cmd.strip().lower() == command.lower() for _, cmd in self.quick_commands):
+            self.quick_commands.append((label, command))
+            self._rebuild_quick_commands_list()
+        page = self.pages.get("Chat / Console")
+        if page:
+            page.hide_quick_suggestion()
+            page.append_message("system", f'Quick command created for "{command}".')
+        self._pending_quick_command = None
+
+    def on_dismiss_quick_suggestion(self):
+        page = self.pages.get("Chat / Console")
+        if page:
+            page.hide_quick_suggestion()
+        self._pending_quick_command = None
+
+    def on_personal_context_dirty(self):
+        page = self.pages.get("Personal Context")
+        if not page or self._loading_personal_context:
+            return
+        page.save_button.setEnabled(True)
+
+    def on_email_form_dirty(self):
+        page = self.pages.get("Communications")
+        if not page or self._loading_email_form:
+            return
+        page.save_account_btn.setEnabled(True)
+
+    def on_tool_permission_form_dirty(self):
+        page = self.pages.get("Tools & Permissions")
+        if not page or self._loading_tool_form or not self.selected_tool_name:
+            return
+        page.apply_button.setEnabled(True)
+    
+    def suggest_quick_command(self, command_text: str):
+        """Show suggestion to create a quick command for a repeated command."""
+        chat_page = self.pages.get("Chat / Console")
+        if not chat_page:
+            return
+        self._pending_quick_command = str(command_text or "").strip()
+        chat_page.show_quick_suggestion(self._pending_quick_command)
+
+    def on_allowed_dir_context_menu(self, pos: QPoint):
+        """Context menu for allowed directories list."""
+        page = self.pages.get("Files & Permissions")
+        if not page:
+            return
+        item = page.allowed_list.itemAt(pos)
+        menu = QMenu(page.allowed_list)
+        menu.setStyleSheet(
+            "QMenu { background: white; border: 1px solid #dde3ef; }"
+            "QMenu::item { padding: 6px 20px; }"
+            "QMenu::item:selected { background: #eaf2ff; color: #0a3069; }"
+        )
+        if item:
+            remove_action = QAction("✖  Remove Directory", menu)
+            remove_action.triggered.connect(self.remove_selected_directory)
+            menu.addAction(remove_action)
+            
+            validate_action = QAction("🔍  Validate Path", menu)
+            validate_action.triggered.connect(lambda: self._validate_dir_from_list(item.text()))
+            menu.addAction(validate_action)
+            
+            copy_action = QAction("📋  Copy Path", menu)
+            copy_action.triggered.connect(lambda: QApplication.instance().clipboard().setText(item.text()))
+            menu.addAction(copy_action)
+            menu.addSeparator()
+        
+        add_action = QAction("＋  Add Directory", menu)
+        add_action.triggered.connect(self.add_allowed_directory)
+        menu.addAction(add_action)
+        
+        menu.exec(page.allowed_list.mapToGlobal(pos))
+    
+    def _validate_dir_from_list(self, path: str):
+        """Validate a path from the allowed list."""
+        self.open_validate_path_dialog(path)
+
+    def open_validate_path_dialog(self, initial_path: str = ""):
+        page = self.pages.get("Files & Permissions")
+        if not page:
+            return
+        dialog = QDialog(self.window)
+        dialog.setWindowTitle("Validate Path")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(560)
+        outer = QVBoxLayout(dialog)
+        outer.addWidget(create_label("Enter path to test", 10, bold=True))
+        input_line = QLineEdit(str(initial_path or ""))
+        outer.addWidget(input_line)
+        result_label = create_label("", 9, color=_SLATE)
+
+        def _run_test():
+            value = input_line.text().strip()
+            if not value:
+                result_label.setText("Enter a path first.")
+                result_label.setStyleSheet(f"color: {_RED};")
+                return
+            payload = self.client.test_policy_path(value)
+            allowed = bool(payload.get("allowed"))
+            normalized = str(payload.get("normalized_path") or "-")
+            reason = str(payload.get("reason") or "")
+            result_label.setText(("Allowed" if allowed else "Blocked") + f" | {normalized} | {reason}")
+            result_label.setStyleSheet(f"color: {_GREEN if allowed else _RED};")
+            page.path_test_result.setText(result_label.text())
+            page.path_test_result.setStyleSheet(result_label.styleSheet())
+
+        buttons = QHBoxLayout()
+        test_btn = create_button("Test", _run_test, style="subtle")
+        close_btn = create_button("Close", dialog.accept, style="subtle")
+        buttons.addWidget(test_btn)
+        buttons.addWidget(close_btn)
+        buttons.addStretch()
+        outer.addLayout(buttons)
+        outer.addWidget(result_label)
+        dialog.exec()
     
     def show(self):
         """Show the main window."""
@@ -1144,25 +1705,28 @@ class DesktopControlApp:
     
     def unlock_app(self):
         """Unlock the application."""
-        candidate = self.pin_input.text().strip() or self.lock_pin_input.text().strip()
-        self.pin_input.clear()
+        candidate = self.lock_pin_input.text().strip()
         self.lock_pin_input.clear()
         
         if candidate != self.local_app_pin:
-            self.lock_status.setText("Wrong PIN")
-            self.statusbar.showMessage("Mashbak Control Board  |  locked (wrong PIN)")
-            self._lock_ui("Control board locked. Enter PIN to unlock.")
-            QTimer.singleShot(2000, lambda: self.lock_status.setText("Locked"))
+            self.lock_status_hint.setText("Incorrect PIN. Try again.")
+            self._animate_lock_failure()
+            QTimer.singleShot(2000, lambda: self.lock_status_hint.setText(""))
             return
         
         self.is_unlocked = True
-        self.lock_status.setText("Unlocked")
-        self.lock_status.setStyleSheet("background-color: #e9f7ef; color: #17683a; padding: 6px 10px; border-radius: 4px;")
-        self.unlock_button.setEnabled(False)
         self.lock_button.setEnabled(True)
-        self.pin_input.setEnabled(False)
+        self.lock_button.setText("🔓  Lock")
+        self.lock_status_hint.setText("")
         self.root_stack.setCurrentWidget(self.app_shell)
         self.statusbar.showMessage("Mashbak Control Board  |  unlocked")
+        
+        # Restore previous page if any
+        if self._pre_lock_section and self._pre_lock_section in self.pages:
+            self._show_section(self._pre_lock_section)
+        else:
+            self._show_section("Dashboard")
+        self._pre_lock_section = None
         
         # Enable controls
         self._set_interaction_enabled(True)
@@ -1182,22 +1746,19 @@ class DesktopControlApp:
         chat_page = self.pages.get("Chat / Console")
         if chat_page:
             chat_page.append_message("assistant", "Control board unlocked. I am ready.")
-        
-        self.message_input.setFocus()
+            chat_page.message_input.setFocus()
     
     def lock_app(self):
         """Lock the application."""
+        self._pre_lock_section = self.current_section
         self._lock_ui("Control board locked. Enter PIN to unlock.")
     
     def _lock_ui(self, message: str):
-        """Lock the UI and show lock message."""
+        """Lock the UI and show lock screen."""
         self.is_unlocked = False
         self.root_stack.setCurrentWidget(self.lock_screen)
-        self.lock_status.setText("Locked")
-        self.lock_status.setStyleSheet("background-color: #ffebe9; color: #9f1239; padding: 6px 10px; border-radius: 4px;")
-        self.unlock_button.setEnabled(True)
         self.lock_button.setEnabled(False)
-        self.pin_input.setEnabled(True)
+        self.lock_button.setText("🔐  Lock")
         self.statusbar.showMessage("Mashbak Control Board  |  locked")
         
         # Disable controls
@@ -1209,6 +1770,9 @@ class DesktopControlApp:
             chat_page.chat_display.clear()
             chat_page.chat_display.setPlainText("Mashbak is locked.\nEnter your PIN to unlock the control board.")
             chat_page.details_text.setPlainText(message)
+            chat_page.activity_list.setPlainText("No activity yet")
+            chat_page.agent_logs.setPlainText("Locked")
+            chat_page.bridge_logs.setPlainText("Locked")
 
         self.lock_pin_input.setFocus()
     
@@ -1216,6 +1780,11 @@ class DesktopControlApp:
         """Enable/disable interactive controls."""
         for btn in self.lock_sensitive_buttons:
             btn.setEnabled(enabled)
+
+    def _animate_lock_failure(self):
+        """Flash lock PIN border briefly to signal a failed unlock attempt."""
+        self.lock_pin_input.setStyleSheet("border: 2px solid #b42318; border-radius: 4px; padding: 6px;")
+        QTimer.singleShot(260, lambda: self.lock_pin_input.setStyleSheet(""))
     
     # --- CHAT/MESSAGE HANDLING ---
     
@@ -1237,6 +1806,13 @@ class DesktopControlApp:
         chat_page.processing_label.setText("Mashbak is thinking...")
         chat_page.chat_state_label.setText("Waiting for Mashbak reply")
         chat_page.details_text.setPlainText("Mashbak is processing your message...")
+        
+        # Track command frequency and suggest quick commands for repeated ones
+        canonical = message.strip().lower()
+        self._command_frequency[canonical] = self._command_frequency.get(canonical, 0) + 1
+        if self._command_frequency[canonical] == 3 and canonical not in self._suggested_commands:
+            self._suggested_commands.add(canonical)
+            QTimer.singleShot(200, lambda: self.suggest_quick_command(message))
         
         thread = threading.Thread(target=self._run_message, args=(message,), daemon=True)
         thread.start()
@@ -1308,6 +1884,10 @@ class DesktopControlApp:
         
         if safe_raw_tool_output:
             detail_lines.append(f"Tool output: {str(safe_raw_tool_output)[:200]}")
+
+        detail_lines.append("")
+        detail_lines.append("Structured Result")
+        detail_lines.append(self._format_action_result_summary(result))
         
         chat_page.details_text.setPlainText("\n".join(detail_lines))
         
@@ -1397,6 +1977,8 @@ class DesktopControlApp:
         agent_status = self._check_agent_health()
         bridge_status = self._check_http_health("http://127.0.0.1:34567/health")
         summary = self.runtime_summary
+        self.lock_backend_status.setText("Backend: connected" if agent_status["running"] else "Backend: unavailable")
+        self.lock_backend_status.setStyleSheet(f"color: {_GREEN if agent_status['running'] else _RED};")
         
         # Update badges
         if agent_status["running"]:
@@ -1447,12 +2029,31 @@ class DesktopControlApp:
         backend = overview.get("backend") or {}
         bridge = overview.get("bridge") or {}
         email = overview.get("email") or {}
+        bridge_detail = bridge.get("detail") if isinstance(bridge.get("detail"), dict) else {}
+        bridge_port = bridge_detail.get("port") or "34567"
+        default_email_label = "none"
+        accounts_payload = self.client.get_email_accounts()
+        if isinstance(accounts_payload, dict) and accounts_payload.get("success") is not False:
+            default_id = accounts_payload.get("default_account_id")
+            for account in accounts_payload.get("accounts") or []:
+                if account.get("account_id") == default_id:
+                    default_email_label = str(account.get("label") or account.get("email_address") or "default")
+                    break
         
         cards_data = {
-            "backend": ("connected" if backend.get("connected") else "error", f"Model: {backend.get('model') or 'unknown'}"),
-            "bridge": ("connected" if bridge.get("connected") else "error", str(bridge.get("detail") or "Bridge health")),
-            "email": ("configured" if email.get("configured") else "warning", "Credentials and inbox ready" if email.get("configured") else "Configuration required"),
-            "assistant": ("active", (overview.get("active_assistant") or "mashbak").title()),
+            "backend": (
+                "connected" if backend.get("connected") else "error",
+                f"Model: {backend.get('model') or 'unknown'} | Connected: {'yes' if backend.get('connected') else 'no'}",
+            ),
+            "bridge": (
+                "connected" if bridge.get("connected") else "error",
+                f"Status: {'connected' if bridge.get('connected') else 'disconnected'} | Port: {bridge_port}",
+            ),
+            "email": (
+                "configured" if email.get("configured") else "warning",
+                f"Configured accounts: {int(email.get('accounts') or 0)} | Default account: {default_email_label}",
+            ),
+            "assistant": ("active", f"Active assistant: {(overview.get('active_assistant') or 'mashbak').title()}"),
         }
         dashboard.update_cards(cards_data)
         
@@ -1497,6 +2098,83 @@ class DesktopControlApp:
         if len(cleaned) <= max_len:
             return cleaned or "-"
         return cleaned[: max_len - 3].rstrip() + "..."
+
+    def _format_action_result_summary(self, result: dict) -> str:
+        """Create a clean result summary for operator display."""
+        tool = str(result.get("tool_name") or "conversation")
+        success = bool(result.get("success"))
+        data = result.get("data") if isinstance(result.get("data"), dict) else {}
+        lines = [f"Result: {'Success' if success else 'Failed'}", f"Tool: {tool}"]
+        if result.get("request_id"):
+            lines.append(f"Request ID: {result.get('request_id')}")
+
+        task = data.get("task") if isinstance(data.get("task"), dict) else None
+        if task:
+            lines.append(f"Task: {task.get('task_id')} ({task.get('status')})")
+
+        approval = data.get("approval") if isinstance(data.get("approval"), dict) else None
+        if approval:
+            lines.extend([
+                "",
+                "Approval Required",
+                f"Approval ID: {approval.get('approval_id')}",
+                f"Reason: {approval.get('reason')}",
+            ])
+
+        if tool == "capture_screenshot":
+            lines.append(f"Screenshot Path: {data.get('path') or '-'}")
+        elif tool in {"send_email", "draft_email_reply"}:
+            lines.append(f"Email Target: {data.get('to') or '-'}")
+            if data.get("subject"):
+                lines.append(f"Subject: {data.get('subject')}")
+            if data.get("path"):
+                lines.append(f"Draft Path: {data.get('path')}")
+        elif tool in {"create_file", "create_folder", "edit_file", "copy_file", "move_file", "delete_file", "generate_homepage"}:
+            for key in ("created_path", "deleted_path", "path", "destination", "entry_file", "project_path"):
+                if data.get(key):
+                    lines.append(f"{key.replace('_', ' ').title()}: {data.get(key)}")
+            if data.get("created_files"):
+                lines.append("Created Files:")
+                for item in (data.get("created_files") or [])[:6]:
+                    lines.append(f"- {item}")
+        elif tool == "web_search":
+            query = data.get("query") or "-"
+            lines.append(f"Search Query: {query}")
+            results = data.get("results") if isinstance(data.get("results"), list) else []
+            lines.append(f"Result Count: {len(results)}")
+            for item in results[:3]:
+                title = str((item or {}).get("title") or "Result")
+                lines.append(f"- {self._condense_detail(title, 90)}")
+        elif tool == "generate_homepage":
+            if data.get("entry_file"):
+                lines.append(f"Homepage Entry: {data.get('entry_file')}")
+            if data.get("project_path"):
+                lines.append(f"Project Path: {data.get('project_path')}")
+
+        if result.get("error"):
+            lines.append(f"Error: {result.get('error')}")
+        return "\n".join(lines)
+
+    def _format_row_detail(self, row: dict[str, Any], keys: list[str]) -> str:
+        lines = []
+        for key in keys:
+            value = row.get(key)
+            if value is None or value == "":
+                continue
+            lines.append(f"{key.replace('_', ' ').title()}: {value}")
+        return "\n".join(lines) if lines else "No details available."
+
+    def _set_combo_value(self, combo: QComboBox, value: Any):
+        text = str(value or "").strip()
+        if not text:
+            combo.setCurrentIndex(0)
+            return
+        idx = combo.findText(text)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+            return
+        combo.addItem(text)
+        combo.setCurrentIndex(combo.count() - 1)
     
     def refresh_assistants(self):
         """Refresh assistants information."""
@@ -1539,13 +2217,32 @@ class DesktopControlApp:
             page.bucherim_counts_table.insertRow(idx)
             page.bucherim_counts_table.setItem(idx, 0, QTableWidgetItem(key))
             page.bucherim_counts_table.setItem(idx, 1, QTableWidgetItem(value))
+        total_members = int(counts.get("approved", 0)) + int(counts.get("pending", 0)) + int(counts.get("blocked", 0))
+        page.bucherim_empty_label.setText("No members recorded yet." if total_members == 0 else "")
 
         responses = bucherim.get("responses") or {}
+        self.response_templates = list(sorted((str(key), str(value)) for key, value in responses.items()))
         page.responses_table.setRowCount(0)
-        for idx, (key, value) in enumerate(sorted(responses.items())):
+        for idx, (key, value) in enumerate(self.response_templates):
             page.responses_table.insertRow(idx)
             page.responses_table.setItem(idx, 0, QTableWidgetItem(str(key)))
             page.responses_table.setItem(idx, 1, QTableWidgetItem(self._condense_detail(str(value), 220)))
+        if self.response_templates:
+            page.responses_table.selectRow(0)
+            self.on_template_row_selected()
+        else:
+            page.responses_detail.setPlainText("No response templates configured.")
+
+    def on_template_row_selected(self):
+        page = self.pages.get("Assistants")
+        if not page:
+            return
+        row = page.responses_table.currentRow()
+        if row < 0 or row >= len(self.response_templates):
+            page.responses_detail.setPlainText("No template selected")
+            return
+        key, value = self.response_templates[row]
+        page.responses_detail.setPlainText(f"Template: {key}\n\n{value}")
     
     def refresh_communications(self):
         """Refresh communications data."""
@@ -1569,18 +2266,20 @@ class DesktopControlApp:
         page.email_accounts_widget.clear()
         for account in accounts:
             label = str(account.get("label") or account.get("email_address") or "Email account")
-            suffix = " [default]" if account.get("account_id") == default_id else ""
+            suffix = "  [DEFAULT]" if account.get("account_id") == default_id else ""
             item = QListWidgetItem(label + suffix)
             item.setData(Qt.UserRole, account)
             page.email_accounts_widget.addItem(item)
 
         if accounts:
             page.email_accounts_widget.setCurrentRow(0)
-            page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+            page.email_accounts_empty.setText("")
+            page.email_result.setPlainText(f"Configured {len(accounts)} account(s). Select one to edit or test.")
             page.email_status.setText(f"Email status: {len(accounts)} account(s) configured")
             page.email_status.setStyleSheet(f"color: {_GREEN};")
         else:
             self.new_email_account()
+            page.email_accounts_empty.setText("No configured email accounts.")
             page.email_result.setPlainText("No email accounts configured.")
             page.email_status.setText("Email status: not configured")
             page.email_status.setStyleSheet(f"color: {_AMBER};")
@@ -1617,7 +2316,7 @@ class DesktopControlApp:
         page.routing_counts.setText(
             f"Approved: {counts.get('approved', len(approved))}   Pending: {counts.get('pending', len(pending))}   Blocked: {counts.get('blocked', len(blocked))}"
         )
-        page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        page.routing_result.setPlainText("Routing lists updated.")
         self.refresh_selected_routing_member()
 
     def on_routing_selection_changed(self):
@@ -1636,7 +2335,7 @@ class DesktopControlApp:
             return
         payload = self.client.get_routing_member(phone)
         if payload.get("success") is False:
-            page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+            page.routing_result.setPlainText(str(payload.get("error") or "Unable to load selected number details."))
             return
 
         profile = payload.get("profile") or {}
@@ -1681,11 +2380,13 @@ class DesktopControlApp:
             page.allowed_list.addItem(str(path))
         
         page.blocked_table.setRowCount(0)
-        for idx, row in enumerate(payload.get("blocked_attempts") or []):
+        blocked = payload.get("blocked_attempts") or []
+        for idx, row in enumerate(blocked):
             page.blocked_table.insertRow(idx)
             page.blocked_table.setItem(idx, 0, QTableWidgetItem(str(row.get("timestamp") or "")))
             page.blocked_table.setItem(idx, 1, QTableWidgetItem(str(row.get("tool") or "")))
             page.blocked_table.setItem(idx, 2, QTableWidgetItem(str(row.get("path") or "-")))
+        page.blocked_empty_label.setVisible(not bool(blocked))
     
     def refresh_projects(self):
         """Refresh projects/files information."""
@@ -1748,7 +2449,12 @@ class DesktopControlApp:
         if row < 0 or row >= len(self.project_rows):
             return
         selected = self.project_rows[row]
-        page.projects_detail.setPlainText(json.dumps(selected, indent=2, ensure_ascii=True))
+        page.projects_detail.setPlainText(
+            self._format_row_detail(
+                selected,
+                ["timestamp", "requested_action", "selected_tool", "state", "target", "source", "details", "request_id"],
+            )
+        )
     
     def refresh_activity_audit(self):
         """Refresh activity and audit log."""
@@ -1789,9 +2495,49 @@ class DesktopControlApp:
                 page.activity_table.setItem(idx, col, QTableWidgetItem(value))
 
         if not self.activity_rows:
-            page.activity_detail.setPlainText("No recent activity.")
+            page.activity_meta.setPlainText("No recent assistant activity.")
+            page.activity_summary.setPlainText("No activity yet")
+            page.activity_raw.setPlainText("{}")
+            self.last_activity_detail_text = "No recent assistant activity."
         else:
             page.activity_table.selectRow(0)
+
+        for idx, row in enumerate(self.activity_rows):
+            state_value = str(row.get("state") or "").lower()
+            tint = None
+            dot = ""
+            if state_value in {"success", "completed"}:
+                tint = QColor("#eaf7ee")
+                dot = "● "
+            elif state_value in {"failure", "error"}:
+                tint = QColor("#fff1f0")
+                dot = "● "
+            elif state_value == "blocked":
+                tint = QColor("#fff7ed")
+                dot = "● "
+            elif state_value in {"pending", "received"}:
+                tint = QColor("#fefce8")
+                dot = "● "
+            
+            # Color the state cell text for quick scanning
+            state_item = page.activity_table.item(idx, 5)
+            if state_item and dot:
+                state_item.setText(dot + state_item.text())
+                fg_map = {
+                    "success": _GREEN, "completed": _GREEN,
+                    "failure": _RED, "error": _RED,
+                    "blocked": _AMBER,
+                    "pending": _YELLOW, "received": _SLATE,
+                }
+                fg = fg_map.get(state_value, _SLATE)
+                state_item.setForeground(QColor(fg))
+            
+            if tint is None:
+                continue
+            for col in range(page.activity_table.columnCount()):
+                item = page.activity_table.item(idx, col)
+                if item is not None:
+                    item.setBackground(tint)
 
     def on_activity_row_selected(self):
         """Show selected activity event details."""
@@ -1802,7 +2548,36 @@ class DesktopControlApp:
         if row < 0 or row >= len(self.activity_rows):
             return
         selected = self.activity_rows[row]
-        page.activity_detail.setPlainText(json.dumps(selected, indent=2, ensure_ascii=True))
+        # Build structured event information block
+        lines = ["Event Information", "-" * 40]
+        for field, label in [
+            ("timestamp", "Timestamp"),
+            ("event_type", "Event"),
+            ("assistant", "Assistant"),
+            ("requested_action", "Action"),
+            ("selected_tool", "Tool"),
+            ("state", "State"),
+            ("target", "Target"),
+            ("source", "Source"),
+            ("request_id", "Request ID"),
+        ]:
+            v = selected.get(field)
+            if v:
+                lines.append(f"{label}: {v}")
+        metadata = "\n".join(lines)
+        summary = self._condense_detail(str(selected.get("details") or "No details available."), 320)
+        raw_block = selected.get("raw_event") if isinstance(selected.get("raw_event"), dict) else selected
+        page.activity_meta.setPlainText(metadata)
+        page.activity_summary.setPlainText(f"Result Summary: {summary}")
+        page.activity_raw.setPlainText(json.dumps(raw_block, indent=2, ensure_ascii=True))
+        self.last_activity_detail_text = f"Metadata\n{metadata}\n\nResult Summary\n{summary}\n\nRaw Output\n{json.dumps(raw_block, indent=2, ensure_ascii=True)}"
+
+    def copy_activity_details(self):
+        if not self.last_activity_detail_text:
+            return
+        app = QApplication.instance()
+        if app:
+            app.clipboard().setText(self.last_activity_detail_text)
 
     def refresh_personal_context(self):
         """Load personal context data from backend."""
@@ -1811,16 +2586,59 @@ class DesktopControlApp:
         page = self.pages.get("Personal Context")
         if not page:
             return
+        self._loading_personal_context = True
         payload = self.client.get_personal_context()
         if not isinstance(payload, dict):
+            self._loading_personal_context = False
             return
-        page.profile_text.setPlainText(json.dumps(payload.get("profile") or {}, indent=2, ensure_ascii=True))
+        if payload.get("success") is False:
+            page.status_label.setText(str(payload.get("error") or "Unable to load personal context."))
+            page.status_label.setStyleSheet(f"color: {_RED};")
+            self._loading_personal_context = False
+            return
+        profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+        prefs = payload.get("preferences") if isinstance(payload.get("preferences"), dict) else {}
+        page.profile_name.setText(str(profile.get("name") or ""))
+        page.profile_tone.setText(str(profile.get("preferred_tone") or ""))
+        page.profile_style.setText(str(profile.get("response_style") or ""))
+        page.profile_notes.setPlainText(str(profile.get("notes") or ""))
         page.people_text.setPlainText(json.dumps(payload.get("people") or [], indent=2, ensure_ascii=True))
         page.routines_text.setPlainText(json.dumps(payload.get("routines") or [], indent=2, ensure_ascii=True))
         page.projects_text.setPlainText(json.dumps(payload.get("projects") or [], indent=2, ensure_ascii=True))
-        page.preferences_text.setPlainText(json.dumps(payload.get("preferences") or {}, indent=2, ensure_ascii=True))
+        self._set_combo_value(page.pref_response_length, prefs.get("response_length") or "balanced")
+        self._set_combo_value(page.pref_notification_style, prefs.get("notification_style") or "normal")
+        self._set_combo_value(page.pref_automation, prefs.get("automation_aggressiveness") or "safe")
+        page.pref_notes.setPlainText(str(prefs.get("notes") or ""))
         page.status_label.setText("Loaded personal context.")
         page.status_label.setStyleSheet(f"color: {_GREEN};")
+        page.save_button.setEnabled(False)
+        self._loading_personal_context = False
+
+    def _refresh_personal_context_silent(self):
+        """Refresh personal context without overwriting status message."""
+        page = self.pages.get("Personal Context")
+        if not page or not self.is_unlocked:
+            return
+        self._loading_personal_context = True
+        payload = self.client.get_personal_context()
+        if not isinstance(payload, dict) or payload.get("success") is False:
+            self._loading_personal_context = False
+            return
+        profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+        prefs = payload.get("preferences") if isinstance(payload.get("preferences"), dict) else {}
+        page.profile_name.setText(str(profile.get("name") or ""))
+        page.profile_tone.setText(str(profile.get("preferred_tone") or ""))
+        page.profile_style.setText(str(profile.get("response_style") or ""))
+        page.profile_notes.setPlainText(str(profile.get("notes") or ""))
+        page.people_text.setPlainText(json.dumps(payload.get("people") or [], indent=2, ensure_ascii=True))
+        page.routines_text.setPlainText(json.dumps(payload.get("routines") or [], indent=2, ensure_ascii=True))
+        page.projects_text.setPlainText(json.dumps(payload.get("projects") or [], indent=2, ensure_ascii=True))
+        self._set_combo_value(page.pref_response_length, prefs.get("response_length") or "balanced")
+        self._set_combo_value(page.pref_notification_style, prefs.get("notification_style") or "normal")
+        self._set_combo_value(page.pref_automation, prefs.get("automation_aggressiveness") or "safe")
+        page.pref_notes.setPlainText(str(prefs.get("notes") or ""))
+        page.save_button.setEnabled(False)
+        self._loading_personal_context = False
 
     def save_personal_context(self):
         """Save personal context from editor widgets."""
@@ -1829,19 +2647,48 @@ class DesktopControlApp:
             return
         try:
             payload = {
-                "profile": json.loads(page.profile_text.toPlainText() or "{}"),
+                "profile": {
+                    "name": page.profile_name.text().strip(),
+                    "preferred_tone": page.profile_tone.text().strip(),
+                    "response_style": page.profile_style.text().strip(),
+                    "notes": page.profile_notes.toPlainText().strip(),
+                },
                 "people": json.loads(page.people_text.toPlainText() or "[]"),
                 "routines": json.loads(page.routines_text.toPlainText() or "[]"),
                 "projects": json.loads(page.projects_text.toPlainText() or "[]"),
-                "preferences": json.loads(page.preferences_text.toPlainText() or "{}"),
+                "preferences": {
+                    "response_length": page.pref_response_length.currentText().strip(),
+                    "notification_style": page.pref_notification_style.currentText().strip(),
+                    "automation_aggressiveness": page.pref_automation.currentText().strip(),
+                    "notes": page.pref_notes.toPlainText().strip(),
+                },
             }
+            if not isinstance(payload["people"], list):
+                raise ValueError("People must be a JSON array.")
+            if not isinstance(payload["routines"], list):
+                raise ValueError("Routines must be a JSON array.")
+            if not isinstance(payload["projects"], list):
+                raise ValueError("Projects must be a JSON array.")
         except json.JSONDecodeError as exc:
             page.status_label.setText(f"Invalid JSON: {exc}")
             page.status_label.setStyleSheet(f"color: {_RED};")
             return
+        except ValueError as exc:
+            page.status_label.setText(str(exc))
+            page.status_label.setStyleSheet(f"color: {_RED};")
+            return
         result = self.client.save_personal_context(payload)
-        page.status_label.setText("Personal context saved." if isinstance(result, dict) else "Save failed")
-        page.status_label.setStyleSheet(f"color: {_GREEN if isinstance(result, dict) else _RED};")
+        if isinstance(result, dict) and result.get("success") is not False:
+            saved_at = result.get("saved_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            page.status_label.setText("Personal context saved.")
+            page.status_label.setStyleSheet(f"color: {_GREEN};")
+            page.last_saved_label.setText(f"Last saved: {saved_at}")
+            page.save_button.setEnabled(False)
+            # Refresh after a short delay so the success message stays visible
+            QTimer.singleShot(1800, self._refresh_personal_context_silent)
+            return
+        page.status_label.setText(str((result or {}).get("error") or "Save failed"))
+        page.status_label.setStyleSheet(f"color: {_RED};")
 
     def refresh_tools_permissions(self):
         """Refresh tools permissions, pending approvals, and recent tasks."""
@@ -1852,6 +2699,9 @@ class DesktopControlApp:
             return
 
         payload = self.client.get_tools_permissions()
+        if isinstance(payload, dict) and payload.get("success") is False:
+            page.result_text.setPlainText(str(payload.get("error") or "Unable to load tool permissions."))
+            return
         tools = (payload or {}).get("tools") or {}
         self.tool_permission_rows = list(sorted(tools.items(), key=lambda item: item[0]))
         page.tools_table.setRowCount(0)
@@ -1859,6 +2709,7 @@ class DesktopControlApp:
             page.tools_table.insertRow(idx)
             values = [
                 name,
+                str(cfg.get("description") or ""),
                 str(bool(cfg.get("enabled", True))),
                 ",".join(cfg.get("allowed_sources") or []),
                 str(bool(cfg.get("requires_approval", False))),
@@ -1867,8 +2718,13 @@ class DesktopControlApp:
             ]
             for col, value in enumerate(values):
                 page.tools_table.setItem(idx, col, QTableWidgetItem(value))
+        if self.tool_permission_rows:
+            page.tools_table.selectRow(0)
 
         approvals = self.client.get_approvals(limit=80, status="pending")
+        if isinstance(approvals, dict) and approvals.get("success") is False:
+            page.result_text.setPlainText(str(approvals.get("error") or "Unable to load pending approvals."))
+            return
         self.approval_rows = list((approvals or {}).get("approvals") or [])
         page.approvals_table.setRowCount(0)
         for idx, row in enumerate(self.approval_rows):
@@ -1882,8 +2738,13 @@ class DesktopControlApp:
             ]
             for col, value in enumerate(values):
                 page.approvals_table.setItem(idx, col, QTableWidgetItem(value))
+        if self.approval_rows:
+            page.approvals_table.selectRow(0)
 
         tasks = self.client.get_tasks(limit=80)
+        if isinstance(tasks, dict) and tasks.get("success") is False:
+            page.result_text.setPlainText(str(tasks.get("error") or "Unable to load tasks."))
+            return
         task_rows = list((tasks or {}).get("tasks") or [])
         page.tasks_table.setRowCount(0)
         for idx, row in enumerate(task_rows):
@@ -1896,6 +2757,14 @@ class DesktopControlApp:
             ]
             for col, value in enumerate(values):
                 page.tasks_table.setItem(idx, col, QTableWidgetItem(value))
+        page.tasks_empty.setVisible(not bool(task_rows))
+        page.result_text.setPlainText(
+            f"Loaded {len(self.tool_permission_rows)} tools, {len(self.approval_rows)} pending approvals, and {len(task_rows)} recent tasks."
+        )
+        if not self.tool_permission_rows:
+            page.result_text.setPlainText("No tools registered.")
+        elif not self.approval_rows:
+            page.result_text.appendPlainText("\nNo approvals pending.")
 
     def on_tool_permission_selected(self):
         page = self.pages.get("Tools & Permissions")
@@ -1906,11 +2775,23 @@ class DesktopControlApp:
             return
         name, cfg = self.tool_permission_rows[idx]
         self.selected_tool_name = name
+        self._loading_tool_form = True
         page.tool_enabled.setChecked(bool(cfg.get("enabled", True)))
         page.tool_requires_approval.setChecked(bool(cfg.get("requires_approval", False)))
         page.tool_requires_unlock.setChecked(bool(cfg.get("requires_unlocked_desktop", False)))
-        page.tool_sources.setText(",".join(cfg.get("allowed_sources") or []))
-        page.result_text.setPlainText(json.dumps({"tool": name, "settings": cfg}, indent=2, ensure_ascii=True))
+        allowed_sources = cfg.get("allowed_sources") or []
+        page.tool_sources.setText(",".join(allowed_sources))
+        lines = [
+            f"Tool: {name}",
+            f"Enabled: {bool(cfg.get('enabled', True))}",
+            f"Requires approval: {bool(cfg.get('requires_approval', False))}",
+            f"Requires unlocked desktop: {bool(cfg.get('requires_unlocked_desktop', False))}",
+            f"Allowed sources: {', '.join(allowed_sources) if allowed_sources else 'all'}",
+            f"Scope: {cfg.get('scope') or 'default'}",
+        ]
+        page.result_text.setPlainText("\n".join(lines))
+        page.apply_button.setEnabled(False)
+        self._loading_tool_form = False
 
     def save_selected_tool_permission(self):
         page = self.pages.get("Tools & Permissions")
@@ -1926,7 +2807,11 @@ class DesktopControlApp:
                 "allowed_sources": sources,
             },
         )
-        page.result_text.setPlainText(json.dumps(result, indent=2, ensure_ascii=True))
+        if isinstance(result, dict) and result.get("success"):
+            page.result_text.setPlainText(f"Updated tool policy for {self.selected_tool_name}.")
+            page.apply_button.setEnabled(False)
+        else:
+            page.result_text.setPlainText(str((result or {}).get("error") or "Failed to update tool policy."))
         self.refresh_tools_permissions()
 
     def on_approval_selected(self):
@@ -1938,23 +2823,62 @@ class DesktopControlApp:
             return
         row = self.approval_rows[idx]
         self.selected_approval_id = str(row.get("approval_id") or "")
-        page.result_text.setPlainText(json.dumps(row, indent=2, ensure_ascii=True))
+        detail = self._format_row_detail(
+            row,
+            ["approval_id", "tool_name", "source", "sender", "status", "reason", "created_at", "requested_action"],
+        )
+        status = str(row.get("status") or "pending").lower()
+        if status == "pending":
+            detail += "\n\nNext step: Approve, then Run."
+        elif status == "approved":
+            detail += "\n\nNext step: Run."
+        page.result_text.setPlainText(detail)
 
     def approve_selected_action(self):
         page = self.pages.get("Tools & Permissions")
-        if not page or not self.selected_approval_id:
+        if not page:
             return
-        result = self.client.approve_and_run(self.selected_approval_id)
-        page.result_text.setPlainText(json.dumps(result, indent=2, ensure_ascii=True))
+        if not self.selected_approval_id:
+            page.result_text.setPlainText("Select an approval from the list first.")
+            return
+        result = self.client.approve_approval(self.selected_approval_id)
+        if isinstance(result, dict) and result.get("success"):
+            page.result_text.setPlainText(f"Approval {self.selected_approval_id} approved. Use Run to execute it.")
+        else:
+            page.result_text.setPlainText(str((result or {}).get("error") or "Failed to approve request."))
+        self.refresh_tools_permissions()
+        self.refresh_activity_audit()
+
+    def run_selected_action(self):
+        page = self.pages.get("Tools & Permissions")
+        if not page:
+            return
+        if not self.selected_approval_id:
+            page.result_text.setPlainText("Select an approval from the list first.")
+            return
+        result = self.client.run_approved_action(self.selected_approval_id)
+        if isinstance(result, dict) and result.get("success"):
+            tool = (result.get("result") or {}).get("tool_name") if isinstance(result.get("result"), dict) else ""
+            page.result_text.setPlainText(
+                f"Executed approved request {self.selected_approval_id}" + (f" using {tool}." if tool else ".")
+            )
+        else:
+            page.result_text.setPlainText(str((result or {}).get("error") or "Failed to run approved request."))
         self.refresh_tools_permissions()
         self.refresh_activity_audit()
 
     def reject_selected_action(self):
         page = self.pages.get("Tools & Permissions")
-        if not page or not self.selected_approval_id:
+        if not page:
+            return
+        if not self.selected_approval_id:
+            page.result_text.setPlainText("Select an approval from the list first.")
             return
         result = self.client.reject_approval(self.selected_approval_id)
-        page.result_text.setPlainText(json.dumps(result, indent=2, ensure_ascii=True))
+        if isinstance(result, dict) and result.get("success"):
+            page.result_text.setPlainText(f"Approval {self.selected_approval_id} rejected.")
+        else:
+            page.result_text.setPlainText(str((result or {}).get("error") or "Failed to reject request."))
         self.refresh_tools_permissions()
     
     def refresh_logs(self):
@@ -2029,12 +2953,16 @@ class DesktopControlApp:
             use_ssl=True,
             mailbox=page.email_mailbox.text().strip() or "INBOX",
             make_default=page.email_make_default.isChecked(),
+            categories=[c.strip() for c in page.email_categories.text().split(",") if c.strip()] or None,
+            default_category=page.email_default_category.currentText().strip() or None,
         )
-        page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        page.email_result.setPlainText("Email account saved." if payload.get("success", True) else str(payload.get("error") or "Save failed."))
         if payload.get("success") is False:
             page.email_status.setText("Email status: save failed")
             page.email_status.setStyleSheet(f"color: {_RED};")
             return
+        page.email_password.clear()
+        page.save_account_btn.setEnabled(False)
         self.refresh_email_config_view()
     
     def test_email_connection(self):
@@ -2043,11 +2971,19 @@ class DesktopControlApp:
         if not page:
             return
         payload = self.client.test_email_connection(page.current_email_account_id)
-        page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        message = str(payload.get("message") or payload.get("error") or "Connection test completed.")
+        lower = message.lower()
         if payload.get("success"):
+            page.email_result.setPlainText(f"Connection successful\n\n{message}")
             page.email_status.setText("Email status: connection successful")
             page.email_status.setStyleSheet(f"color: {_GREEN};")
         else:
+            if "auth" in lower or "login" in lower or "credential" in lower:
+                page.email_result.setPlainText(f"Authentication failed\n\n{message}")
+            elif "unreachable" in lower or "timed out" in lower or "timeout" in lower or "refused" in lower:
+                page.email_result.setPlainText(f"Server unreachable\n\n{message}")
+            else:
+                page.email_result.setPlainText(message)
             page.email_status.setText("Email status: connection failed")
             page.email_status.setStyleSheet(f"color: {_RED};")
 
@@ -2056,6 +2992,7 @@ class DesktopControlApp:
         page = self.pages.get("Communications")
         if not page:
             return
+        self._loading_email_form = True
         page.current_email_account_id = None
         page.email_label.clear()
         page.email_address.clear()
@@ -2064,6 +3001,10 @@ class DesktopControlApp:
         page.email_imap_port.setText("993")
         page.email_mailbox.setText("INBOX")
         page.email_make_default.setChecked(False)
+        page.email_categories.clear()
+        page.email_default_category.setCurrentIndex(0)
+        page.save_account_btn.setEnabled(False)
+        self._loading_email_form = False
 
     def on_email_account_selected(self, current, previous=None):
         """Load the selected email account into the form."""
@@ -2071,6 +3012,7 @@ class DesktopControlApp:
         page = self.pages.get("Communications")
         if not page or current is None:
             return
+        self._loading_email_form = True
         account = current.data(Qt.UserRole) or {}
         page.current_email_account_id = account.get("account_id")
         page.email_label.setText(str(account.get("label") or ""))
@@ -2080,6 +3022,16 @@ class DesktopControlApp:
         page.email_imap_port.setText(str(account.get("imap_port") or "993"))
         page.email_mailbox.setText(str(account.get("mailbox") or "INBOX"))
         page.email_make_default.setChecked(bool(account.get("is_default")))
+        page.email_password.setPlaceholderText("Saved password hidden. Enter to replace.")
+        # Load categories metadata
+        cats = account.get("categories") or []
+        page.email_categories.setText(", ".join(cats) if cats else "")
+        default_cat = str(account.get("default_category") or "Primary")
+        idx = page.email_default_category.findText(default_cat)
+        if idx >= 0:
+            page.email_default_category.setCurrentIndex(idx)
+        page.save_account_btn.setEnabled(False)
+        self._loading_email_form = False
 
     def set_default_email_account(self):
         """Set the selected email account as default."""
@@ -2087,7 +3039,7 @@ class DesktopControlApp:
         if not page or not page.current_email_account_id:
             return
         payload = self.client.set_default_email_account(page.current_email_account_id)
-        page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        page.email_result.setPlainText("Default email account updated." if payload.get("success", True) else str(payload.get("error") or "Update failed."))
         self.refresh_email_config_view()
 
     def delete_email_account(self):
@@ -2096,25 +3048,36 @@ class DesktopControlApp:
         if not page or not page.current_email_account_id:
             return
         payload = self.client.delete_email_account(page.current_email_account_id)
-        page.email_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        page.email_result.setPlainText("Email account deleted." if payload.get("success", True) else str(payload.get("error") or "Delete failed."))
         self.refresh_email_config_view()
     
     def add_allowed_directory(self):
-        """Add an allowed directory and persist the policy."""
+        """Add an allowed directory via dialog."""
         page = self.pages.get("Files & Permissions")
         if not page:
             return
-        value = page.new_dir_input.text().strip()
-        if not value:
+        value, ok = QInputDialog.getText(
+            self.window,
+            "Add Allowed Directory",
+            "Directory path:",
+            text="C:\\"
+        )
+        if not ok or not value.strip():
             return
-        existing = [page.allowed_list.item(index).text() for index in range(page.allowed_list.count())]
-        if value not in existing:
-            existing.append(value)
+        value = value.strip()
+        existing = [page.allowed_list.item(i).text() for i in range(page.allowed_list.count())]
+        if value in existing:
+            page.path_test_result.setText(f"Directory already in allowed list.")
+            return
+        existing.append(value)
         payload = self.client.save_files_policy(existing)
-        page.path_test_result.setText(json.dumps(payload, ensure_ascii=True)[:220])
         if payload.get("success") is not False:
-            page.new_dir_input.clear()
+            page.path_test_result.setText(f"Added: {value}")
+            page.path_test_result.setStyleSheet(f"color: {_GREEN};")
             self.refresh_files_policy()
+        else:
+            page.path_test_result.setText(str(payload.get("error") or "Save failed."))
+            page.path_test_result.setStyleSheet(f"color: {_RED};")
     
     def remove_selected_directory(self):
         """Remove the selected allowed directory and persist the policy."""
@@ -2131,7 +3094,7 @@ class DesktopControlApp:
             if page.allowed_list.item(index).text() != remove_value
         ]
         payload = self.client.save_files_policy(remaining)
-        page.path_test_result.setText(json.dumps(payload, ensure_ascii=True)[:220])
+        page.path_test_result.setText("Directory removed from allowed list." if payload.get("success") is not False else str(payload.get("error") or "Save failed."))
         if payload.get("success") is not False:
             self.refresh_files_policy()
 
@@ -2146,7 +3109,11 @@ class DesktopControlApp:
         payload = self.client.test_policy_path(value)
         allowed = bool(payload.get("allowed"))
         reason = str(payload.get("reason") or "")
-        page.path_test_result.setText(("Allowed: " if allowed else "Blocked: ") + reason)
+        normalized = str(payload.get("normalized_path") or "-")
+        page.path_test_result.setText(
+            ("Allowed" if allowed else "Blocked")
+            + f" | Normalized path: {normalized} | Reason: {reason}"
+        )
         page.path_test_result.setStyleSheet(f"color: {_GREEN if allowed else _RED};")
 
     def _selected_routing_phone(self) -> str:
@@ -2173,7 +3140,7 @@ class DesktopControlApp:
             page.routing_result.setPlainText("Select or enter a phone number to approve.")
             return
         payload = self.client.approve_routing_member(phone)
-        page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        page.routing_result.setPlainText(f"Approved {phone}." if payload.get("success") else str(payload.get("error") or "Approval failed."))
         self.refresh_routing_view()
         self.refresh_selected_routing_member()
 
@@ -2187,7 +3154,7 @@ class DesktopControlApp:
             page.routing_result.setPlainText("Select or enter a phone number to block.")
             return
         payload = self.client.block_routing_member(phone)
-        page.routing_result.setPlainText(json.dumps(payload, indent=2, ensure_ascii=True))
+        page.routing_result.setPlainText(f"Blocked {phone}." if payload.get("success") else str(payload.get("error") or "Block failed."))
         self.refresh_routing_view()
         self.refresh_selected_routing_member()
     
@@ -2204,7 +3171,7 @@ class DesktopControlApp:
         self.activity.clear()
         chat_page = self.pages.get("Chat / Console")
         if chat_page:
-            chat_page.activity_list.setPlainText("")
+            chat_page.activity_list.setPlainText("No activity yet")
     
     def copy_last_response(self):
         """Copy last response to clipboard."""

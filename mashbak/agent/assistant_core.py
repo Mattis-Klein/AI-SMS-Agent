@@ -894,6 +894,26 @@ class AssistantCore:
             return f"'{path_str}'"
 
     def _fallback_email_reply(self, tool_name: str | None, data: Any, output: str | None) -> str:
+        if tool_name == "summarize_inbox" and isinstance(data, dict) and isinstance(data.get("accounts"), list):
+            lines = ["Email Summary"]
+            accounts = data.get("accounts") or []
+            for account_idx, account in enumerate(accounts):
+                categories = account.get("categories") if isinstance(account, dict) else []
+                if len(accounts) > 1:
+                    if account_idx > 0:
+                        lines.append("")
+                    lines.append(str((account or {}).get("account_label") or "Account"))
+                for bucket in categories or []:
+                    category = str((bucket or {}).get("category") or "Primary")
+                    lines.append(category)
+                    if not (bucket or {}).get("available", True):
+                        lines.append("Category not available in this mailbox")
+                        continue
+                    unread = int((bucket or {}).get("unread_count") or 0)
+                    lines.append(f"{unread} unread messages")
+            if len(lines) > 1:
+                return "\n".join(lines)
+
         if isinstance(data, dict) and data.get("messages"):
             messages = data["messages"][:3]
             count = data.get("count", len(data["messages"]))

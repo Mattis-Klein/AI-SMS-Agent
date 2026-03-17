@@ -53,7 +53,60 @@ class EmailToolBase(Tool):
 
     def _resolve_account(self, args: Dict[str, Any]) -> EmailAccount | None:
         account_id = str(args.get("account_id") or "").strip() or None
-        return self.account_store.get_account(account_id)
+        if account_id:
+            return self.account_store.get_account(account_id)
+        query = str(args.get("account_query") or "").strip().lower()
+        if not query:
+            return self.account_store.get_account(None)
+        accounts = self.account_store.list_accounts()
+        for account in accounts:
+            label = str(account.label or "").strip().lower()
+            email = str(account.email_address or "").strip().lower()
+            if query == label or query in label or query in email:
+                return account
+        return self.account_store.get_account(None)
+
+    def _resolve_accounts(self, args: Dict[str, Any]) -> list[EmailAccount]:
+        if bool(args.get("all_accounts")):
+            return self.account_store.list_accounts()
+        account = self._resolve_account(args)
+        return [account] if account is not None else []
+
+    def _normalize_category(self, value: str | None) -> str:
+        raw = str(value or "").strip().lower()
+        if not raw:
+            return "Primary"
+        if raw in {"all", "all tabs", "all categories", "everywhere"}:
+            return "All"
+        if raw.startswith("promo"):
+            return "Promotions"
+        if raw.startswith("social"):
+            return "Social"
+        if raw.startswith("update"):
+            return "Updates"
+        if raw.startswith("forum"):
+            return "Forums"
+        if raw.startswith("primary"):
+            return "Primary"
+        return raw.title()
+
+    def _resolve_categories(self, account: EmailAccount, args: Dict[str, Any]) -> list[str]:
+        standard = ["Primary", "Promotions", "Social", "Updates", "Forums"]
+        account_categories = [self._normalize_category(item) for item in (account.categories or []) if str(item).strip()]
+        if not account_categories:
+            account_categories = ["Primary"]
+
+        requested = self._normalize_category(args.get("category")) if args.get("category") is not None else ""
+        if bool(args.get("all_categories")) or requested == "All":
+            merged: list[str] = []
+            for item in account_categories + standard:
+                if item not in merged:
+                    merged.append(item)
+            return merged
+        if requested:
+            return [requested]
+        default_category = self._normalize_category(account.default_category or "Primary")
+        return [default_category]
 
     def _classify_email_exception(self, exc: Exception) -> tuple[str, str]:
         """Map low-level IMAP/network exceptions to stable error categories/messages."""
@@ -100,15 +153,90 @@ class EmailToolBase(Tool):
         client = imaplib.IMAP4_SSL(account.imap_host, account.imap_port) if account.use_ssl else imaplib.IMAP4(account.imap_host, account.imap_port)
         try:
             client.login(account.email_address, account.password)
-            status, _ = client.select(account.mailbox, readonly=True)
-            if status != "OK":
-                raise RuntimeError(f"Could not open mailbox '{account.mailbox}'.")
             yield client
         finally:
             try:
                 client.logout()
             except Exception:
                 pass
+
+    def _list_mailboxes(self, client: imaplib.IMAP4) -> list[str]:
+        status, data = client.list()
+        if status != "OK" or not data:
+            return []
+        names: list[str] = []
+        for raw in data:
+            line = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+            match = re.search(r'"([^"]+)"\s*$', line)
+            name = match.group(1) if match else line.split()[-1].strip('"')
+            if name:
+                names.append(name)
+        return names
+
+    def _select_mailbox(self, client: imaplib.IMAP4, mailbox_name: str) -> bool:
+        status, _ = client.select(mailbox_name, readonly=True)
+        return status == "OK"
+
+    def _resolve_mailbox_for_category(self, client: imaplib.IMAP4, account: EmailAccount, category: str) -> str | None:
+        base = str(account.mailbox or "INBOX").strip() or "INBOX"
+        if category == "Primary":
+            return base if self._select_mailbox(client, base) else None
+
+        known = self._list_mailboxes(client)
+        canonical = category.lower()
+        for mailbox in known:
+            lower = mailbox.lower()
+            if lower.endswith("/" + canonical) or lower.endswith("." + canonical) or lower == canonical:
+                if self._select_mailbox(client, mailbox):
+                    return mailbox
+
+        candidates = [
+            f"{base}/{category}",
+            f"{base}.{category}",
+            f"[Gmail]/{category}",
+            category,
+        ]
+        for mailbox in candidates:
+            if self._select_mailbox(client, mailbox):
+                return mailbox
+        return None
+
+    def _fetch_category_messages(
+        self,
+        client: imaplib.IMAP4,
+        account: EmailAccount,
+        category: str,
+        limit: int,
+        unread_only: bool,
+    ) -> dict[str, Any]:
+        mailbox = self._resolve_mailbox_for_category(client, account, category)
+        if not mailbox:
+            return {
+                "category": category,
+                "mailbox": None,
+                "available": False,
+                "unread_count": 0,
+                "count": 0,
+                "messages": [],
+            }
+
+        unread_ids = self._search(client, "UNSEEN")
+        if unread_only and unread_ids:
+            email_ids = unread_ids[-limit:]
+        elif unread_only:
+            email_ids = []
+        else:
+            email_ids = self._search(client, "ALL")[-limit:]
+        email_ids.reverse()
+        messages = self._fetch_messages(client, email_ids)
+        return {
+            "category": category,
+            "mailbox": mailbox,
+            "available": True,
+            "unread_count": len(unread_ids),
+            "count": len(messages),
+            "messages": messages,
+        }
 
     def _decode_header_value(self, value: str | None) -> str:
         if not value:
@@ -220,8 +348,21 @@ class ListRecentEmailsTool(EmailToolBase):
         return True, ""
 
     async def execute(self, args: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> ToolResult:
-        ok, error, missing, account = self._ensure_configured(args)
-        if not ok:
+        accounts = self._resolve_accounts(args)
+        if not accounts:
+            return ToolResult(
+                success=False,
+                output="",
+                error="No matching email account is configured.",
+                error_type="missing_configuration",
+                tool_name=self.name,
+                arguments=args,
+            )
+
+        for account in accounts:
+            ok, error, missing, _ = self._ensure_configured({"account_id": account.account_id})
+            if ok:
+                continue
             return ToolResult(
                 success=False,
                 output="",
@@ -235,11 +376,25 @@ class ListRecentEmailsTool(EmailToolBase):
 
         limit = int(args.get("limit", 5))
         unread_only = bool(args.get("unread_only", False))
+        all_rows: list[dict[str, Any]] = []
+        requested_scope = {
+            "all_accounts": bool(args.get("all_accounts")),
+            "all_categories": bool(args.get("all_categories")),
+            "account_query": str(args.get("account_query") or "").strip() or None,
+            "category": self._normalize_category(args.get("category")) if args.get("category") else None,
+        }
         try:
-            with self._connect(account, args) as client:
-                email_ids = self._search(client, "UNSEEN" if unread_only else "ALL")[-limit:]
-                email_ids.reverse()
-                messages = self._fetch_messages(client, email_ids)
+            for account in accounts:
+                with self._connect(account, {"account_id": account.account_id}) as client:
+                    for category in self._resolve_categories(account, args):
+                        bucket = self._fetch_category_messages(client, account, category, limit, unread_only)
+                        for message in bucket.get("messages") or []:
+                            row = dict(message)
+                            row["account_id"] = account.account_id
+                            row["account_label"] = account.label
+                            row["category"] = category
+                            row["mailbox"] = bucket.get("mailbox")
+                            all_rows.append(row)
         except Exception as exc:
             error_type, error_text = self._classify_email_exception(exc)
             return ToolResult(
@@ -251,15 +406,18 @@ class ListRecentEmailsTool(EmailToolBase):
                 arguments=args,
             )
 
+        all_rows.sort(key=lambda item: str(item.get("date") or ""), reverse=True)
+        messages = all_rows[: max(1, limit)]
         lines = [
-            f"{item['email_id']}: {item['from']} | {item['subject']} | {item['date']}"
+            f"[{item.get('account_label')}/{item.get('category')}] {item['email_id']}: {item['from']} | {item['subject']} | {item['date']}"
             for item in messages
         ]
         data = {
             "count": len(messages),
             "messages": messages,
             "unread_only": unread_only,
-            "account_id": account.account_id if account else None,
+            "accounts": [{"account_id": item.account_id, "label": item.label} for item in accounts],
+            "scope": requested_scope,
         }
         return ToolResult(
             success=True,
@@ -289,8 +447,21 @@ class SummarizeInboxTool(EmailToolBase):
         return True, ""
 
     async def execute(self, args: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> ToolResult:
-        ok, error, missing, account = self._ensure_configured(args)
-        if not ok:
+        accounts = self._resolve_accounts(args)
+        if not accounts:
+            return ToolResult(
+                success=False,
+                output="",
+                error="No matching email account is configured.",
+                error_type="missing_configuration",
+                tool_name=self.name,
+                arguments=args,
+            )
+
+        for account in accounts:
+            ok, error, missing, _ = self._ensure_configured({"account_id": account.account_id})
+            if ok:
+                continue
             return ToolResult(
                 success=False,
                 output="",
@@ -304,12 +475,29 @@ class SummarizeInboxTool(EmailToolBase):
 
         limit = int(args.get("limit", 5))
         unread_only = bool(args.get("unread_only", True))
+        account_summaries: list[dict[str, Any]] = []
         try:
-            with self._connect(account, args) as client:
-                unread_ids = self._search(client, "UNSEEN")
-                email_ids = unread_ids[-limit:] if unread_only and unread_ids else self._search(client, "ALL")[-limit:]
-                email_ids.reverse()
-                messages = self._fetch_messages(client, email_ids)
+            for account in accounts:
+                with self._connect(account, {"account_id": account.account_id}) as client:
+                    categories = self._resolve_categories(account, args)
+                    category_summaries: list[dict[str, Any]] = []
+                    for category in categories:
+                        category_summaries.append(
+                            self._fetch_category_messages(
+                                client=client,
+                                account=account,
+                                category=category,
+                                limit=limit,
+                                unread_only=unread_only,
+                            )
+                        )
+                    account_summaries.append(
+                        {
+                            "account_id": account.account_id,
+                            "account_label": account.label,
+                            "categories": category_summaries,
+                        }
+                    )
         except Exception as exc:
             error_type, error_text = self._classify_email_exception(exc)
             return ToolResult(
@@ -321,18 +509,45 @@ class SummarizeInboxTool(EmailToolBase):
                 arguments=args,
             )
 
-        unread_count = len(messages) if unread_only else len([item for item in messages if item.get("unread")])
-        summary_lines = [
-            f"{item['from']} about {item['subject']}"
-            for item in messages[:5]
-        ]
+        flat_messages: list[dict[str, Any]] = []
+        for account in account_summaries:
+            for bucket in account.get("categories") or []:
+                for message in bucket.get("messages") or []:
+                    enriched = dict(message)
+                    enriched["account_id"] = account.get("account_id")
+                    enriched["account_label"] = account.get("account_label")
+                    enriched["category"] = bucket.get("category")
+                    flat_messages.append(enriched)
+
+        summary_lines: list[str] = ["Email Summary"]
+        for account_idx, account in enumerate(account_summaries):
+            if len(account_summaries) > 1:
+                if account_idx > 0:
+                    summary_lines.append("")
+                summary_lines.append(f"{account.get('account_label')}")
+            for bucket in account.get("categories") or []:
+                category = str(bucket.get("category") or "Primary")
+                summary_lines.append(category)
+                if not bucket.get("available"):
+                    summary_lines.append("Category not available in this mailbox")
+                    continue
+                unread_count = int(bucket.get("unread_count") or 0)
+                summary_lines.append(f"{unread_count} unread messages")
+
+        unread_count = sum(int((bucket or {}).get("unread_count") or 0) for account in account_summaries for bucket in (account.get("categories") or []))
         data = {
-            "count": len(messages),
+            "count": len(flat_messages),
             "unread_count": unread_count,
-            "messages": messages,
-            "account_id": account.account_id if account else None,
+            "messages": flat_messages,
+            "accounts": account_summaries,
+            "scope": {
+                "all_accounts": bool(args.get("all_accounts")),
+                "all_categories": bool(args.get("all_categories")),
+                "account_query": str(args.get("account_query") or "").strip() or None,
+                "category": self._normalize_category(args.get("category")) if args.get("category") else None,
+            },
         }
-        output = " ; ".join(summary_lines) if summary_lines else "No recent emails found."
+        output = "\n".join(summary_lines) if len(summary_lines) > 1 else "No recent emails found."
         return ToolResult(success=True, output=output, tool_name=self.name, arguments=args, data=data)
 
 
@@ -376,6 +591,8 @@ class SearchEmailsTool(EmailToolBase):
 
         try:
             with self._connect(account, args) as client:
+                if not self._select_mailbox(client, str(account.mailbox or "INBOX")):
+                    raise RuntimeError(f"Could not open mailbox '{account.mailbox}'.")
                 subject_matches = self._search(client, "TEXT", f'"{query}"')
                 email_ids = subject_matches[-limit:]
                 email_ids.reverse()
@@ -438,6 +655,8 @@ class ReadEmailThreadTool(EmailToolBase):
         email_id = str(args.get("email_id", "")).strip()
         try:
             with self._connect(account, args) as client:
+                if not self._select_mailbox(client, str(account.mailbox or "INBOX")):
+                    raise RuntimeError(f"Could not open mailbox '{account.mailbox}'.")
                 _target, target_data = self._fetch_message(client, email_id)
                 thread_subject = self._normalize_subject(target_data["subject"])
                 related_ids = [email_id]

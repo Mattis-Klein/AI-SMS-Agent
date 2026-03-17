@@ -71,9 +71,19 @@ def run_service_smoke() -> int:
     service.start()
     try:
         client = AgentClient(base_url=service.base_url, api_key=service.api_key)
-        result = client.execute_nl("check my inbox", sender="desktop-service-smoke", owner_unlocked=True)
-        print(result.get("success"), result.get("tool_name"), (result.get("trace") or {}).get("execution_status"))
-        return 0 if result.get("tool_name") else 1
+        health = client.health()
+        tools = client.get_tools_permissions()
+        personal = client.get_personal_context()
+        ok = (
+            isinstance(health, dict)
+            and health.get("status") == "ok"
+            and isinstance(tools, dict)
+            and tools.get("success") is not False
+            and isinstance(personal, dict)
+            and personal.get("success") is not False
+        )
+        print(ok, service.base_url, tools.get("count"), bool(personal.get("profile")))
+        return 0 if ok else 1
     finally:
         service.stop()
 

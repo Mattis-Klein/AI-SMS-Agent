@@ -1,0 +1,17 @@
+{
+  "profile": {
+    "name": "smoke",
+    "preferred_tone": "",
+    "response_style": "",
+    "notes": ""
+  },
+  "people": [],
+  "routines": [],
+  "projects": [],
+  "preferences": {
+    "response_length": "balanced",
+    "notification_style": "normal",
+    "automation_aggressiveness": "safe",
+    "notes": ""
+  }
+}

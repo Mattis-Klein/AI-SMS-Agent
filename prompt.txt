@@ -1,0 +1,434 @@
+Master Copilot Implementation Prompt — Mashbak Control Board Improvements
+
+You are working on the Mashbak Control Board, a local operator console for managing the Mashbak assistant runtime. The system is already functional but requires UI improvements, interaction upgrades, and email behavior enhancements. Implement the following changes carefully without breaking existing functionality.
+
+Lock System Redesign
+Simplify the lock UX.
+
+Requirements
+
+Only one Lock button should exist in the header.
+
+Pressing Lock immediately navigates to a dedicated lock screen.
+
+Lock Screen
+
+Display a blank minimal page with a centered unlock panel:
+
+Mashbak Control Board Locked
+
+Enter PIN to unlock
+
+[ PIN input ]
+
+[ Unlock ]
+Behavior
+
+When locked, the dashboard content should not be visible at all.
+
+After correct PIN entry, return to the previous page.
+
+The bottom status bar already shows locked/unlocked, so do not duplicate lock state in the header.
+
+Global Layout Rule — Draggable Splitters
+Implement draggable splitters across the entire UI.
+
+Applies to
+
+Any page with multiple panels:
+
+Dashboard
+
+Chat / Console
+
+Assistants
+
+Communications
+
+Files & Permissions
+
+Tools & Permissions
+
+Activity / Audit
+
+Personal Context
+
+Behavior
+
+Panels separated by vertical or horizontal boundaries should allow resizing.
+
+Example:
+
+Chat Area	Logs
+User should be able to drag the divider.
+
+Persist layout during the session.
+
+Table Improvements (Global)
+All tables should support:
+
+Column resizing
+
+Drag column borders to resize.
+
+Row selection highlighting
+
+Already implemented — keep.
+
+Optional row expansion
+
+For rows containing long text or JSON.
+
+Dashboard Improvements
+The top status section should be visually improved.
+
+Current cards:
+
+Backend
+
+Bridge
+
+Email
+
+Active Assistant
+
+Improvements
+
+Add clear borders around cards
+
+Slight shadow or outline
+
+Icons placed to the left of the label
+
+Cards should be evenly spaced
+
+Keep green status indicators
+
+Example layout:
+
+[✔ Backend Connected]
+[✔ Bridge Connected]
+[✔ Email Configured]
+[✔ Assistant Active]
+5. Logs Panel Improvements (Chat / Console)
+
+Current logs are raw and hard to read.
+
+Replace raw dumps with normalized information.
+
+Example structure:
+
+Tool Execution
+
+Tool: capture_screenshot
+Assistant: Mashbak
+Status: Success
+Duration: 15ms
+Raw Output
+
+Raw JSON should still exist but only inside the Raw tab.
+
+Logs UI
+
+Tabs remain:
+
+Details | Activity | Logs
+
+Logs should use:
+
+monospace font
+
+scrollable panel
+
+readable formatting
+
+Quick Command Suggestions
+Mashbak should learn from repeated operator behavior.
+
+Behavior
+
+If a user runs the same instruction multiple times:
+
+Example:
+
+check email
+check email
+check email
+
+Mashbak should suggest creating a Quick Command.
+
+UI suggestion format inside the chat/log panel:
+
+Create Quick Command for "check email"?
+
+[ Yes ] [ No ]
+
+If Yes → add to Quick Commands automatically.
+
+Quick Commands UI
+Quick commands already exist on the left sidebar.
+
+Improvements
+
+Quick commands should also be creatable via chat interaction
+
+Commands should support:
+
+rename
+
+delete
+
+edit
+
+Interaction
+
+Use right-click context menu.
+
+Example:
+
+Right click on command:
+
+Run
+Edit
+Rename
+Delete
+
+Use modals when editing.
+
+Files & Permissions Page Redesign
+Remove bottom clutter.
+
+Current behavior
+
+There is an inline text field for adding directories.
+
+Replace with
+
+Clean layout:
+
+Allowed Directories
+C:\Users\owner\Documents
+C:\Users\owner\Desktop
+C:\Users\owner\Downloads
+
+Add button:
+
+[ Add Directory ]
+Add Directory
+
+Clicking opens modal:
+
+Add Allowed Directory
+
+Path:
+[ input ]
+
+[ Cancel ] [ Add ]
+Directory actions
+
+Right-click directory row:
+
+Remove Directory
+Validate Path
+Copy Path
+Path validation
+
+Modal:
+
+Validate Path
+
+Enter path to test
+[ input ]
+
+[ Test ]
+
+Display result:
+
+Allowed
+Blocked
+9. Tools & Permissions Table Improvements
+
+Add new column:
+
+Description
+
+Example:
+
+capture_screenshot Capture desktop screenshot
+copy_file Copy files between allowed directories
+cpu_usage Return system CPU usage
+
+Table columns should be resizable.
+
+Activity / Audit Improvements
+The Activity page is mostly correct but requires polish.
+
+Add colored status indicators
+Success → green
+Failure → red
+Pending → yellow
+Blocked → orange
+Table improvements
+
+allow column resizing
+
+maintain row highlighting
+
+Details panel
+
+Structure event details clearly:
+
+Event Information
+
+Timestamp: 2026-03-16 11:34:51
+Event: tool_execution
+Assistant: workflow-test
+Action: capture_screenshot
+State: success
+Source: workflow-test
+Splitter
+
+Add draggable splitter between:
+
+Activity table
+Event details
+11. Email System Improvements
+
+Mashbak must support both multi-account email and Gmail-style inbox categories.
+
+Email Scope Logic
+
+There are two levels of scope.
+
+Account Scope
+Examples:
+
+check email
+
+Default behavior:
+
+default_account
+
+Commands:
+
+check work email
+check gmail
+check all emails
+2. Inbox Category Scope
+
+Inside each email account there may be categories:
+
+Primary
+
+Promotions
+
+Social
+
+Updates
+
+Forums
+
+Default behavior:
+
+Primary only
+Command Interpretation Rules
+Default
+check email
+
+→ default account + Primary category
+
+Specific category
+check promotions
+check social emails
+
+→ default account + requested category
+
+All categories in one account
+check all inbox tabs
+
+→ default account + all categories
+
+Specific account and category
+check promotions in work email
+
+→ work account + Promotions
+
+All accounts
+check all emails everywhere
+
+→ all accounts + all categories
+
+Email Summaries
+
+Results must preserve categories.
+
+Example output:
+
+Email Summary
+
+Primary
+3 unread messages
+
+Promotions
+12 unread messages
+
+Social
+1 unread message
+
+Do not mix categories together unless explicitly requested.
+
+Communications Page Improvements
+
+Each email account should store:
+
+label
+
+email address
+
+primary account flag
+
+supported categories
+
+default category
+
+Add ability to mark Primary account clearly.
+
+Password Field Improvement
+
+On email configuration page, the password field should support:
+
+[ Show Password ]
+
+Toggle to reveal or hide the saved password.
+
+General UI Rules
+Across the entire system:
+
+Use these interaction standards:
+
+Right-click menus
+
+For row actions.
+
+Modals
+
+For editing or creating items.
+
+Disable Save buttons until edits occur.
+Avoid cluttered inline forms.
+Keep the operator interface minimal and clean.
+Goal
+
+These improvements should make the Mashbak Control Board feel like a professional operations console:
+
+clean
+
+operator focused
+
+minimal clutter
+
+powerful interaction
+
+scalable for future features.
+
+Ensure existing functionality continues working.

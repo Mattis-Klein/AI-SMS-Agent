@@ -40,6 +40,8 @@ class EmailAccountSaveRequest(BaseModel):
     mailbox: str = "INBOX"
     provider: str = "imap"
     make_default: bool = False
+    categories: list[str] = Field(default_factory=list)
+    default_category: str = "Primary"
 
 
 class EmailAccountActionRequest(BaseModel):
