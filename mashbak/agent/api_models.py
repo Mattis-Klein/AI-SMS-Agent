@@ -64,6 +64,11 @@ class RoutingDeactivateRequest(BaseModel):
     phone_number: str
 
 
+class AssistantTemplateUpdateRequest(BaseModel):
+    template_key: str
+    template_text: str
+
+
 class ToolPermissionUpdateRequest(BaseModel):
     tool_name: str
     enabled: bool | None = None

@@ -364,6 +364,10 @@ class ControlBoardService:
             "bucherim": bucherim,
         }
 
+    def update_assistant_template(self, template_key: str, template_text: str) -> dict[str, Any]:
+        updated = self.bucherim_admin.update_response_template(template_key, template_text)
+        return {"success": True, **updated}
+
     def routing(self) -> dict[str, Any]:
         return self.bucherim_admin.routing_overview()
 

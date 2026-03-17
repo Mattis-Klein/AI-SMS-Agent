@@ -38,6 +38,21 @@ class BucherimAdminService:
             "responses": self.config.responses(),
         }
 
+    def update_response_template(self, template_key: str, template_text: str) -> dict[str, Any]:
+        key = str(template_key or "").strip()
+        if not key:
+            raise ValueError("Template key is required")
+        payload = self.config.load()
+        responses = payload.get("responses") if isinstance(payload.get("responses"), dict) else {}
+        responses[key] = str(template_text or "")
+        payload["responses"] = responses
+        self.config.save(payload)
+        return {
+            "template_key": key,
+            "template_text": responses.get(key, ""),
+            "responses": self.config.responses(),
+        }
+
     def approve_member(self, phone_number: str) -> dict[str, Any]:
         normalized = normalize_phone_e164(phone_number)
         if not normalized:

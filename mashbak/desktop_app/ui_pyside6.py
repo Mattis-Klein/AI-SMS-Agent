@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer, QPoint
-from PySide6.QtGui import QFont, QIcon, QTextCursor, QPixmap, QColor, QAction
+from PySide6.QtGui import QFont, QTextCursor, QColor, QAction
 from PySide6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -34,16 +34,12 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QCheckBox,
     QComboBox,
-    QSpinBox,
     QTabWidget,
-    QScrollArea,
     QApplication,
     QAbstractItemView,
     QMenu,
     QDialog,
     QDialogButtonBox,
-    QInputDialog,
-    QSizePolicy,
     QMessageBox,
 )
 
@@ -54,7 +50,7 @@ except Exception:  # pragma: no cover
         return value
 
 
-# Color palette (matching Tkinter theme)
+# Color palette
 _GREEN = "#1a7f37"
 _RED = "#b42318"
 _AMBER = "#9a6700"
@@ -243,8 +239,10 @@ class DashboardPage(QWidget):
         header_layout.addWidget(create_label("Dashboard", 12, bold=True))
         header_layout.addWidget(create_label("System health and operator activity", 9, color=_SLATE))
         header_layout.addStretch()
-        refresh_btn = create_button("Refresh Dashboard", self.app.refresh_status)
-        header_layout.addWidget(refresh_btn)
+        self.refresh_btn = create_button("Refresh Dashboard", self.app.refresh_dashboard_clicked)
+        header_layout.addWidget(self.refresh_btn)
+        self.last_refreshed_label = create_label("Last refreshed: never", 8, color=_SLATE)
+        header_layout.addWidget(self.last_refreshed_label)
         layout.addLayout(header_layout)
         
         # Status cards
@@ -301,6 +299,17 @@ class DashboardPage(QWidget):
         tables_splitter.setStretchFactor(0, 1)
         tables_splitter.setStretchFactor(1, 2)
         layout.addWidget(tables_splitter, 1)
+
+    def set_refreshing(self, refreshing: bool):
+        if refreshing:
+            self.refresh_btn.setText("Refreshing...")
+            self.refresh_btn.setEnabled(False)
+            return
+        self.refresh_btn.setText("Refresh Dashboard")
+        self.refresh_btn.setEnabled(True)
+
+    def mark_refreshed(self):
+        self.last_refreshed_label.setText(f"Last refreshed: {datetime.now().strftime('%H:%M:%S')}")
         
     def update_cards(self, cards_data: dict):
         """Update status cards."""
@@ -557,6 +566,8 @@ class AssistantsPage(QWidget):
         self.responses_table.horizontalHeader().setStretchLastSection(True)
         self.responses_table.verticalHeader().setVisible(False)
         self.responses_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.responses_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.responses_table.customContextMenuRequested.connect(self.app.on_template_context_menu)
         self.responses_table.itemSelectionChanged.connect(self.app.on_template_row_selected)
         right.addWidget(self.responses_table)
         right.addWidget(create_label("Selected template", 9, bold=True, color=_SLATE))
@@ -1413,15 +1424,15 @@ class DesktopControlApp:
         # Nav buttons
         self.nav_buttons = {}
         for label, section in [
-            ("Dashboard", "Dashboard"),
-            ("Chat and Console", "Chat / Console"),
-            ("Assistants", "Assistants"),
-            ("Communications", "Communications"),
-            ("Files and Permissions", "Files & Permissions"),
-            ("Projects and Files", "Projects / Files"),
-            ("Activity and Audit", "Activity / Audit"),
-            ("Personal Context", "Personal Context"),
-            ("Tools and Permissions", "Tools & Permissions"),
+            ("◈  Dashboard", "Dashboard"),
+            ("◉  Chat and Console", "Chat / Console"),
+            ("☰  Assistants", "Assistants"),
+            ("✆  Communications", "Communications"),
+            ("⌘  Files and Permissions", "Files & Permissions"),
+            ("▣  Projects and Files", "Projects / Files"),
+            ("◍  Activity and Audit", "Activity / Audit"),
+            ("✎  Personal Context", "Personal Context"),
+            ("⚙  Tools and Permissions", "Tools & Permissions"),
         ]:
             btn = QPushButton(label)
             btn.setFont(QFont("Segoe UI", 10))
@@ -1450,9 +1461,9 @@ class DesktopControlApp:
         ]
         self.quick_commands_list = QListWidget()
         self.quick_commands_list.setStyleSheet(
-            "QListWidget { background: transparent; border: none; }"
-            "QListWidget::item { color: #d9e1ec; padding: 8px 14px; border-radius: 4px; }"
-            "QListWidget::item:hover { background: #6280b9; }"
+            "QListWidget { background: #4567ad; border: 1px solid #6f8ec6; border-radius: 8px; padding: 4px; }"
+            "QListWidget::item { color: #eff6ff; padding: 8px 12px; border-radius: 5px; margin: 2px 0; }"
+            "QListWidget::item:hover { background: #5f80be; }"
             "QListWidget::item:selected { background: #0f4fbf; color: white; }"
         )
         self.quick_commands_list.setFont(QFont("Segoe UI", 10))
@@ -1540,20 +1551,28 @@ class DesktopControlApp:
     
     def _rename_quick_command(self, idx: int):
         label, msg = self.quick_commands[idx]
-        new_label, ok = QInputDialog.getText(
-            self.window, "Rename Quick Command", "New label:", text=label
+        result = self._open_quick_command_dialog(
+            title="Rename Quick Command",
+            initial_label=label,
+            initial_message=msg,
+            lock_message=True,
         )
-        if ok and new_label.strip():
-            self.quick_commands[idx] = (new_label.strip(), msg)
-            self._rebuild_quick_commands_list()
+        if result is None:
+            return
+        self.quick_commands[idx] = (result[0], msg)
+        self._rebuild_quick_commands_list()
     
     def _edit_quick_command(self, idx: int):
         label, msg = self.quick_commands[idx]
-        new_msg, ok = QInputDialog.getText(
-            self.window, "Edit Quick Command", f"Command text for \"{label}\":", text=msg
+        result = self._open_quick_command_dialog(
+            title="Edit Quick Command",
+            initial_label=label,
+            initial_message=msg,
+            lock_label=True,
         )
-        if ok and new_msg.strip():
-            self.quick_commands[idx] = (label, new_msg.strip())
+        if result is None:
+            return
+        self.quick_commands[idx] = result
     
     def _delete_quick_command(self, idx: int):
         label = self.quick_commands[idx][0]
@@ -1567,13 +1586,65 @@ class DesktopControlApp:
             self._rebuild_quick_commands_list()
     
     def _new_quick_command(self):
-        label, ok1 = QInputDialog.getText(self.window, "New Quick Command", "Label (display name):")
-        if not ok1 or not label.strip():
+        result = self._open_quick_command_dialog(
+            title="New Quick Command",
+            initial_label="",
+            initial_message="",
+        )
+        if result is None:
             return
-        msg, ok2 = QInputDialog.getText(self.window, "New Quick Command", "Command text:")
-        if ok2 and msg.strip():
-            self.quick_commands.append((label.strip(), msg.strip()))
-            self._rebuild_quick_commands_list()
+        self.quick_commands.append(result)
+        self._rebuild_quick_commands_list()
+
+    def _open_quick_command_dialog(
+        self,
+        *,
+        title: str,
+        initial_label: str,
+        initial_message: str,
+        lock_label: bool = False,
+        lock_message: bool = False,
+    ) -> tuple[str, str] | None:
+        dialog = QDialog(self.window)
+        dialog.setWindowTitle(title)
+        dialog.setModal(True)
+        dialog.setMinimumWidth(520)
+        layout = QVBoxLayout(dialog)
+        form = QGridLayout()
+        form.addWidget(create_label("Label", 9, bold=True), 0, 0)
+        label_input = QLineEdit(initial_label)
+        label_input.setReadOnly(lock_label)
+        form.addWidget(label_input, 0, 1)
+        form.addWidget(create_label("Command", 9, bold=True), 1, 0)
+        message_input = QLineEdit(initial_message)
+        message_input.setReadOnly(lock_message)
+        form.addWidget(message_input, 1, 1)
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        save_btn = buttons.button(QDialogButtonBox.Save)
+        save_btn.setEnabled(False)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        initial_l = initial_label.strip()
+        initial_m = initial_message.strip()
+
+        def _refresh_save_state():
+            current_l = label_input.text().strip()
+            current_m = message_input.text().strip()
+            changed = (current_l != initial_l) or (current_m != initial_m)
+            valid = bool(current_l and current_m)
+            save_btn.setEnabled(changed and valid)
+
+        label_input.textChanged.connect(_refresh_save_state)
+        message_input.textChanged.connect(_refresh_save_state)
+        _refresh_save_state()
+
+        if dialog.exec() != QDialog.Accepted:
+            return None
+        return (label_input.text().strip(), message_input.text().strip())
 
     def on_accept_quick_suggestion(self):
         if not self._pending_quick_command:
@@ -1741,11 +1812,10 @@ class DesktopControlApp:
         self.refresh_projects()
         self.refresh_personal_context()
         self.refresh_tools_permissions()
-        
-        # Get chat page and show welcome
+
+        # Focus chat input for immediate operator commands
         chat_page = self.pages.get("Chat / Console")
         if chat_page:
-            chat_page.append_message("assistant", "Control board unlocked. I am ready.")
             chat_page.message_input.setFocus()
     
     def lock_app(self):
@@ -1763,16 +1833,6 @@ class DesktopControlApp:
         
         # Disable controls
         self._set_interaction_enabled(False)
-        
-        # Show lock message on chat page
-        chat_page = self.pages.get("Chat / Console")
-        if chat_page:
-            chat_page.chat_display.clear()
-            chat_page.chat_display.setPlainText("Mashbak is locked.\nEnter your PIN to unlock the control board.")
-            chat_page.details_text.setPlainText(message)
-            chat_page.activity_list.setPlainText("No activity yet")
-            chat_page.agent_logs.setPlainText("Locked")
-            chat_page.bridge_logs.setPlainText("Locked")
 
         self.lock_pin_input.setFocus()
     
@@ -1966,11 +2026,32 @@ class DesktopControlApp:
         self._show_section("Chat / Console")
         chat_page = self.pages.get("Chat / Console")
         if chat_page:
+            chat_page.append_message("system", f'Running quick command: "{message}"')
+            chat_page.chat_state_label.setText("Executing quick command")
+            chat_page.details_text.setPlainText("Quick command dispatched. Waiting for Mashbak reply...")
+            chat_page.trace_tabs.setCurrentIndex(0)
             chat_page.message_input.setText(message)
             chat_page.message_input.setFocus()
             self.on_send()
-    
-    # --- DATA REFRESH METHODS (preserved from Tkinter version) ---
+
+    # --- DATA REFRESH METHODS ---
+
+    def refresh_dashboard_clicked(self):
+        """Trigger dashboard refresh with visible in-progress feedback."""
+        dashboard = self.pages.get("Dashboard")
+        if not dashboard:
+            return
+        dashboard.set_refreshing(True)
+        self.statusbar.showMessage("Mashbak Control Board  |  refreshing dashboard")
+
+        def _run_refresh():
+            self.refresh_status()
+            dashboard.set_refreshing(False)
+            dashboard.mark_refreshed()
+            if self.is_unlocked:
+                self.statusbar.showMessage("Mashbak Control Board  |  unlocked")
+
+        QTimer.singleShot(350, _run_refresh)
     
     def refresh_status(self):
         """Refresh system status badges."""
@@ -2091,6 +2172,7 @@ class DesktopControlApp:
             dashboard.failures_table.setItem(idx, 2, QTableWidgetItem(action))
             dashboard.failures_table.setItem(idx, 3, QTableWidgetItem(result))
             dashboard.failures_table.setItem(idx, 4, QTableWidgetItem(state))
+        dashboard.mark_refreshed()
     
     def _condense_detail(self, text: str, max_len: int = 84) -> str:
         """Condense detail text with ellipsis."""
@@ -2243,6 +2325,71 @@ class DesktopControlApp:
             return
         key, value = self.response_templates[row]
         page.responses_detail.setPlainText(f"Template: {key}\n\n{value}")
+
+    def on_template_context_menu(self, pos: QPoint):
+        page = self.pages.get("Assistants")
+        if not page:
+            return
+        item = page.responses_table.itemAt(pos)
+        if item is None:
+            return
+        row = page.responses_table.row(item)
+        if row < 0 or row >= len(self.response_templates):
+            return
+
+        menu = QMenu(page.responses_table)
+        menu.setStyleSheet(
+            "QMenu { background: white; border: 1px solid #dde3ef; }"
+            "QMenu::item { padding: 6px 20px; } "
+            "QMenu::item:selected { background: #eaf2ff; color: #0a3069; }"
+        )
+        edit_action = QAction("Edit Template", menu)
+        edit_action.triggered.connect(lambda: self.edit_assistant_template(row))
+        menu.addAction(edit_action)
+        menu.exec(page.responses_table.viewport().mapToGlobal(pos))
+
+    def edit_assistant_template(self, row: int):
+        page = self.pages.get("Assistants")
+        if not page:
+            return
+        if row < 0 or row >= len(self.response_templates):
+            return
+        key, current_text = self.response_templates[row]
+
+        dialog = QDialog(self.window)
+        dialog.setWindowTitle("Edit Response Template")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(680)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(create_label(f"Template: {key}", 10, bold=True))
+
+        editor = QPlainTextEdit()
+        editor.setPlainText(current_text)
+        editor.setStyleSheet("background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px;")
+        layout.addWidget(editor)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        save_btn = buttons.button(QDialogButtonBox.Save)
+        save_btn.setEnabled(False)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        def _on_changed():
+            save_btn.setEnabled(editor.toPlainText().strip() != current_text.strip())
+
+        editor.textChanged.connect(_on_changed)
+
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        updated_text = editor.toPlainText().strip()
+        result = self.client.update_assistant_template(key, updated_text)
+        if isinstance(result, dict) and result.get("success") is not False:
+            page.responses_detail.setPlainText(f"Template: {key}\n\n{updated_text}")
+            self.refresh_assistants()
+            return
+        page.responses_detail.setPlainText(str((result or {}).get("error") or "Failed to update template."))
     
     def refresh_communications(self):
         """Refresh communications data."""
@@ -2884,10 +3031,6 @@ class DesktopControlApp:
     def refresh_logs(self):
         """Refresh logs display."""
         if not self.is_unlocked:
-            chat_page = self.pages.get("Chat / Console")
-            if chat_page:
-                chat_page.agent_logs.setPlainText("Locked")
-                chat_page.bridge_logs.setPlainText("Locked")
             return
         
         agent_lines = self._tail_file(self.agent_log_file, 40)
@@ -3056,15 +3199,31 @@ class DesktopControlApp:
         page = self.pages.get("Files & Permissions")
         if not page:
             return
-        value, ok = QInputDialog.getText(
-            self.window,
-            "Add Allowed Directory",
-            "Directory path:",
-            text="C:\\"
-        )
-        if not ok or not value.strip():
+        dialog = QDialog(self.window)
+        dialog.setWindowTitle("Add Allowed Directory")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(560)
+        outer = QVBoxLayout(dialog)
+        outer.addWidget(create_label("Path", 10, bold=True))
+        input_line = QLineEdit("C:\\")
+        outer.addWidget(input_line)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        add_btn = buttons.button(QDialogButtonBox.Ok)
+        add_btn.setText("Add")
+        add_btn.setEnabled(False)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        outer.addWidget(buttons)
+
+        def _toggle_add_enabled():
+            add_btn.setEnabled(bool(input_line.text().strip()))
+
+        input_line.textChanged.connect(_toggle_add_enabled)
+        _toggle_add_enabled()
+
+        if dialog.exec() != QDialog.Accepted:
             return
-        value = value.strip()
+        value = input_line.text().strip()
         existing = [page.allowed_list.item(i).text() for i in range(page.allowed_list.count())]
         if value in existing:
             page.path_test_result.setText(f"Directory already in allowed list.")

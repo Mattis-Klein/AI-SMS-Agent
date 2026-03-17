@@ -55,6 +55,14 @@ class AgentClient:
     def get_assistants(self) -> dict:
         return self._request("GET", "/control-board/assistants", include_auth=True)
 
+    def update_assistant_template(self, template_key: str, template_text: str) -> dict:
+        return self._request(
+            "POST",
+            "/control-board/assistants/template/update",
+            include_auth=True,
+            body={"template_key": template_key, "template_text": template_text},
+        )
+
     def get_tasks(self, limit: int = 80, status: str = "") -> dict:
         tail = f"?limit={int(limit)}"
         if status:
