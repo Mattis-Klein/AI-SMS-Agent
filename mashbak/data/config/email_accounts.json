@@ -1,0 +1,37 @@
+{
+  "default_account_id": "legacy-default",
+  "accounts": [
+    {
+      "account_id": "legacy-default",
+      "label": "mattisk960",
+      "email_address": "mattisk960@gmail.com",
+      "imap_host": "imap.gmail.com",
+      "imap_port": 993,
+      "use_ssl": true,
+      "mailbox": "INBOX",
+      "provider": "imap",
+      "categories": [
+        "Primary"
+      ],
+      "default_category": "Primary",
+      "is_default": true,
+      "password_set": true,
+      "password": "ufzefruzdkfssfof"
+    },
+    {
+      "account_id": "be8e6c3d858b",
+      "label": "mtskln848",
+      "email_address": "mtskln848@gmail.com",
+      "imap_host": "imap.gmail.com",
+      "imap_port": 993,
+      "use_ssl": true,
+      "mailbox": "INBOX",
+      "provider": "imap",
+      "categories": [
+        "Primary"
+      ],
+      "default_category": "Primary",
+      "password": "slzjqwoiiiuvrwge"
+    }
+  ]
+}

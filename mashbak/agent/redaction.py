@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 REDACTED = "[REDACTED]"
+CIRCULAR = "[CIRCULAR]"
 
 SENSITIVE_VARIABLES = {
     "OPENAI_API_KEY",
@@ -57,8 +58,11 @@ def redact_config_assignments(text: str) -> str:
     return _CONFIG_ASSIGNMENT_PATTERN.sub(_replace, text)
 
 
-def sanitize_for_logging(value: Any, *, key: str | None = None) -> Any:
+def sanitize_for_logging(value: Any, *, key: str | None = None, _seen: set[int] | None = None) -> Any:
     """Recursively sanitize objects for logs/debug traces without removing structure."""
+    if _seen is None:
+        _seen = set()
+
     if value is None:
         return None
 
@@ -68,6 +72,10 @@ def sanitize_for_logging(value: Any, *, key: str | None = None) -> Any:
         return redact_config_assignments(value)
 
     if isinstance(value, dict):
+        object_id = id(value)
+        if object_id in _seen:
+            return CIRCULAR
+        _seen.add(object_id)
         sanitized: dict[str, Any] = {}
         variable_name = str(value.get("variable_name", "")).upper() if "variable_name" in value else ""
         for inner_key, inner_value in value.items():
@@ -83,11 +91,18 @@ def sanitize_for_logging(value: Any, *, key: str | None = None) -> Any:
             if variable_name and _is_sensitive_variable_name(variable_name) and inner_key in {"output", "raw_message", "raw_request", "message", "reply"}:
                 sanitized[inner_key] = redact_config_assignments(str(inner_value))
                 continue
-            sanitized[inner_key] = sanitize_for_logging(inner_value, key=str(inner_key))
+            sanitized[inner_key] = sanitize_for_logging(inner_value, key=str(inner_key), _seen=_seen)
+        _seen.discard(object_id)
         return sanitized
 
     if isinstance(value, (list, tuple, set)):
-        return [sanitize_for_logging(item, key=key) for item in value]
+        object_id = id(value)
+        if object_id in _seen:
+            return CIRCULAR
+        _seen.add(object_id)
+        sanitized_items = [sanitize_for_logging(item, key=key, _seen=_seen) for item in value]
+        _seen.discard(object_id)
+        return sanitized_items
 
     return value
 

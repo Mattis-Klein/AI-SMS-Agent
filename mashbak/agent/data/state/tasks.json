@@ -1,0 +1,117 @@
+{
+  "tasks": [
+    {
+      "task_id": "2161d4deaf11",
+      "title": "Run current_time",
+      "status": "completed",
+      "source": "desktop",
+      "sender": "debug-desktop",
+      "created_at": "2026-03-18T14:54:35",
+      "updated_at": "2026-03-18T14:54:35",
+      "steps": [
+        {
+          "tool_name": "current_time",
+          "args": {},
+          "status": "completed"
+        }
+      ],
+      "result": {
+        "success": true,
+        "tool_name": "current_time",
+        "error": null
+      }
+    },
+    {
+      "task_id": "4b0fb00105ca",
+      "title": "Plan: what time is it?",
+      "status": "completed",
+      "source": "desktop",
+      "sender": "debug-desktop",
+      "created_at": "2026-03-18T14:54:35",
+      "updated_at": "2026-03-18T14:54:35",
+      "steps": [
+        {
+          "tool_name": "current_time",
+          "args": {},
+          "status": "completed",
+          "result": {
+            "success": true,
+            "error": null,
+            "tool_name": "current_time"
+          }
+        }
+      ],
+      "result": {
+        "step_results": [
+          {
+            "success": true,
+            "tool_name": "current_time",
+            "output": "Wed 03/18/2026 14:54:35.23",
+            "error": null,
+            "error_type": null,
+            "missing_config_fields": null,
+            "remediation": null,
+            "request_id": "cbe09030",
+            "source": "desktop",
+            "data": {
+              "task": {
+                "task_id": "2161d4deaf11",
+                "title": "Run current_time",
+                "status": "completed",
+                "source": "desktop",
+                "sender": "debug-desktop",
+                "created_at": "2026-03-18T14:54:35",
+                "updated_at": "2026-03-18T14:54:35",
+                "steps": [
+                  {
+                    "tool_name": "current_time",
+                    "args": {},
+                    "status": "completed"
+                  }
+                ],
+                "result": {
+                  "success": true,
+                  "tool_name": "current_time",
+                  "error": null
+                }
+              }
+            },
+            "trace": {
+              "raw_request": "execute: current_time",
+              "session_id": "desktop:debug-desktop",
+              "session_context": {
+                "session_id": "desktop:debug-desktop",
+                "last_topic": null,
+                "last_intent": null,
+                "last_tool": null,
+                "last_failure_type": null,
+                "last_entities": {},
+                "missing_config_fields": [],
+                "config_progress_state": null,
+                "pending_restart_components": [],
+                "recent_turns": [],
+                "updated_at": 1773863675.1773107,
+                "pending_task": null,
+                "pending_parameters": {},
+                "missing_parameters": [],
+                "last_task": null,
+                "last_result": null,
+                "last_args": {},
+                "last_created_path": null
+              },
+              "source": "desktop",
+              "interpreted_intent": "current_time",
+              "interpreted_args": {},
+              "confidence": 1.0,
+              "selected_tool": "current_time",
+              "validation_status": "passed",
+              "validated_arguments": {},
+              "execution_status": "success",
+              "execution_time_ms": 27
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

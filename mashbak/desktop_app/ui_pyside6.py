@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer, QPoint
+from PySide6.QtCore import Qt, QTimer, QPoint, QObject, Signal
 from PySide6.QtGui import QFont, QTextCursor, QColor, QAction
 from PySide6.QtWidgets import (
     QMainWindow,
@@ -115,10 +115,10 @@ class StatusCard(QFrame):
     """A card showing component status with indicator dot."""
     
     _ICONS = {
-        "Backend": "⚙",
-        "Bridge": "🔗",
-        "Email": "✉",
-        "Active Assistant": "🤖",
+        "Backend": "🖥",
+        "Bridge": "📡",
+        "Email": "📬",
+        "Active Assistant": "🧠",
     }
     
     def __init__(self, title: str, subtitle: str):
@@ -480,28 +480,45 @@ class ChatConsolePage(QWidget):
         
         timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
         body = html.escape(str(text or "")).replace("\n", "<br>")
-        
+
         normalized_role = str(role or "system").strip().lower()
         if normalized_role in {"you", "user"}:
-            self.chat_display.insertHtml(
-                f"<div style='background:#eaf2ff;border:1px solid #cfe0ff;border-radius:8px;padding:8px;margin:6px 0 6px 80px;'>"
-                f"<div style='font-weight:600;color:#0a3069;'>You | {timestamp}</div><div>{body}</div></div>"
-            )
+            header_text = f"You | {timestamp}"
+            card_style = "background:#eaf2ff;border:1px solid #cfe0ff;"
+            role_color = "#0a3069"
+            justify = "flex-end"
+            text_align = "right"
         elif normalized_role in {"mashbak", "assistant"}:
-            self.chat_display.insertHtml(
-                f"<div style='background:#ffffff;border:1px solid #d9e2ec;border-radius:8px;padding:8px;margin:6px 80px 6px 0;'>"
-                f"<div style='font-weight:600;color:#0f4fbf;'>Mashbak | {timestamp}</div><div>{body}</div></div>"
-            )
+            header_text = f"Mashbak | {timestamp}"
+            card_style = "background:#ffffff;border:1px solid #d9e2ec;"
+            role_color = "#0f4fbf"
+            justify = "flex-start"
+            text_align = "left"
         elif normalized_role == "error":
-            self.chat_display.insertHtml(
-                f"<div style='background:#fff1f0;border:1px solid #ffd6d2;border-radius:8px;padding:8px;margin:6px 0;'>"
-                f"<div style='font-weight:600;color:#8c2f39;'>System Error | {timestamp}</div><div style='color:#8c2f39;'>{body}</div></div>"
-            )
+            header_text = f"System Error | {timestamp}"
+            card_style = "background:#fff1f0;border:1px solid #ffd6d2;"
+            role_color = "#8c2f39"
+            justify = "flex-start"
+            text_align = "left"
         else:
-            self.chat_display.insertHtml(
-                f"<div style='background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:8px;margin:6px 0;'>"
-                f"<div style='font-weight:600;color:#64748b;'>System | {timestamp}</div><div>{body}</div></div>"
-            )
+            header_text = f"System | {timestamp}"
+            card_style = "background:#f8fafc;border:1px dashed #cbd5e1;"
+            role_color = "#64748b"
+            justify = "flex-start"
+            text_align = "left"
+
+        # Keep each message as an explicit two-line block with a guaranteed spacer after it.
+        # This prevents sender headers from merging into the next message body/header.
+        block_html = (
+            f"<div style='display:flex; justify-content:{justify}; width:100%; margin:6px 0 0 0;'>"
+            f"<div style='max-width:76%; {card_style} border-radius:8px; padding:8px;'>"
+            f"<div style='font-weight:600; color:{role_color}; margin:0 0 6px 0; text-align:{text_align};'>{header_text}</div>"
+            f"<div style='color:#111827; line-height:1.45; text-align:{text_align};'>{body}</div>"
+            "</div>"
+            "</div>"
+            "<div style='height:10px; line-height:10px;'>&nbsp;</div>"
+        )
+        self.chat_display.insertHtml(block_html)
         
         self.chat_display.ensureCursorVisible()
 
@@ -1189,6 +1206,13 @@ class ToolsPermissionsPage(QWidget):
         layout.addWidget(self.result_text)
 
 
+class UiThreadDispatcher(QObject):
+    """Routes background worker results back onto the UI thread."""
+
+    result_ready = Signal(object, object)
+    error_ready = Signal(object)
+
+
 class DesktopControlApp:
     """Main Mashbak Control Board application using PySide6."""
     
@@ -1224,6 +1248,10 @@ class DesktopControlApp:
         self._loading_personal_context = False
         self._loading_email_form = False
         self._loading_tool_form = False
+
+        self._ui_dispatcher = UiThreadDispatcher()
+        self._ui_dispatcher.result_ready.connect(self._display_result)
+        self._ui_dispatcher.error_ready.connect(self._display_error)
         
         workspace = Path(runtime_summary.get("workspace") or "")
         platform_root = workspace.parent.parent if workspace else Path.cwd()
@@ -1424,15 +1452,15 @@ class DesktopControlApp:
         # Nav buttons
         self.nav_buttons = {}
         for label, section in [
-            ("◈  Dashboard", "Dashboard"),
-            ("◉  Chat and Console", "Chat / Console"),
-            ("☰  Assistants", "Assistants"),
-            ("✆  Communications", "Communications"),
-            ("⌘  Files and Permissions", "Files & Permissions"),
-            ("▣  Projects and Files", "Projects / Files"),
-            ("◍  Activity and Audit", "Activity / Audit"),
-            ("✎  Personal Context", "Personal Context"),
-            ("⚙  Tools and Permissions", "Tools & Permissions"),
+            ("🏠  Dashboard", "Dashboard"),
+            ("💬  Chat and Console", "Chat / Console"),
+            ("🧩  Assistants", "Assistants"),
+            ("📨  Communications", "Communications"),
+            ("📁  Files and Permissions", "Files & Permissions"),
+            ("🗂  Projects and Files", "Projects / Files"),
+            ("📊  Activity and Audit", "Activity / Audit"),
+            ("👤  Personal Context", "Personal Context"),
+            ("🛡  Tools and Permissions", "Tools & Permissions"),
         ]:
             btn = QPushButton(label)
             btn.setFont(QFont("Segoe UI", 10))
@@ -1469,6 +1497,7 @@ class DesktopControlApp:
         self.quick_commands_list.setFont(QFont("Segoe UI", 10))
         self.quick_commands_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.quick_commands_list.customContextMenuRequested.connect(self._on_quick_cmd_context_menu)
+        self.quick_commands_list.itemClicked.connect(self._on_quick_cmd_clicked)
         self.quick_commands_list.itemDoubleClicked.connect(self._on_quick_cmd_double_clicked)
         self._rebuild_quick_commands_list()
         layout.addWidget(self.quick_commands_list)
@@ -1503,14 +1532,21 @@ class DesktopControlApp:
         for label, _msg in self.quick_commands:
             self.quick_commands_list.addItem(label)
     
-    def _on_quick_cmd_double_clicked(self, item):
-        """Run a quick command on double-click."""
-        if not self.is_unlocked:
+    def _run_quick_command_item(self, item):
+        if not self.is_unlocked or not item:
             return
         idx = self.quick_commands_list.row(item)
         if 0 <= idx < len(self.quick_commands):
             _label, msg = self.quick_commands[idx]
             self._send_quick_command(msg)
+
+    def _on_quick_cmd_clicked(self, item):
+        """Run a quick command on single-click."""
+        self._run_quick_command_item(item)
+
+    def _on_quick_cmd_double_clicked(self, item):
+        """Run a quick command on double-click."""
+        self._run_quick_command_item(item)
     
     def _on_quick_cmd_context_menu(self, pos: QPoint):
         """Show context menu for quick commands."""
@@ -1881,9 +1917,9 @@ class DesktopControlApp:
         """Run message in background thread."""
         try:
             result = self.client.execute_nl(message=message, sender="local-desktop", owner_unlocked=self.is_unlocked)
-            QTimer.singleShot(0, lambda: self._display_result(message, result))
+            self._ui_dispatcher.result_ready.emit(message, result)
         except Exception as exc:
-            QTimer.singleShot(0, lambda: self._display_error(str(exc)))
+            self._ui_dispatcher.error_ready.emit(str(exc))
     
     def _display_result(self, message: str, result: dict):
         """Display result in chat."""
