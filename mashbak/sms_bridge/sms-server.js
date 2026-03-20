@@ -415,6 +415,7 @@ async function buildBucherimReply({ message, from, to, requestId, messageSid, ac
  * Check if a message is a mode control command.
  * Returns the target mode if it is, null otherwise.
  * Control commands are case-insensitive and must match exactly.
+ * Only the owner can trigger mode commands.
  */
 function getControlCommandMode(message) {
     const normalized = (message || "").trim().toUpperCase();
@@ -425,6 +426,17 @@ function getControlCommandMode(message) {
         return sessionManager.MODES.MASHBAK;
     }
     return null;
+}
+
+/**
+ * Determine if a sender is the authorized Mashbak owner.
+ * Mashbak is strictly single-user: only this owner can access it.
+ * All other senders are restricted to Bucherim (multi-user) mode.
+ * 
+ * @returns {boolean} true if sender is the configured owner
+ */
+function isMashbakOwner(normalizedSender) {
+    return normalizedSender && normalizedSender === SENDER_ACCESS.ownerNumber;
 }
 
 app.get("/", (req, res) => {
@@ -458,28 +470,11 @@ app.post("/sms", async (req, res) => {
     const messageSid = req.body.MessageSid || "";
     const accountSid = req.body.AccountSid || "";
     const inboundMedia = extractInboundMedia(req.body);
-    const normalizedTo = normalizeToE164(to);
-    const normalizedBucherimNumber = normalizeToE164(BUCHERIM_TWILIO_NUMBER);
 
-    // Normalize sender using access control config normalization digits
+    // ALWAYS normalize sender using the single source of truth (SMS_OWNER_NUMBER config)
     const normalizedFrom = normalizePhoneNumber(from, SENDER_ACCESS.normalizationDigits);
-    const isOwner = normalizedFrom === SENDER_ACCESS.ownerNumber;
 
-    console.log(`[sms] requestId=${requestId} from=${from} normalizedFrom=${normalizedFrom} body=${safeMessage}`);
-    logBridgeEvent({
-        requestId,
-        stage: "incoming_sms",
-        from,
-        normalizedFrom,
-        to,
-        normalizedTo,
-        messageSid,
-        message: safeMessage,
-        mediaCount: inboundMedia.length,
-        media: inboundMedia,
-        url: getRequestUrlCandidates(req)[0] || req.originalUrl
-    });
-
+    // Validate Twilio signature FIRST
     if (!isValidTwilioRequest(req)) {
         console.warn(`[sms] requestId=${requestId} rejected invalid Twilio signature from=${from}`);
         logBridgeEvent({
@@ -487,146 +482,170 @@ app.post("/sms", async (req, res) => {
             stage: "rejected",
             reason: "invalid_twilio_signature",
             from,
+            normalizedFrom,
             message: safeMessage
         });
         res.status(403).send("Forbidden");
         return;
     }
 
-    let reply;
+    console.log(`[sms] requestId=${requestId} from=${from} normalizedFrom=${normalizedFrom}`);
+    logBridgeEvent({
+        requestId,
+        stage: "incoming_sms",
+        from,
+        normalizedFrom,
+        to,
+        messageSid,
+        message: safeMessage,
+        mediaCount: inboundMedia.length,
+        media: inboundMedia,
+        url: getRequestUrlCandidates(req)[0] || req.originalUrl
+    });
+
+    let reply = "";
     let fullReply = "";
     let outboundMedia = [];
 
     try {
-        // Step 1: Check if sender is authorized (owner)
-        // Unauthorized senders are immediately denied
+        // ========== AUTHORIZATION LAYER ==========
+        // Mashbak is strictly single-user and only accessible to the configured owner.
+        // Non-owners are blocked immediately without forwarding to any backend.
+        const isOwner = isMashbakOwner(normalizedFrom);
+
         if (!isOwner) {
-            console.log(`[sms] requestId=${requestId} unauthorized_sender normalizedFrom=${normalizedFrom}`);
+            // === NON-OWNER: BLOCKED FROM MASHBAK ===
+            // This sender cannot access Mashbak. They can only use Bucherim (multi-user).
+            console.log(
+                `[sms] requestId=${requestId} authorization_denied normalizedFrom=${normalizedFrom} (not owner, only Bucherim allowed)`
+            );
             logBridgeEvent({
                 requestId,
-                stage: "sender_authorization_check",
+                stage: "authorization_check",
                 normalizedFrom,
                 isOwner: false,
-                authorized: false,
-                action: "denied"
+                decision: "DENIED",
+                reason: "non_owner_blocked_from_mashbak",
+                allowedSystem: "BUCHERIM_MULTI_USER_ONLY"
             });
-            reply = SENDER_ACCESS.denialResponse;
+            
+            // Send safe denial response without revealing system details
+            reply = SENDER_ACCESS.denialResponse || "This number is not allowed.";
         } else {
-            // Step 2: Check if this is a mode control command from the authorized owner
+            // === OWNER: MASHBAK/BUCHERIM ACCESS ALLOWED ===
+            console.log(
+                `[sms] requestId=${requestId} authorization_granted normalizedFrom=${normalizedFrom} (owner)`
+            );
+            logBridgeEvent({
+                requestId,
+                stage: "authorization_check",
+                normalizedFrom,
+                isOwner: true,
+                decision: "ALLOWED",
+                reason: "sender_is_configured_owner"
+            });
+
+            // ========== OWNER ROUTING: Check for Mode Control Commands ==========
+            // Mode switching is owner-only and intercepted at bridge level.
+            // These commands must NOT be forwarded to assistants.
             const controlMode = getControlCommandMode(message);
+            
             if (controlMode) {
-                // Handle mode switch - this is a control command, don't forward to assistant
+                // === MODE CONTROL COMMAND ===
                 const previousMode = sessionManager.getCurrentMode(normalizedFrom);
                 const modeChangeResult = sessionManager.setMode(normalizedFrom, controlMode);
-                
-                console.log(`[sms] requestId=${requestId} mode_switch from=${previousMode} to=${controlMode}`);
+
+                console.log(
+                    `[sms] requestId=${requestId} mode_switch normalizedFrom=${normalizedFrom} ${previousMode} -> ${controlMode}`
+                );
                 logBridgeEvent({
                     requestId,
                     stage: "mode_control_command",
                     normalizedFrom,
-                    controlCommand: message,
+                    command: message,
                     previousMode,
                     newMode: controlMode,
                     switched: previousMode !== controlMode,
-                    switchTime: modeChangeResult.timestamp
+                    timestamp: modeChangeResult.timestamp
                 });
 
-                // Acknowledge the mode switch without forwarding to assistant
+                // Acknowledge mode switch WITHOUT forwarding to assistant
                 reply = `Switched to ${controlMode} mode.`;
             } else {
-                // Step 3: Not a control command. Check sender authorization and get routing mode.
-                const senderDecision = resolveSenderAction(from, SENDER_ACCESS);
+                // === NORMAL MESSAGE: ROUTE BY SESSION MODE ===
+                // Get current mode (includes automatic timeout check if in Bucherim)
+                const currentMode = sessionManager.getCurrentMode(normalizedFrom);
+                const sessionInfo = sessionManager.getSessionInfo(normalizedFrom);
 
-                if (!senderDecision.shouldForward) {
-                    // This shouldn't happen if isOwner is true and authorization was done correctly
-                    // But handle it defensively
+                console.log(
+                    `[sms] requestId=${requestId} route_decision normalizedFrom=${normalizedFrom} mode=${currentMode}`
+                );
+                logBridgeEvent({
+                    requestId,
+                    stage: "session_routing_decision",
+                    normalizedFrom,
+                    currentMode,
+                    wasTimedOut: sessionInfo.isTimedOut,
+                    lastActivityMs: Date.now() - sessionInfo.lastActivityTime
+                });
+
+                // Route based on current mode
+                if (currentMode === sessionManager.MODES.BUCHERIM) {
+                    // === ROUTE TO BUCHERIM (Multi-user) ===
                     console.log(
-                        `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
+                        `[sms] requestId=${requestId} routing_to_bucherim normalizedFrom=${normalizedFrom}`
                     );
-                    logBridgeEvent({
-                        requestId,
-                        stage: "sender_access_control",
+                    const bucherimResult = await buildBucherimReply({
+                        message,
                         from,
-                        normalizedFrom: senderDecision.normalizedFrom,
-                        action: senderDecision.action,
-                        message: safeMessage,
-                        forwarded: false
+                        to,
+                        requestId,
+                        messageSid,
+                        accountSid,
+                        media: inboundMedia,
                     });
-                    reply = senderDecision.reply;
+                    reply = bucherimResult.reply;
+                    fullReply = bucherimResult.fullReply;
+                    outboundMedia = bucherimResult.outboundMedia || [];
+                    logBridgeEvent({
+                        requestId,
+                        stage: "route_bucherim",
+                        normalizedFrom,
+                        status: bucherimResult.status,
+                        mediaCount: inboundMedia.length,
+                        outboundMediaCount: outboundMedia.length,
+                    });
                 } else {
-                    // Authorized sender, not a control command. Now determine routing mode.
-                    // Get current mode (this updates lastActivityTime)
-                    const currentMode = sessionManager.getCurrentMode(normalizedFrom);
-                    const sessionInfo = sessionManager.getSessionInfo(normalizedFrom);
-                    const wasTimedOut = sessionInfo.isTimedOut;
-
+                    // === ROUTE TO MASHBAK (Single-user) ===
+                    // Only the owner reaches here via MASHBAK mode
                     console.log(
-                        `[sms] requestId=${requestId} authorized_owner routing currentMode=${currentMode} wasTimedOut=${wasTimedOut}`
+                        `[sms] requestId=${requestId} routing_to_mashbak normalizedFrom=${normalizedFrom}`
                     );
+                    reply = await buildReply(message, requestId, from);
                     logBridgeEvent({
                         requestId,
-                        stage: "sender_authorization_check",
+                        stage: "route_mashbak",
                         normalizedFrom,
-                        isOwner: true,
-                        authorized: true,
-                        action: "route_to_session_mode"
+                        mediaCount: inboundMedia.length,
                     });
-
-                    logBridgeEvent({
-                        requestId,
-                        stage: "session_routing_decision",
-                        normalizedFrom,
-                        currentMode,
-                        wasTimedOut,
-                        modeSetTime: sessionInfo.modeSetTime,
-                        lastActivityTime: sessionInfo.lastActivityTime
-                    });
-
-                    // Route based on current mode
-                    if (currentMode === sessionManager.MODES.BUCHERIM) {
-                        const bucherimResult = await buildBucherimReply({
-                            message,
-                            from,
-                            to,
-                            requestId,
-                            messageSid,
-                            accountSid,
-                            media: inboundMedia,
-                        });
-                        reply = bucherimResult.reply;
-                        fullReply = bucherimResult.fullReply;
-                        outboundMedia = bucherimResult.outboundMedia || [];
-                        logBridgeEvent({
-                            requestId,
-                            stage: "route_bucherim",
-                            normalizedFrom,
-                            status: bucherimResult.status,
-                            responseMode: bucherimResult.responseMode,
-                            mediaCount: inboundMedia.length,
-                            outboundMediaCount: outboundMedia.length,
-                        });
-                    } else {
-                        // Default route: Mashbak (MASHBAK mode)
-                        reply = await buildReply(message, requestId, from);
-                        logBridgeEvent({
-                            requestId,
-                            stage: "route_mashbak",
-                            normalizedFrom,
-                            mediaCount: inboundMedia.length,
-                        });
-                    }
                 }
             }
         }
     } catch (error) {
+        console.error(`[sms] requestId=${requestId} bridge_error: ${error.message}`);
         logBridgeEvent({
             requestId,
             stage: "bridge_error",
             error: error.message,
             stack: truncateText(error.stack || "", 2000)
         });
-        reply = `Bridge error: ${error.message}`;
+        reply = "Bridge error. Please try again.";
         fullReply = reply;
+    }
+
+    // Final validation: ensure reply is valid TwiML
+    if (!reply || typeof reply !== "string") {
+        reply = "Service unavailable.";
     }
 
     if (reply.length > 1500) {
@@ -636,13 +655,12 @@ app.post("/sms", async (req, res) => {
     logBridgeEvent({
         requestId,
         stage: "reply_ready",
-        from,
         normalizedFrom,
-        reply: truncateText(reply, 2000),
-        fullReply: truncateText(fullReply || reply, 2000),
+        replyLength: reply.length,
         outboundMediaCount: outboundMedia.length,
     });
 
+    // Send valid TwiML response
     res.status(200);
     res.type("text/xml");
     if (outboundMedia.length > 0) {

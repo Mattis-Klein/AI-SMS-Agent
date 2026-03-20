@@ -42,17 +42,32 @@ function normalizePhoneNumber(value, maxDigits = 10) {
 /**
  * Get or initialize session for a sender.
  * Always defaults to MASHBAK mode on first access.
+ * Handles edge cases (empty/invalid sender) gracefully.
  */
 function getSession(normalizedSender) {
-    if (!sessions[normalizedSender]) {
+    // Normalize sender safely
+    const sender = String(normalizedSender || "").trim();
+    
+    if (!sender) {
+        // Return a default session for invalid/empty senders (defensive)
+        // This prevents crashes but doesn't persist state
         const now = Date.now();
-        sessions[normalizedSender] = {
+        return {
             mode: DEFAULT_MODE,
             lastActivityTime: now,
             modeSetTime: now,
         };
     }
-    return sessions[normalizedSender];
+
+    if (!sessions[sender]) {
+        const now = Date.now();
+        sessions[sender] = {
+            mode: DEFAULT_MODE,
+            lastActivityTime: now,
+            modeSetTime: now,
+        };
+    }
+    return sessions[sender];
 }
 
 /**
@@ -65,7 +80,7 @@ function getSession(normalizedSender) {
 function getCurrentMode(normalizedSender) {
     const session = getSession(normalizedSender);
     const now = Date.now();
-    
+
     // Check timeout for Bucherim mode BEFORE updating activity time
     if (session.mode === MODES.BUCHERIM) {
         const timeSinceLastActivity = now - session.lastActivityTime;
@@ -76,10 +91,10 @@ function getCurrentMode(normalizedSender) {
             return MODES.MASHBAK;
         }
     }
-    
+
     // Update last activity (if not timed out)
     session.lastActivityTime = now;
-    
+
     return session.mode;
 }
 
@@ -95,7 +110,7 @@ function isBucherimSessionTimedOut(normalizedSender) {
     if (session.mode !== MODES.BUCHERIM) {
         return false;
     }
-    
+
     const now = Date.now();
     const timeSinceLastActivity = now - session.lastActivityTime;
     return timeSinceLastActivity > BUCHERIM_TIMEOUT_MS;
@@ -113,15 +128,15 @@ function setMode(normalizedSender, newMode) {
     if (newMode !== MODES.MASHBAK && newMode !== MODES.BUCHERIM) {
         throw new Error(`Invalid mode: ${newMode}`);
     }
-    
+
     const session = getSession(normalizedSender);
     const previousMode = session.mode;
     const now = Date.now();
-    
+
     session.mode = newMode;
     session.modeSetTime = now;
     session.lastActivityTime = now;
-    
+
     return {
         previousMode,
         newMode,

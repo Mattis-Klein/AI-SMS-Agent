@@ -13,7 +13,7 @@ test("normalizePhoneNumber works correctly", () => {
 test("authorized sender defaults to MASHBAK mode", () => {
     sessionManager.clearAllSessions();
     const normalizedSender = "8483291230";
-    
+
     const mode = sessionManager.getCurrentMode(normalizedSender);
     assert.equal(mode, sessionManager.MODES.MASHBAK);
 });
@@ -21,16 +21,16 @@ test("authorized sender defaults to MASHBAK mode", () => {
 test("mode can be switched to BUCHERIM", () => {
     sessionManager.clearAllSessions();
     const normalizedSender = "8483291230";
-    
+
     // Start in Mashbak
     let mode = sessionManager.getCurrentMode(normalizedSender);
     assert.equal(mode, sessionManager.MODES.MASHBAK);
-    
+
     // Switch to Bucherim
     const result = sessionManager.setMode(normalizedSender, sessionManager.MODES.BUCHERIM);
     assert.equal(result.previousMode, sessionManager.MODES.MASHBAK);
     assert.equal(result.newMode, sessionManager.MODES.BUCHERIM);
-    
+
     // Verify mode is now Bucherim
     mode = sessionManager.getCurrentMode(normalizedSender);
     assert.equal(mode, sessionManager.MODES.BUCHERIM);
@@ -39,12 +39,12 @@ test("mode can be switched to BUCHERIM", () => {
 test("mode can be switched back to MASHBAK from BUCHERIM", () => {
     sessionManager.clearAllSessions();
     const normalizedSender = "8483291230";
-    
+
     // Switch to Bucherim
     sessionManager.setMode(normalizedSender, sessionManager.MODES.BUCHERIM);
     let mode = sessionManager.getCurrentMode(normalizedSender);
     assert.equal(mode, sessionManager.MODES.BUCHERIM);
-    
+
     // Switch back to Mashbak
     sessionManager.setMode(normalizedSender, sessionManager.MODES.MASHBAK);
     mode = sessionManager.getCurrentMode(normalizedSender);
@@ -54,21 +54,21 @@ test("mode can be switched back to MASHBAK from BUCHERIM", () => {
 test("Bucherim mode times out after 30 minutes of inactivity", () => {
     sessionManager.clearAllSessions();
     const normalizedSender = "8483291230";
-    
+
     // Switch to Bucherim
     sessionManager.setMode(normalizedSender, sessionManager.MODES.BUCHERIM);
     let mode = sessionManager.getCurrentMode(normalizedSender);
     assert.equal(mode, sessionManager.MODES.BUCHERIM);
-    
+
     // Simulate 30 minutes of inactivity by manipulating session state directly
     const session = sessionManager.getSession(normalizedSender);
     const thirtyMinutesAgo = Date.now() - sessionManager.BUCHERIM_TIMEOUT_MS - 1000;
     session.lastActivityTime = thirtyMinutesAgo;
-    
+
     // Check if timed out
     const isTimedOut = sessionManager.isBucherimSessionTimedOut(normalizedSender);
     assert.equal(isTimedOut, true);
-    
+
     // Check that getCurrentMode falls back to Mashbak due to timeout
     mode = sessionManager.getCurrentMode(normalizedSender);
     assert.equal(mode, sessionManager.MODES.MASHBAK);
@@ -77,21 +77,21 @@ test("Bucherim mode times out after 30 minutes of inactivity", () => {
 test("Bucherim mode does NOT time out within 30 minutes", () => {
     sessionManager.clearAllSessions();
     const normalizedSender = "8483291230";
-    
+
     // Switch to Bucherim
     sessionManager.setMode(normalizedSender, sessionManager.MODES.BUCHERIM);
     let mode = sessionManager.getCurrentMode(normalizedSender);
     assert.equal(mode, sessionManager.MODES.BUCHERIM);
-    
+
     // Simulate 29 minutes of inactivity
     const session = sessionManager.getSession(normalizedSender);
     const twentyNineMinutesAgo = Date.now() - (sessionManager.BUCHERIM_TIMEOUT_MS - 60000);
     session.lastActivityTime = twentyNineMinutesAgo;
-    
+
     // Check if timed out (should be false)
     const isTimedOut = sessionManager.isBucherimSessionTimedOut(normalizedSender);
     assert.equal(isTimedOut, false);
-    
+
     // Mode should still be Bucherim
     mode = sessionManager.getCurrentMode(normalizedSender);
     assert.equal(mode, sessionManager.MODES.BUCHERIM);
@@ -100,39 +100,39 @@ test("Bucherim mode does NOT time out within 30 minutes", () => {
 test("lastActivityTime is updated on getCurrentMode call", () => {
     sessionManager.clearAllSessions();
     const normalizedSender = "8483291230";
-    
+
     // Get initial session
     sessionManager.getCurrentMode(normalizedSender);
     const session1 = sessionManager.getSession(normalizedSender);
     const initialTime = session1.lastActivityTime;
-    
+
     // Manually set it back slightly to ensure we can detect an update
     session1.lastActivityTime = initialTime - 100;
-    
+
     // Call again
     sessionManager.getCurrentMode(normalizedSender);
     const session2 = sessionManager.getSession(normalizedSender);
     const updatedTime = session2.lastActivityTime;
-    
+
     assert(updatedTime > initialTime - 100, "lastActivityTime should be updated");
 });
 
 test("getCurrentMode does not update activity time via isBucherimSessionTimedOut", () => {
     sessionManager.clearAllSessions();
     const normalizedSender = "8483291230";
-    
+
     // Switch to Bucherim
     sessionManager.setMode(normalizedSender, sessionManager.MODES.BUCHERIM);
     const session = sessionManager.getSession(normalizedSender);
     const initialTime = session.lastActivityTime;
-    
+
     // Simulate 25 minutes of inactivity
     session.lastActivityTime = Date.now() - (sessionManager.BUCHERIM_TIMEOUT_MS - 300000);
-    
+
     // Check timeout without updating activity time
     const isTimedOut = sessionManager.isBucherimSessionTimedOut(normalizedSender);
     assert.equal(isTimedOut, false);
-    
+
     // Activity time should NOT have changed
     assert.equal(session.lastActivityTime, Date.now() - (sessionManager.BUCHERIM_TIMEOUT_MS - 300000));
 });
@@ -140,18 +140,18 @@ test("getCurrentMode does not update activity time via isBucherimSessionTimedOut
 test("getSessionInfo does not update activity time", () => {
     sessionManager.clearAllSessions();
     const normalizedSender = "8483291230";
-    
+
     // Get initial info
     sessionManager.getCurrentMode(normalizedSender);
     const session = sessionManager.getSession(normalizedSender);
     const initialTime = session.lastActivityTime;
-    
+
     // Manually set last activity to 15 minutes ago
     session.lastActivityTime = Date.now() - 900000;
-    
+
     // Get session info (should not update)
     const info = sessionManager.getSessionInfo(normalizedSender);
-    
+
     // Activity time should NOT have changed
     assert.equal(session.lastActivityTime, Date.now() - 900000);
     assert.equal(info.lastActivityTime, Date.now() - 900000);
@@ -161,14 +161,14 @@ test("separate senders have separate sessions", () => {
     sessionManager.clearAllSessions();
     const sender1 = "8483291230";
     const sender2 = "9297546860";
-    
+
     // Sender 1: switch to Bucherim
     sessionManager.setMode(sender1, sessionManager.MODES.BUCHERIM);
     assert.equal(sessionManager.getCurrentMode(sender1), sessionManager.MODES.BUCHERIM);
-    
+
     // Sender 2: should default to Mashbak
     assert.equal(sessionManager.getCurrentMode(sender2), sessionManager.MODES.MASHBAK);
-    
+
     // Verify sender 1 is still Bucherim
     assert.equal(sessionManager.getCurrentMode(sender1), sessionManager.MODES.BUCHERIM);
 });
@@ -176,14 +176,14 @@ test("separate senders have separate sessions", () => {
 test("resetSession clears a specific sender's session", () => {
     sessionManager.clearAllSessions();
     const normalizedSender = "8483291230";
-    
+
     // Switch to Bucherim
     sessionManager.setMode(normalizedSender, sessionManager.MODES.BUCHERIM);
     assert.equal(sessionManager.getCurrentMode(normalizedSender), sessionManager.MODES.BUCHERIM);
-    
+
     // Reset session
     sessionManager.resetSession(normalizedSender);
-    
+
     // Should default to Mashbak again
     assert.equal(sessionManager.getCurrentMode(normalizedSender), sessionManager.MODES.MASHBAK);
 });
@@ -191,15 +191,114 @@ test("resetSession clears a specific sender's session", () => {
 test("clearAllSessions clears all sessions", () => {
     const sender1 = "8483291230";
     const sender2 = "9297546860";
-    
+
     // Set both to Bucherim
     sessionManager.setMode(sender1, sessionManager.MODES.BUCHERIM);
     sessionManager.setMode(sender2, sessionManager.MODES.BUCHERIM);
-    
+
     // Clear all
     sessionManager.clearAllSessions();
-    
+
     // Both should default to Mashbak
     assert.equal(sessionManager.getCurrentMode(sender1), sessionManager.MODES.MASHBAK);
     assert.equal(sessionManager.getCurrentMode(sender2), sessionManager.MODES.MASHBAK);
+});
+
+// ===================== AUTHORIZATION BOUNDARY TESTS =====================
+// Verify Mashbak is strictly single-user and Bucherim is multi-user
+
+test("owner and non-owner have independent session states", () => {
+    sessionManager.clearAllSessions();
+    const owner = "8483291230";
+    const other = "9297546860";
+
+    // Owner switches to Bucherim
+    sessionManager.setMode(owner, sessionManager.MODES.BUCHERIM);
+    assert.equal(sessionManager.getCurrentMode(owner), sessionManager.MODES.BUCHERIM);
+
+    // Other sender should still be in Mashbak (not affected)
+    assert.equal(sessionManager.getCurrentMode(other), sessionManager.MODES.MASHBAK);
+
+    // Switch other to Bucherim
+    sessionManager.setMode(other, sessionManager.MODES.BUCHERIM);
+
+    // Owner should still be in Bucherim (not affected)
+    assert.equal(sessionManager.getCurrentMode(owner), sessionManager.MODES.BUCHERIM);
+});
+
+test("different senders have separate timeout tracking", () => {
+    sessionManager.clearAllSessions();
+    const owner = "8483291230";
+    const other = "9297546860";
+
+    // Both switch to Bucherim
+    sessionManager.setMode(owner, sessionManager.MODES.BUCHERIM);
+    sessionManager.setMode(other, sessionManager.MODES.BUCHERIM);
+
+    // Simulate timeout for owner only
+    const ownerSession = sessionManager.getSession(owner);
+    ownerSession.lastActivityTime = Date.now() - sessionManager.BUCHERIM_TIMEOUT_MS - 1000;
+
+    // Owner should time out
+    assert.equal(sessionManager.isBucherimSessionTimedOut(owner), true);
+    assert.equal(sessionManager.getCurrentMode(owner), sessionManager.MODES.MASHBAK);
+
+    // Other should NOT have timed out
+    assert.equal(sessionManager.isBucherimSessionTimedOut(other), false);
+    assert.equal(sessionManager.getCurrentMode(other), sessionManager.MODES.BUCHERIM);
+});
+
+test("empty or invalid normalized sender defaults to Mashbak safely", () => {
+    sessionManager.clearAllSessions();
+
+    // Empty string sender - should default to Mashbak (graceful handling)
+    const emptyMode = sessionManager.getCurrentMode("");
+    assert.equal(emptyMode, sessionManager.MODES.MASHBAK);
+
+    // Very short sender - should still work
+    const shortMode = sessionManager.getCurrentMode("1");
+    assert.equal(shortMode, sessionManager.MODES.MASHBAK);
+
+    // Whitespace-only sender - should default to Mashbak
+    const whitespaceMode = sessionManager.getCurrentMode("   ");
+    assert.equal(whitespaceMode, sessionManager.MODES.MASHBAK);
+});
+
+test("normalizePhoneNumber handles edge cases safely", () => {
+    // Empty input
+    assert.equal(sessionManager.normalizePhoneNumber(""), "");
+    assert.equal(sessionManager.normalizePhoneNumber(null), "");
+    assert.equal(sessionManager.normalizePhoneNumber(undefined), "");
+
+    // Only non-digits
+    assert.equal(sessionManager.normalizePhoneNumber("abcdefg"), "");
+    assert.equal(sessionManager.normalizePhoneNumber("+++---"), "");
+
+    // Too many digits (should keep last 10)
+    // 9876543210 is 10 digits, so this string of 19 digits should return the last 10
+    assert.equal(sessionManager.normalizePhoneNumber("9876543210123456789"), "0123456789");
+
+    // Exactly 10 digits
+    assert.equal(sessionManager.normalizePhoneNumber("1234567890"), "1234567890");
+
+    // Mixed formatting
+    assert.equal(sessionManager.normalizePhoneNumber("+1-234-567-8900"), "2345678900");
+});
+
+test("session mode cannot be set to invalid value", () => {
+    sessionManager.clearAllSessions();
+    const sender = "8483291230";
+
+    // Valid modes should work
+    sessionManager.setMode(sender, sessionManager.MODES.MASHBAK);
+    assert.equal(sessionManager.getCurrentMode(sender), sessionManager.MODES.MASHBAK);
+
+    sessionManager.setMode(sender, sessionManager.MODES.BUCHERIM);
+    assert.equal(sessionManager.getCurrentMode(sender), sessionManager.MODES.BUCHERIM);
+
+    // Invalid mode should throw
+    assert.throws(
+        () => sessionManager.setMode(sender, "INVALID_MODE"),
+        /Invalid mode/
+    );
 });
