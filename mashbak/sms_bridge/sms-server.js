@@ -13,6 +13,7 @@ const {
 } = require("./access-control-config");
 const { redactConfigAssignments, sanitize } = require("./redaction");
 const { loadEnvFile } = require("./env-loader");
+const sessionManager = require("./session-manager");
 
 // Load master config first (reads from mashbak/.env.master)
 const masterEnvPath = path.join(__dirname, "..", ".env.master");
@@ -37,6 +38,10 @@ const LOG_ARCHIVE_FILE = path.join(LOG_DIR, "bridge.log.1");
 const LOG_MAX_BYTES = Number(process.env.BRIDGE_LOG_MAX_BYTES || 1_000_000);
 const SENDER_ACCESS = loadSenderAccessConfig(process.env);
 const ACCESS_CONFIG_LOADED_AT = new Date().toISOString();
+
+// SMS session mode control commands (only authorized owner can trigger these)
+const MODE_COMMAND_BUCHERIM = "MAT@BUCHERIM";
+const MODE_COMMAND_MASHBAK = "MAT@MASHBAK";
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
@@ -406,6 +411,22 @@ async function buildBucherimReply({ message, from, to, requestId, messageSid, ac
     };
 }
 
+/**
+ * Check if a message is a mode control command.
+ * Returns the target mode if it is, null otherwise.
+ * Control commands are case-insensitive and must match exactly.
+ */
+function getControlCommandMode(message) {
+    const normalized = (message || "").trim().toUpperCase();
+    if (normalized === MODE_COMMAND_BUCHERIM.toUpperCase()) {
+        return sessionManager.MODES.BUCHERIM;
+    }
+    if (normalized === MODE_COMMAND_MASHBAK.toUpperCase()) {
+        return sessionManager.MODES.MASHBAK;
+    }
+    return null;
+}
+
 app.get("/", (req, res) => {
     res.status(200).send("SMS bridge is running.");
 });
@@ -417,6 +438,8 @@ app.get("/health", (req, res) => {
         logFile: LOG_FILE,
         twilioValidationEnabled: Boolean(TWILIO_AUTH_TOKEN),
         senderAccessControlEnabled: true,
+        sessionRoutingEnabled: true,
+        bucherimTimeoutMs: sessionManager.BUCHERIM_TIMEOUT_MS,
         accessControlConfigLoadedAt: ACCESS_CONFIG_LOADED_AT,
         accessControlReloadRequiresRestart: true
     });
@@ -437,16 +460,19 @@ app.post("/sms", async (req, res) => {
     const inboundMedia = extractInboundMedia(req.body);
     const normalizedTo = normalizeToE164(to);
     const normalizedBucherimNumber = normalizeToE164(BUCHERIM_TWILIO_NUMBER);
-    const isBucherimRoute = Boolean(normalizedTo && normalizedTo === normalizedBucherimNumber);
 
-    console.log(`[sms] requestId=${requestId} from=${from} body=${safeMessage}`);
+    // Normalize sender using access control config normalization digits
+    const normalizedFrom = normalizePhoneNumber(from, SENDER_ACCESS.normalizationDigits);
+    const isOwner = normalizedFrom === SENDER_ACCESS.ownerNumber;
+
+    console.log(`[sms] requestId=${requestId} from=${from} normalizedFrom=${normalizedFrom} body=${safeMessage}`);
     logBridgeEvent({
         requestId,
         stage: "incoming_sms",
         from,
+        normalizedFrom,
         to,
         normalizedTo,
-        bucherimRoute: isBucherimRoute,
         messageSid,
         message: safeMessage,
         mediaCount: inboundMedia.length,
@@ -470,70 +496,125 @@ app.post("/sms", async (req, res) => {
     let reply;
     let fullReply = "";
     let outboundMedia = [];
+
     try {
-        if (isBucherimRoute) {
-            const bucherimResult = await buildBucherimReply({
-                message,
-                from,
-                to,
-                requestId,
-                messageSid,
-                accountSid,
-                media: inboundMedia,
-            });
-            reply = bucherimResult.reply;
-            fullReply = bucherimResult.fullReply;
-            outboundMedia = bucherimResult.outboundMedia || [];
+        // Step 1: Check if sender is authorized (owner)
+        // Unauthorized senders are immediately denied
+        if (!isOwner) {
+            console.log(`[sms] requestId=${requestId} unauthorized_sender normalizedFrom=${normalizedFrom}`);
             logBridgeEvent({
                 requestId,
-                stage: "bucherim_route",
-                normalizedTo,
-                normalizedBucherimNumber,
-                status: bucherimResult.status,
-                responseMode: bucherimResult.responseMode,
-                mediaCount: inboundMedia.length,
-                outboundMediaCount: outboundMedia.length,
+                stage: "sender_authorization_check",
+                normalizedFrom,
+                isOwner: false,
+                authorized: false,
+                action: "denied"
             });
+            reply = SENDER_ACCESS.denialResponse;
         } else {
-            const senderDecision = resolveSenderAction(from, SENDER_ACCESS);
-
-            if (!senderDecision.shouldForward) {
-                console.log(
-                    `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
-                );
+            // Step 2: Check if this is a mode control command from the authorized owner
+            const controlMode = getControlCommandMode(message);
+            if (controlMode) {
+                // Handle mode switch - this is a control command, don't forward to assistant
+                const previousMode = sessionManager.getCurrentMode(normalizedFrom);
+                const modeChangeResult = sessionManager.setMode(normalizedFrom, controlMode);
+                
+                console.log(`[sms] requestId=${requestId} mode_switch from=${previousMode} to=${controlMode}`);
                 logBridgeEvent({
                     requestId,
-                    stage: "sender_access_control",
-                    from,
-                    normalizedFrom: senderDecision.normalizedFrom,
-                    action: senderDecision.action,
-                    message: safeMessage,
-                    forwarded: false
+                    stage: "mode_control_command",
+                    normalizedFrom,
+                    controlCommand: message,
+                    previousMode,
+                    newMode: controlMode,
+                    switched: previousMode !== controlMode,
+                    switchTime: modeChangeResult.timestamp
                 });
-            }
 
-            if (senderDecision.shouldForward) {
-                console.log(
-                    `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
-                );
-                logBridgeEvent({
-                    requestId,
-                    stage: "sender_access_control",
-                    from,
-                    normalizedFrom: senderDecision.normalizedFrom,
-                    action: senderDecision.action,
-                    message: safeMessage,
-                    forwarded: true
-                });
-                reply = await buildReply(message, requestId, from);
+                // Acknowledge the mode switch without forwarding to assistant
+                reply = `Switched to ${controlMode} mode.`;
             } else {
-                reply = senderDecision.reply;
-                if (senderDecision.action === "access_request_response" && isAccessRequestCommand(message, SENDER_ACCESS)) {
-                    await notifyOwnerAccessRequest({
+                // Step 3: Not a control command. Check sender authorization and get routing mode.
+                const senderDecision = resolveSenderAction(from, SENDER_ACCESS);
+
+                if (!senderDecision.shouldForward) {
+                    // This shouldn't happen if isOwner is true and authorization was done correctly
+                    // But handle it defensively
+                    console.log(
+                        `[sms] requestId=${requestId} sender=${senderDecision.normalizedFrom} action=${senderDecision.action}`
+                    );
+                    logBridgeEvent({
                         requestId,
+                        stage: "sender_access_control",
+                        from,
                         normalizedFrom: senderDecision.normalizedFrom,
-                        inboundTo: to,
+                        action: senderDecision.action,
+                        message: safeMessage,
+                        forwarded: false
                     });
+                    reply = senderDecision.reply;
+                } else {
+                    // Authorized sender, not a control command. Now determine routing mode.
+                    // Get current mode (this updates lastActivityTime)
+                    const currentMode = sessionManager.getCurrentMode(normalizedFrom);
+                    const sessionInfo = sessionManager.getSessionInfo(normalizedFrom);
+                    const wasTimedOut = sessionInfo.isTimedOut;
+
+                    console.log(
+                        `[sms] requestId=${requestId} authorized_owner routing currentMode=${currentMode} wasTimedOut=${wasTimedOut}`
+                    );
+                    logBridgeEvent({
+                        requestId,
+                        stage: "sender_authorization_check",
+                        normalizedFrom,
+                        isOwner: true,
+                        authorized: true,
+                        action: "route_to_session_mode"
+                    });
+
+                    logBridgeEvent({
+                        requestId,
+                        stage: "session_routing_decision",
+                        normalizedFrom,
+                        currentMode,
+                        wasTimedOut,
+                        modeSetTime: sessionInfo.modeSetTime,
+                        lastActivityTime: sessionInfo.lastActivityTime
+                    });
+
+                    // Route based on current mode
+                    if (currentMode === sessionManager.MODES.BUCHERIM) {
+                        const bucherimResult = await buildBucherimReply({
+                            message,
+                            from,
+                            to,
+                            requestId,
+                            messageSid,
+                            accountSid,
+                            media: inboundMedia,
+                        });
+                        reply = bucherimResult.reply;
+                        fullReply = bucherimResult.fullReply;
+                        outboundMedia = bucherimResult.outboundMedia || [];
+                        logBridgeEvent({
+                            requestId,
+                            stage: "route_bucherim",
+                            normalizedFrom,
+                            status: bucherimResult.status,
+                            responseMode: bucherimResult.responseMode,
+                            mediaCount: inboundMedia.length,
+                            outboundMediaCount: outboundMedia.length,
+                        });
+                    } else {
+                        // Default route: Mashbak (MASHBAK mode)
+                        reply = await buildReply(message, requestId, from);
+                        logBridgeEvent({
+                            requestId,
+                            stage: "route_mashbak",
+                            normalizedFrom,
+                            mediaCount: inboundMedia.length,
+                        });
+                    }
                 }
             }
         }
@@ -556,7 +637,7 @@ app.post("/sms", async (req, res) => {
         requestId,
         stage: "reply_ready",
         from,
-        bucherimRoute: isBucherimRoute,
+        normalizedFrom,
         reply: truncateText(reply, 2000),
         fullReply: truncateText(fullReply || reply, 2000),
         outboundMediaCount: outboundMedia.length,
@@ -583,10 +664,19 @@ app.listen(PORT, () => {
         publicBaseUrl: PUBLIC_BASE_URL,
         twilioValidationEnabled: Boolean(TWILIO_AUTH_TOKEN),
         senderAccessControlEnabled: true,
+        sessionRoutingEnabled: true,
+        bucherimTimeoutMs: sessionManager.BUCHERIM_TIMEOUT_MS,
+        modeCommands: {
+            bucherim: MODE_COMMAND_BUCHERIM,
+            mashbak: MODE_COMMAND_MASHBAK,
+        },
         ownerNumber: SENDER_ACCESS.ownerNumber,
         hershyNumber: SENDER_ACCESS.hershyNumber || null,
         rejectedNumbers: Array.from(SENDER_ACCESS.rejectedNumbers),
         accessRequestNumbers: Array.from(SENDER_ACCESS.accessRequestNumbers),
     });
     console.log(`SMS server running on port ${PORT}`);
+    console.log(`[bridge] Session routing enabled. Owner number: ${SENDER_ACCESS.ownerNumber}`);
+    console.log(`[bridge] Mode commands: '${MODE_COMMAND_BUCHERIM}' and '${MODE_COMMAND_MASHBAK}'`);
+    console.log(`[bridge] Bucherim timeout: ${sessionManager.BUCHERIM_TIMEOUT_MS / 1000 / 60} minutes`);
 });
